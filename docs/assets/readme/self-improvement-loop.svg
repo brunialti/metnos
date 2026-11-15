@@ -1,0 +1,128 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 448" role="img" aria-labelledby="si-title si-desc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+  <title id="si-title">The governed self-improvement loop of the Metnos AI agent</title>
+  <desc id="si-desc">A loop of seven steps. Metnos notices a capability it lacks, opens one proposal for it, builds a tool with the local model, tests it in a sandbox and has it reviewed, asks the person to activate it or not, has it signed and admitted by a separate administrator program, and keeps watching it. A tool that fails by its own defect is retired and rewritten, which starts the loop again.</desc>
+  <style>
+    .card{fill:#FCFAF6;stroke:#E4DCCC}
+    .box{fill:#FFFFFF;stroke:#CFC5B0}
+    .you{fill:#F8E8D9;stroke:#C9671E}
+    .t{fill:#26221C}.d{fill:#574F42}.m{fill:#8A8378}.w{fill:#FFFFFF}
+    .arrow{stroke:#574F42;fill:none}.ah{fill:#574F42}
+    .g{fill:#2E8B62}.b{fill:#4A6FB8}.o{fill:#C9671E}.n{fill:#8A8378}
+    @media (prefers-color-scheme: dark){
+      .card{fill:#1E1A16;stroke:#3D352C}
+      .box{fill:#241F1A;stroke:#5A4F42}
+      .you{fill:#3A2A1C;stroke:#D8762E}
+      .t{fill:#F0E9DD}.d{fill:#CFC5B0}.m{fill:#9C9283}.w{fill:#1E1A16}
+      .arrow{stroke:#CFC5B0}.ah{fill:#CFC5B0}
+      .g{fill:#35A072}.b{fill:#5C8FE0}.o{fill:#D8762E}.n{fill:#9C9283}
+    }
+  </style>
+
+  <rect class="card" x="0.5" y="0.5" width="879" height="447" rx="12"/>
+
+  <text class="t" x="28" y="40" font-size="19" font-weight="700">A missing capability becomes a tested, signed tool</text>
+  <text class="d" x="28" y="62" font-size="13.5">Metnos notices what it cannot do, builds the tool, tests it, and asks you one question.</text>
+
+  <!-- top row, left to right -->
+  <g font-size="12">
+    <g>
+      <rect class="box" x="26" y="84" width="186" height="120" rx="8"/>
+      <circle class="b" cx="46" cy="108" r="11"/>
+      <text class="w" x="46" y="112.5" font-weight="700" text-anchor="middle">1</text>
+      <text class="t" x="66" y="113" font-size="14.5" font-weight="700">Notice</text>
+      <text class="d" x="42" y="138">It cannot do something</text>
+      <text class="d" x="42" y="155">and says so. The gap is</text>
+      <text class="d" x="42" y="172">recorded and counted.</text>
+    </g>
+    <g>
+      <rect class="box" x="240" y="84" width="186" height="120" rx="8"/>
+      <circle class="b" cx="260" cy="108" r="11"/>
+      <text class="w" x="260" y="112.5" font-weight="700" text-anchor="middle">2</text>
+      <text class="t" x="280" y="113" font-size="14.5" font-weight="700">Propose</text>
+      <text class="d" x="256" y="138">Each gap gets one</text>
+      <text class="d" x="256" y="155">proposal, built on the</text>
+      <text class="d" x="256" y="172">real requests.</text>
+    </g>
+    <g>
+      <rect class="box" x="454" y="84" width="186" height="120" rx="8"/>
+      <circle class="n" cx="474" cy="108" r="11"/>
+      <text class="w" x="474" y="112.5" font-weight="700" text-anchor="middle">3</text>
+      <text class="t" x="494" y="113" font-size="14.5" font-weight="700">Build</text>
+      <text class="d" x="470" y="138">The local model writes</text>
+      <text class="d" x="470" y="155">arguments, tests,</text>
+      <text class="d" x="470" y="172">description and code.</text>
+    </g>
+    <g>
+      <rect class="box" x="668" y="84" width="186" height="120" rx="8"/>
+      <circle class="b" cx="688" cy="108" r="11"/>
+      <text class="w" x="688" y="112.5" font-weight="700" text-anchor="middle">4</text>
+      <text class="t" x="708" y="113" font-size="14.5" font-weight="700">Test and review</text>
+      <text class="d" x="684" y="138">Tests run in a sandbox.</text>
+      <text class="d" x="684" y="155">A reviewer compares the</text>
+      <text class="d" x="684" y="172">code with what it</text>
+      <text class="d" x="684" y="189">promises. Three tries.</text>
+    </g>
+  </g>
+
+  <!-- bottom row, right to left -->
+  <g font-size="12">
+    <g>
+      <rect class="you" x="668" y="276" width="186" height="120" rx="8" stroke-width="1.5"/>
+      <circle class="o" cx="688" cy="300" r="11"/>
+      <text class="w" x="688" y="304.5" font-weight="700" text-anchor="middle">5</text>
+      <text class="t" x="708" y="305" font-size="14.5" font-weight="700">You decide</text>
+      <text class="d" x="684" y="330">You read what it does</text>
+      <text class="d" x="684" y="347">and what it may touch,</text>
+      <text class="d" x="684" y="364">then answer Activate</text>
+      <text class="d" x="684" y="381">or No.</text>
+    </g>
+    <g>
+      <rect class="box" x="454" y="276" width="186" height="120" rx="8"/>
+      <circle class="g" cx="474" cy="300" r="11"/>
+      <text class="w" x="474" y="304.5" font-weight="700" text-anchor="middle">6</text>
+      <text class="t" x="494" y="305" font-size="14.5" font-weight="700">Sign and admit</text>
+      <text class="d" x="470" y="330">An administrator</text>
+      <text class="d" x="470" y="347">program signs it. Only</text>
+      <text class="d" x="470" y="364">then can the planner</text>
+      <text class="d" x="470" y="381">use the tool.</text>
+    </g>
+    <g>
+      <rect class="box" x="240" y="276" width="186" height="120" rx="8"/>
+      <circle class="b" cx="260" cy="300" r="11"/>
+      <text class="w" x="260" y="304.5" font-weight="700" text-anchor="middle">7</text>
+      <text class="t" x="280" y="305" font-size="14.5" font-weight="700">Keep watch</text>
+      <text class="d" x="256" y="330">A tool that fails by</text>
+      <text class="d" x="256" y="347">its own defect is</text>
+      <text class="d" x="256" y="364">retired at once and</text>
+      <text class="d" x="256" y="381">rewritten.</text>
+    </g>
+  </g>
+
+  <!-- arrows -->
+  <g class="arrow" stroke-width="2">
+    <line x1="212" y1="144" x2="229" y2="144"/>
+    <line x1="426" y1="144" x2="443" y2="144"/>
+    <line x1="640" y1="144" x2="657" y2="144"/>
+    <line x1="761" y1="204" x2="761" y2="265"/>
+    <line x1="668" y1="336" x2="651" y2="336"/>
+    <line x1="454" y1="336" x2="437" y2="336"/>
+    <path d="M240 336 H119 V215"/>
+  </g>
+  <g class="ah">
+    <path d="M240 144 l-11 -5.5 v11 z"/>
+    <path d="M454 144 l-11 -5.5 v11 z"/>
+    <path d="M668 144 l-11 -5.5 v11 z"/>
+    <path d="M761 276 l-5.5 -11 h11 z"/>
+    <path d="M640 336 l11 -5.5 v11 z"/>
+    <path d="M426 336 l11 -5.5 v11 z"/>
+    <path d="M119 204 l-5.5 11 h11 z"/>
+  </g>
+
+  <text class="d" x="134" y="237" font-size="12.5">a defect or a new need</text>
+  <text class="d" x="134" y="254" font-size="12.5">starts the loop again</text>
+
+  <text class="t" x="530" y="237" font-size="13.5" font-style="italic" text-anchor="middle">Nothing becomes a tool</text>
+  <text class="t" x="530" y="255" font-size="13.5" font-style="italic" text-anchor="middle">because a model wrote it.</text>
+
+  <text class="m" x="28" y="424" font-size="12">Generated tools compute and work on the files you opened to them. On connected accounts they can only read.</text>
+</svg>

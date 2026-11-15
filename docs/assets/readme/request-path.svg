@@ -1,0 +1,141 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 410" role="img" aria-labelledby="rp-title rp-desc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+  <title id="rp-title">How the Metnos AI agent turns a request into a checked action</title>
+  <desc id="rp-desc">Five stages from left to right. You ask in plain language. A language model understands the request as actions on objects from a closed vocabulary. A plan of typed steps is proposed or reused from memory. Plain code checks names, types, paths and consent. Signed tools run in a sandbox and the answer reports what happened. An example request about invoice emails is followed through every stage.</desc>
+  <style>
+    .card{fill:#FCFAF6;stroke:#E4DCCC}
+    .panel{fill:#F5F0E5}
+    .box{fill:#FFFFFF;stroke:#CFC5B0}
+    .t{fill:#26221C}.d{fill:#574F42}.m{fill:#8A8378}
+    .arrow{stroke:#8A8378;fill:none}
+    .g{fill:#2E8B62}.b{fill:#4A6FB8}.o{fill:#C9671E}.n{fill:#8A8378}
+    .bs{stroke:#4A6FB8;fill:none}.ns{stroke:#8A8378;fill:none}
+    @media (prefers-color-scheme: dark){
+      .card{fill:#1E1A16;stroke:#3D352C}
+      .panel{fill:#28221C}
+      .box{fill:#241F1A;stroke:#5A4F42}
+      .t{fill:#F0E9DD}.d{fill:#CFC5B0}.m{fill:#9C9283}
+      .arrow{stroke:#9C9283}
+      .g{fill:#35A072}.b{fill:#5C8FE0}.o{fill:#D8762E}.n{fill:#9C9283}
+      .bs{stroke:#5C8FE0}.ns{stroke:#9C9283}
+    }
+  </style>
+
+  <rect class="card" x="0.5" y="0.5" width="879" height="409" rx="12"/>
+
+  <text class="t" x="28" y="40" font-size="19" font-weight="700">From a sentence to a checked action</text>
+  <text class="d" x="28" y="62" font-size="13.5">The language model proposes. Plain code checks. You decide the sensitive steps. Signed tools do the work.</text>
+
+  <!-- stage cards -->
+  <g font-size="12">
+    <g>
+      <rect class="box" x="24" y="84" width="152" height="122" rx="8"/>
+      <rect class="o" x="24" y="84" width="152" height="5" rx="2.5"/>
+      <text class="m" x="36" y="110" font-size="10.5" letter-spacing="0.7">YOU</text>
+      <text class="t" x="36" y="133" font-size="15" font-weight="700">1  Ask</text>
+      <text class="d" x="36" y="156">Plain language, in</text>
+      <text class="d" x="36" y="173">the web chat or on</text>
+      <text class="d" x="36" y="190">Telegram.</text>
+    </g>
+    <g>
+      <rect class="box" x="194" y="84" width="152" height="122" rx="8"/>
+      <rect class="n" x="194" y="84" width="152" height="5" rx="2.5"/>
+      <text class="m" x="206" y="110" font-size="10.5" letter-spacing="0.7">LANGUAGE MODEL</text>
+      <text class="t" x="206" y="133" font-size="15" font-weight="700">2  Understand</text>
+      <text class="d" x="206" y="156">Which actions on</text>
+      <text class="d" x="206" y="173">which objects, in a</text>
+      <text class="d" x="206" y="190">closed vocabulary.</text>
+    </g>
+    <g>
+      <rect class="box" x="364" y="84" width="152" height="122" rx="8"/>
+      <rect class="n" x="364" y="84" width="152" height="5" rx="2.5"/>
+      <text class="m" x="376" y="110" font-size="10.5" letter-spacing="0.7">MODEL OR MEMORY</text>
+      <text class="t" x="376" y="133" font-size="15" font-weight="700">3  Plan</text>
+      <text class="d" x="376" y="156">A few typed steps.</text>
+      <text class="d" x="376" y="173">Only admitted tools</text>
+      <text class="d" x="376" y="190">can be named.</text>
+    </g>
+    <g>
+      <rect class="box" x="534" y="84" width="152" height="122" rx="8"/>
+      <rect class="b" x="534" y="84" width="152" height="5" rx="2.5"/>
+      <text class="m" x="546" y="110" font-size="10.5" letter-spacing="0.7">PLAIN CODE</text>
+      <text class="t" x="546" y="133" font-size="15" font-weight="700">4  Check</text>
+      <text class="d" x="546" y="156">Names, types, paths</text>
+      <text class="d" x="546" y="173">and consent. No</text>
+      <text class="d" x="546" y="190">model involved.</text>
+    </g>
+    <g>
+      <rect class="box" x="704" y="84" width="152" height="122" rx="8"/>
+      <rect class="g" x="704" y="84" width="152" height="5" rx="2.5"/>
+      <text class="m" x="716" y="110" font-size="10.5" letter-spacing="0.7">SIGNED TOOLS</text>
+      <text class="t" x="716" y="133" font-size="15" font-weight="700">5  Act, answer</text>
+      <text class="d" x="716" y="156">Each tool runs in a</text>
+      <text class="d" x="716" y="173">sandbox. The answer</text>
+      <text class="d" x="716" y="190">says what happened.</text>
+    </g>
+  </g>
+
+  <!-- arrows between stages -->
+  <g class="arrow" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M181 149 l6 5 l-6 5"/>
+    <path d="M351 149 l6 5 l-6 5"/>
+    <path d="M521 149 l6 5 l-6 5"/>
+    <path d="M691 149 l6 5 l-6 5"/>
+  </g>
+
+  <!-- worked example -->
+  <rect class="panel" x="24" y="222" width="832" height="134" rx="8"/>
+  <text class="m" x="36" y="244" font-size="10.5" letter-spacing="0.7">ONE REQUEST, FOLLOWED THROUGH</text>
+
+  <g class="t" font-size="12">
+    <text x="36" y="266">“Find last month's</text>
+    <text x="36" y="283">invoice emails. Put</text>
+    <text x="36" y="300">supplier, date and</text>
+    <text x="36" y="317">amount in a</text>
+    <text x="36" y="334">spreadsheet.”</text>
+  </g>
+
+  <g class="t" font-size="11.5" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace">
+    <text x="206" y="266">read · messages</text>
+    <text x="206" y="283">extract · entries</text>
+    <text x="206" y="300">create · files</text>
+  </g>
+
+  <g class="t" font-size="11" font-family="ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'Liberation Mono',monospace">
+    <text x="376" y="266">1 read_messages</text>
+    <text x="376" y="283">2 extract_entries</text>
+    <text x="376" y="300">3 create_files_</text>
+    <text x="376" y="317">  spreadsheet</text>
+  </g>
+
+  <g class="bs" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M546 262 l3 3 l6 -7"/>
+    <path d="M546 279 l3 3 l6 -7"/>
+    <path d="M546 296 l3 3 l6 -7"/>
+    <path d="M546 313 l3 3 l6 -7"/>
+  </g>
+  <g class="t" font-size="12">
+    <text x="561" y="266">tools are admitted</text>
+    <text x="561" y="283">arguments fit</text>
+    <text x="561" y="300">paths are allowed</text>
+    <text x="561" y="317">no consent needed</text>
+  </g>
+
+  <g class="t" font-size="12">
+    <text x="716" y="266">A spreadsheet with</text>
+    <text x="716" y="283">the invoices, the</text>
+    <text x="716" y="300">steps taken, and a</text>
+    <text x="716" y="317">working Undo.</text>
+  </g>
+
+  <!-- legend -->
+  <g font-size="12">
+    <circle class="ns" cx="34" cy="382" r="5" stroke-width="1.6" stroke-dasharray="2.5 2"/>
+    <text class="d" x="46" y="386">Model: understands, proposes</text>
+    <circle class="b" cx="268" cy="382" r="5.5"/>
+    <text class="d" x="280" y="386">Code: validates, enforces</text>
+    <circle class="o" cx="476" cy="382" r="5.5"/>
+    <text class="d" x="488" y="386">You: approve sensitive steps</text>
+    <circle class="g" cx="706" cy="382" r="5.5"/>
+    <text class="d" x="718" y="386">Signed tools: act</text>
+  </g>
+</svg>

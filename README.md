@@ -1,270 +1,232 @@
 <div align="center">
 
-# Metnos
+# Metnos: your self-hosted personal AI assistant
 
-**A self-hosted agent governor that turns natural language into governed action.**
+**An AI agent on your own machine, working inside limits you can read.**
 
-Across your files, mail, calendars, web, services, and paired devices — with
-typed plans, explicit authority, and undo wherever the operation safely
-supports it.
-
-LLM-powered agents receive narrow mandates and bounded authority. They may
-adapt how they pursue the requested outcome, but they cannot widen their own
-goal, permissions, or admission status.
+Metnos is an open-source, self-hosted personal AI assistant. Its AI agent plans with a
+local LLM, acts only through signed, sandboxed tools, and asks before sensitive steps.
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 ![Python](https://img.shields.io/badge/python-3.12-green)
 ![Self-hosted](https://img.shields.io/badge/cloud-optional-success)
 [![Docs](https://img.shields.io/badge/docs-metnos.com-1A477A.svg)](https://metnos.com)
 
-*mētis* (practical intelligence) + *noûs* (mind).
-
-[Explore the documentation](https://metnos.com) ·
-[Take the visual tour](https://metnos.com/en/Metnos_QuickTour) ·
-[Install Metnos](install/README.md) ·
-[Read the policy and authority model](https://metnos.com/en/architecture/policy.html)
+[Documentation](https://metnos.com) ·
+[Quick tour](https://metnos.com/en/Metnos_QuickTour) ·
+[Install](install/README.md) ·
+[Architecture](https://metnos.com/en/architecture/)
 
 </div>
 
-## Ask for the outcome
-
-Metnos is made to be asked in ordinary language:
-
-| Ask Metnos | What happens |
-|---|---|
-| “Find the exact duplicate images in Pictures. Count every file and directory first.” | It scans the requested tree, reports complete counts, and declares a duplicate only after matching the full SHA-256 content digest. A display limit never becomes a false scan limit. |
-| “Find last month's invoice emails, extract the date, supplier, and amount, and create a spreadsheet.” | It composes mail search, structured extraction, and document creation into one typed data flow. |
-| “Move these messages to Trash.” | It keeps each UID bound to its account and source folder, uses a safe server-side move, and fails closed if the server cannot target only those messages. |
-| “Where can I see the configured models, and how do I change them?” | The integrated Tutor answers from the installed documentation and gives the exact path through the web interface. |
-| “On my Windows PC, sort these photos into folders by year.” | Compatible steps run on the paired device; planning, consent, signing, and audit stay on the Metnos server. |
-
-You describe the result. Metnos determines which admitted capabilities can
-produce it, how their outputs connect, where they must run, and which decisions
-still belong to you.
-
-## Easy to start, built to remain understandable
-
-You do not need to learn executor names before Metnos becomes useful. Run the
-preflight, follow the guided installer, open the web chat, and ask for
-an outcome. The six installation phases are idempotent and resumable: an
-interrupted model download or Tutor build can continue instead of turning into
-a fresh installation.
-
-When you do not know whether a feature exists, where a setting lives, or why an
-operation stopped, ask Metnos itself. The integrated Tutor answers from the
-documentation and manifests installed on that instance, in the instance language,
-and links to the relevant official page. The product therefore remains
-discoverable from the same chat in which it is used.
-
-## Not a shell with a chat box
-
-Metnos receives requests through a web chat or Telegram. It classifies each
-request into a canonical intent, builds a typed plan, checks that plan against
-policy and declared authority, and executes it through **executors**.
-
-An executor is a small capability with:
-
-- a canonical name and typed arguments;
-- a signed manifest and code digest;
-- a declared result shape and execution policy;
-- explicit filesystem, network, credential, and device authority;
-- an observable success condition;
-- a reverse pattern when the operation is genuinely reversible.
-
-Every new or revised executor crosses one deterministic Birth boundary before
-it can become active. That boundary binds provenance, authority, checks, review,
-and any required approval to the candidate's exact bytes, then commits through
-the immutable contract store and rereads the result. A signature, copied
-directory, or service restart alone cannot activate changed code.
-
-The planner never receives an unrestricted shell or an arbitrary bag of tools.
-It sees only the capabilities admitted by the installed executor set. Shell
-access exists as a declared, policy-gated, disableable system capability — not
-as an open channel the planner can use outside that contract.
+- **What it is.** A personal assistant you install on a Linux machine you control. You
+  talk to it in a web chat or on Telegram.
+- **What it does.** It turns one sentence into real work on your files, mail, calendar,
+  the web and your PCs, and shows every step it took.
+- **Who it is for.** People who want an AI agent that gets things done, and still want
+  the last word.
+- **Why it is different.** The model only proposes. Every action is a signed tool with
+  declared permissions, run in a sandbox. Sensitive steps wait for your yes. When a
+  capability is missing, Metnos builds the tool, tests it, and asks you before using it.
 
 <p align="center">
-  <img src="https://metnos.com/assets/architecture-flow.png" alt="A Metnos request becomes a canonical intent and a typed plan, passes deterministic guards and policy, then runs through a direct or narrow-mandate executor before an observed result is reported." width="850">
+  <img src="docs/assets/quicktour-case-invoices-en.png" alt="Screenshot of the Metnos web chat: a request in plain language, the answer with three invoices and a link to the source, and the trace of the six tools the AI agent used." width="760">
 </p>
 
-## Why it feels different
+<p align="center"><sub>A real request in the web chat, shown with sample data: one sentence, six tools, and a trace of every step.</sub></p>
 
-- **One request can become a real workflow.** Typed list-in/list-out results
-  connect files, messages, events, contacts, pages, places, and documents
-  without ad hoc glue.
-- **The answer follows the evidence.** Counts, partial failures, truncation,
-  and postconditions come from executor results. Generated prose cannot turn a
-  bounded display into a complete scan or an estimate into an exact match.
-- **Local-first by default.** Local LLM tiers can plan and answer without a
-  cloud model. A remote frontier tier is an explicit, credentialed fallback;
-  if no local planning tier is bound, the installer says that turns will use
-  the remote tier instead.
-- **Authority is minted for the call.** Filesystem access follows the resolved
-  path; provider access follows the selected backend; device placement follows
-  the request and manifest. Authority is not ambient.
-- **It asks before protected actions.** Policy can allow, refuse, or suspend a
-  step for explicit consent. Approval is bound to the requesting user and
-  operation.
-- **It can take work to the data.** Signed Windows and Linux clients execute
-  compatible invocations outbound-only and return signed results without
-  becoming independent agents.
+## What can you ask a personal AI assistant?
 
-## Undo means an inverse operation
+You describe the result. Metnos works out which tools can produce it, how their outputs
+connect, where they must run, and which decisions are still yours.
 
-Say: **“Undo the last operation.”**
+| You say | Metnos does |
+|---|---|
+| “Find last month's invoice emails and put supplier, date and amount in a spreadsheet.” | Searches the mailbox, extracts the fields and creates the spreadsheet: three tools, one flow of data. |
+| “Which of this week's appointments start with ‘Review’?” | Reads the calendar, keeps the appointments whose title starts with that word, and shows them in a table. |
+| “Go to my provider's website, log in and show me this year's invoices.” | Opens the site in its own browser, logs in with credentials you saved in a protected form, and reads the documents. |
+| “On my laptop, find the PDFs in Documents and zip them.” | Runs those steps on your paired PC. Planning, checks and consent stay on the server. |
+| “Every Monday at 8, read unread mail from my work account and send me a summary on Telegram.” | Creates a recurring task and keeps the history of its runs. |
+| “Where do I change the model?” | The built-in Tutor answers from the documentation of your own installation, with the exact path in the interface. |
+| “Undo the last operation.” | Runs the inverse operation that the tool declared: moved files go back, a created file is removed. |
 
-Undo is not an LLM improvising a repair. For an operation that supports it, the
-executor declares a governed reverse pattern — or, for a few domain stores, a
-declared domain reverse — and the runtime records the exact resources affected.
-Reversal runs against the same account and, for remote work, the same device. A
-second undo is idempotent.
+More examples, area by area, are in the [capability guide](https://metnos.com/en/domains).
 
-Not every action can be reversed. A sent email cannot be recalled, and an API
-may not expose restoration. Metnos reports those limits, reverses only the
-parts it can prove, and gives honest success and skipped counts. It never labels
-an operation undoable merely because a model can imagine the opposite command.
+## How does the AI agent turn a request into an action?
 
-## Tutor: Metnos can explain Metnos
+<p align="center">
+  <img src="docs/assets/readme/request-path.svg" alt="Diagram of the path of a request in the Metnos AI agent: you ask in plain language, a language model understands the request, a plan of typed steps is proposed or reused from memory, plain code checks it, and signed tools run in a sandbox before the answer reports what happened." width="880">
+</p>
 
-Tutor answers questions about capabilities, configuration, interface
-navigation, and official documentation before the operational planner gets
-involved. It can bind an exact filename, relative documentation path, or
-canonical URL to the intended source and include navigable official links.
+The language model works where language helps: it understands what you asked and
+proposes a plan. It does not execute anything.
 
-Its semantic catalog is compiled locally from public documentation, signed
-manifests, and admitted runtime registries. Documentation changes invalidate
-the catalog and trigger a rebuild. Internal development notes and user files
-are not Tutor sources.
+- **A plan is data, not code.** It is a short list of typed steps. Each step names a tool
+  from the admitted catalog and gives arguments that fit that tool's contract.
+- **Code checks the plan.** A validator that uses no model rejects unknown tools, wrong
+  types and broken links between steps before anything runs.
+- **The answer follows the evidence.** Counts, partial failures and cut-off results come
+  from what the tools returned. Partly done is reported as partly done.
+- **Repeated requests are fast.** A request that worked before can reuse its stored
+  plan, once that plan is checked against the current tools.
 
-Tutor explains; it does not quietly act. If a request contains both a product
-question and a separable action, it answers the question first and can hand the
-literal action clause to the normal engine only after confirmation. Retrieval
-feedback is scoped to the current user and never changes another user's
-answers.
+Go deeper: [the request runtime](https://metnos.com/en/architecture/agent_runtime) ·
+[planning and plan reuse](https://metnos.com/en/architecture/praxis_engine).
 
-## A different design boundary
+## What makes Metnos different from other AI agents?
 
-OpenClaw, Hermes Agent, and Metnos can all be installed locally and used in
-natural language. The meaningful difference is not who has a chat box; it is
-where each system places trust, guidance, and recovery.
+- **Private by default: local first, cloud by choice.** Planning runs on a local LLM, or
+  on a compatible model server you already run; a GPU helps but is not required.
+  Embeddings always run locally. Web search, geocoding and the browser are self-hosted
+  services. A cloud model is used only if you choose one and store its key, never as a
+  silent fallback.
+- **Tool use through a catalog, not a shell.** The agent cannot type commands. It picks
+  from tools named with one grammar, `action_object`, such as `find_files`,
+  `read_messages` and `create_events`, over a closed vocabulary of about thirty actions
+  and thirty objects. There are 121 built-in operations: 101 tools and 20 functions of the
+  runtime.
+- **It works where your data is.** A small client pairs your Windows or Linux PC. It
+  opens no port: it calls the server, verifies each signed job, runs it in the sandbox
+  that system offers, and returns a signed result.
+- **Long jobs outlive the chat.** Work too long for one turn becomes a supervised job.
+  You get a receipt at once, the job resumes after a restart, and the answer arrives in
+  the conversation that asked for it. The engine is off until you turn it on in
+  Settings, and for now a long job is a single action: it cannot be combined with other
+  steps in the same request.
+- **It explains itself.** Ask “where do I change the model?” and the built-in Tutor
+  answers from the documentation and the tool contracts of your installation. Tutor
+  explains; it never acts.
+- **One installation, several people.** Each person has their own identity,
+  conversations, working folder and paired devices. A guest does not inherit the owner's
+  resources.
+- **It can learn a new language.** Italian and English are complete. Every text Metnos
+  shows or reads is localization data, not code, so Metnos can translate itself. Ask for
+  any language at installation: a built-in pipeline translates prompts, tool
+  descriptions, messages, the request lexicon, the documentation and Tutor with the
+  model, checks every piece, and switches language only when all of them pass. Today an
+  administrator starts the pipeline and reviews the sensitive pieces; until it is
+  complete the instance works in English.
 
-OpenClaw and Hermes both provide capable setup and operating surfaces. Metnos's
-distinction is the depth of the integrated whole: one installer provisions and
-verifies the stack, one authenticated Settings area governs the instance, and
-one Tutor explains the capabilities and live configuration that instance
-actually admits.
+## How does Metnos compare with OpenClaw and Hermes Agent?
+
+All three are open-source assistants you can run yourself. They differ in where they
+place trust.
 
 | | OpenClaw | Hermes Agent | Metnos |
 |---|---|---|---|
-| **Getting started** | One-line installers followed by guided onboarding; broad desktop and messaging support. | Desktop packages or a one-line installer, then a setup wizard; native Windows is supported. | Four commands on a Linux host start a preflight and six idempotent, resumable phases. They configure the isolated environment, model tiers, optional sidecars, encrypted secrets, services, and verified Tutor catalog, then check that the services answer. |
-| **Everyday use** | A personal assistant across WebChat and many messaging channels. | CLI, desktop, and several messaging channels, with natural-language automation and delegation. | Web chat and Telegram turn ordinary-language outcomes into typed workflows across local, provider, and paired-device capabilities. |
-| **Managing the instance** | A Control UI and CLI cover the gateway, channels, agents, and configuration. | Desktop, TUI, CLI configuration, and a self-hosted dashboard provide operational surfaces. | The authenticated web Settings area unifies 14 pages for turns, schedules, index builds, executor lifecycle, memory, editable model configuration, service health and controls, safety, users, and paired devices. |
-| **Help inside the product** | Documentation, setup flows, and configuration commands are available from chat and the UI. | `/help`, setup, doctor, and extensive documentation guide the operator. | The Tutor is part of the product: it is compiled from that instance's admitted manifests, published documentation, and permitted live registries. It answers capability, configuration, and UI-navigation questions in the instance language, with exact paths and direct official links. |
-| **Execution boundary** | The main personal session runs tools on the host by default; sandbox modes, tool policies, pairing, and security audits are available. | Dangerous-command approval, protected paths, pairing, and optional container or remote isolation provide defence in depth. | The planner sees admitted executors rather than a general shell; signed contracts, per-call authority, policy, consent, and observed postconditions apply to every execution path. |
-| **Undo and recovery** | Recovery is session- or tool-specific; the official core documentation does not describe a uniform cross-domain inverse-operation contract. | `/undo` manages conversation state; opt-in project checkpoints can restore files changed by file tools and destructive shell commands. | Supported executors declare an inverse operation and the runtime records the exact resources affected, including account and device identity. Unsupported or irreversible effects are stated explicitly. |
-| **Extending the system** | Skills and plugins teach the agent new procedures and tools. | Skills can be installed or learned from experience; MCP and toolsets extend the agent. | New code becomes routable only after its executor name, schema, authority, signature, tests, and admission status satisfy the same governed contract as built-in code. |
+| **What the agent can run** | Tools run on the host for the main session unless sandboxing is configured; shell commands with approvals and allowlists. | Shell commands checked against dangerous patterns, with approval modes; optional container and remote backends. | Only admitted operations with signed contracts; tools run in a sandbox. No free shell. |
+| **New capabilities** | Skills and plugins; the agent can save and update its own skills. | Skills from a hub or written by the agent, freely by default, with optional approval. | The agent builds a tool with its tests; it is reviewed, you activate it, and only then is it signed and admitted. |
+| **Undo** | Documented for changes to skills. | `/undo` rewinds the conversation; opt-in checkpoints restore local files. | Each undoable tool declares an inverse operation, also for mail and paired PCs. |
+| **Introspection** | Learns its own skills, with change history. | A learning loop: memory, skill creation and improvement, a curator that archives unused skills. | Records what it cannot do, scores every tool and plan, retires and rewrites faulty generated tools, and submits every change for a decision. |
+| **Languages** | Not covered in the pages checked. | 17 interface languages, more through language packs. | Italian and English; a built-in pipeline translates the whole product, prompts and request lexicon included. |
 
-The recovery row is deliberately two-sided. Hermes checkpoints can restore
-everything below a tracked project root, including changes no individual tool
-declared reversible; inside that tree, Metnos has no equivalent snapshot.
-Metnos inverse operations instead reach effects a workspace snapshot cannot —
-for example a message moved on an IMAP server or files moved on a paired PC —
-but only when the responsible executor declares and records a valid reverse.
-Neither approach recalls a sent email.
+Both projects reach more channels and platforms than Metnos. This table compares
+documented design defaults, not quality, and all three projects keep evolving. Sources:
+[OpenClaw](https://github.com/openclaw/openclaw) and its
+[documentation](https://docs.openclaw.ai/);
+[Hermes Agent](https://github.com/NousResearch/hermes-agent) and its
+[documentation](https://hermes-agent.nousresearch.com/docs/).
 
-This is a comparison of documented design defaults, not an absolute security or
-quality ranking. It was checked against the official
-[OpenClaw project](https://github.com/openclaw/openclaw),
-[OpenClaw security documentation](https://docs.openclaw.ai/cli/security),
-[Hermes Agent project](https://github.com/NousResearch/hermes-agent), and
-[Hermes checkpoint documentation](https://hermes-agent.nousresearch.com/docs/user-guide/checkpoints-and-rollback/)
-on 31 July 2026; all three projects continue to evolve.
+## How does Metnos keep an autonomous AI agent safe?
 
-## What it can connect
+Metnos assumes that a model can be wrong and that generated code can be wrong. Its
+security therefore does not depend on the model behaving well. Between a sentence and
+its effect there are six boundaries, each enforced by code.
 
-Core capabilities do not depend on a third-party provider and include local
-files, directories, processes, time, scheduling, typed transformations, and
-system observations. First-party skills add:
+<p align="center">
+  <img src="docs/assets/readme/security-boundaries.svg" alt="Diagram of AI agent security in Metnos: six nested boundaries around every tool, namely a closed vocabulary, signed tools, plan validation, a guard for protected paths, human-in-the-loop consent, and a sandbox, with undo as a declared inverse operation." width="880">
+</p>
 
-- mail, calendars, contacts, and tasks;
-- Google Workspace: Gmail, Calendar, Drive, Docs, Sheets, and Contacts;
-- GitHub repositories, issues, pull requests, files, and tasks;
-- web search, page and PDF reading, controlled browser sessions, and sites;
-- geocoding, places, local photo indexes, and Google Photos;
-- SQL-backed stores, selected system operations, and an optional frontier tier.
+- **Secrets stay out of the model.** Credentials are encrypted at rest and resolved only
+  when a tool runs. They never enter a plan or a prompt.
+- **One door for new code.** A new or changed tool becomes usable only through a single
+  admission gate that ties checks and approval to the candidate's exact bytes. Copying a
+  folder or restarting a service activates nothing.
+- **Limits are stated.** On Linux the sandbox is Bubblewrap, and without it ordinary
+  tools do not run. On Windows the client uses AppContainer inside a Job Object and
+  reports the isolation it actually applied. Network access for a tool is all or
+  nothing. A few system services, such as scheduling, run inside the runtime under
+  signed contracts of their own. Metnos serves plain HTTP on your private network: do
+  not expose it to the Internet.
 
-Skills are enabled, disabled, or left dormant independently. A missing
-credential or companion service makes that capability visibly unavailable; it
-does not make unrelated features fail.
+Go deeper: [sandbox](https://metnos.com/en/architecture/sandbox) ·
+[guard](https://metnos.com/en/architecture/vaglio) ·
+[consent](https://metnos.com/en/architecture/approval_ux) ·
+[the admission gate](https://metnos.com/en/architecture/executor_birth).
 
-```bash
-./.venv/bin/python runtime/cli/skills_cli.py list
-./.venv/bin/python runtime/cli/skills_cli.py disable github
-```
+## How does a self-improving agent stay under control?
 
-Backends remain separate from skills. The planner asks for a canonical
-capability; configuration decides whether it reaches a local implementation,
-IMAP, Google Workspace, GitHub, or another admitted provider.
+Metnos is introspective: it keeps a record of its own work and acts on it.
 
-## Security is a sequence of boundaries
+- **It knows what it cannot do.** A request that ends with “I cannot do this” is
+  recorded as a gap: which action, on which object, how often.
+- **It measures its own tools.** Every tool and every plan has a scorecard computed from
+  the record of turns: calls, successes, refusals, faults, timings and your ✓ and ✗.
+- **It listens to your verdict.** A ✗ removes the stored plan for that request. Repeated
+  ✗ on the same pattern become a proposal to avoid it.
+- **It repairs and prunes itself.** A generated tool that fails by its own defect is
+  retired at once and rewritten. One that nobody uses is set aside.
+- **It never changes itself in silence.** Every improvement is a typed proposal with its
+  origin, reason and state, visible in the Changes page. Applied changes are observed
+  and can be rolled back.
 
-Metnos assumes generated and third-party code may be wrong. Trust is earned
-step by step:
+<p align="center">
+  <img src="docs/assets/readme/self-improvement-loop.svg" alt="Diagram of governed self-improvement in the Metnos AI agent: it notices a missing capability, proposes a tool, builds it with the local model, tests and reviews it in a sandbox, asks the person to activate it, has it signed and admitted, and keeps watching it." width="880">
+</p>
 
-1. A closed vocabulary limits planner-visible capability names.
-2. Signed manifests bind identity, schema, authority, code digest, and
-   execution policy.
-3. Runtime validation rejects or removes arguments outside the declared
-   contract.
-4. Per-call grants and the sandbox constrain filesystem, network, process,
-   credentials, and device access.
-5. Policy and consent guard sensitive or destructive operations.
-6. Results are checked against observable effects where the action requires
-   one.
+When a request ends with “I cannot do this”, Metnos records what was missing. If the
+gap is real, it builds the tool by itself, in a quiet moment, with the local model: name,
+arguments, tests written from the real requests, description and code. The candidate
+runs against its tests in a sandbox, and a reviewer compares what the description
+promises with what the code does. After three failed attempts Metnos stops. Whether an
+external model may help is your choice: never, always, or ask each time.
 
-The strong Linux sandbox uses Bubblewrap when it is installed; the Windows
-client uses Job Objects and, where the profile permits it, AppContainer. The
-result records the isolation profile actually applied instead of claiming a
-stronger one.
+This is self-improvement with a human in the loop. You answer one question, about
+something finished and tested: **Activate** or **No**, in the web page or on Telegram.
+Only after your yes is the tool signed, by a separate administrator program that holds
+the keys and that generated tools cannot reach.
 
-Credentials are encrypted at rest and resolved only at execution time; raw
-secrets are kept out of LLM prompts. User-owned sessions, feedback, schedules,
-and undo records are bound to authenticated identities. Italian and English
-interface text and prompts are maintained as localization data rather than
-embedded in routing logic.
+A generated tool that fails because of its own code is retired at once and sent back to
+be rewritten. One that nobody uses is set aside and can be reactivated. What generated
+tools may touch is narrow: they compute and work on the files you opened to them, and on
+connected accounts they can only read.
 
-## Bounded intelligence, governed growth
+Planned: activation without a question for tools that only read or compute, or whose
+effects can be undone.
 
-Some jobs have a stable purpose but an unpredictable route — logging into a
-website is the clearest example. Metnos can place a **narrow-mandate agent
-inside an executor**: the internal cycle may observe and choose among
-runtime-enumerated actions, but it cannot change the goal, authority, or output
-contract.
+Go deeper: [the cycle of a generated tool](https://metnos.com/en/architecture/lifecycle).
 
-That cycle is adaptive rather than scripted: observations can change its route
-without changing its mandate. Changes to the capability itself follow a
-separate governed-growth path, entering as candidates that must pass tests,
-signing, policy, and admission instead of authorizing their own modification.
+## What can be undone?
 
-When a capability is missing, Metnos can compose existing executors or create
-and import a candidate. Candidates do not become planner tools merely because
-code exists: they pass naming, signing, sandbox, birth-test, and admission
-gates first; a claimed parallel execution policy also requires equivalence
-evidence.
+<p align="center">
+  <img src="docs/assets/readme/tools-and-undo.svg" alt="Chart of the 121 operations built into the Metnos AI agent: 65 only read or compute, 25 change things and declare an undo, 31 change things and declare no undo." width="880">
+</p>
 
-All invocation concurrency passes through one host-aware scheduler. Executors
-request a signed parallelism class and may lower their assigned budget; they
-cannot create a larger private pool. The same contract applies whether code is
-handwritten, generated, imported, local, or executed on a paired device.
+Undo is not a model improvising a repair. A tool that can be undone declares its inverse
+operation in its signed contract, and Metnos records exactly what each run touched.
+“Undo the last operation” runs that inverse on the same account and the same device.
 
-Metnos has no generic MCP passthrough. An MCP tool would have to become an
-admitted backend or narrow executor under the same contract.
+What cannot be undone, such as a sent email, is marked as such. Metnos says so instead
+of pretending. The [tool catalog](https://metnos.com/en/architecture/executor_catalog)
+lists each tool with its effect; the [capability guide](https://metnos.com/en/domains)
+lists every operation.
 
-## Install
+## What does it connect to?
 
-Metnos installs on Linux x86-64 with systemd and Python 3.12. A GPU is useful for local
-models but not required: logical LLM tiers may point to compatible local or remote
-endpoints. Companion services provide self-hosted web search, geocoding, vision and a
-browser; each is installed locally unless you declare one you already run.
+- **Files and documents:** folders, text, PDF, spreadsheets, documents, archives, OCR.
+- **Mail, calendars, contacts** and scheduled tasks.
+- **Google Workspace:** mail, calendar, Drive, Docs, Sheets, contacts and Photos.
+- **GitHub:** files, issues, pull requests, comments and workflows.
+- **The web:** search, pages and PDFs, and a controlled browser for sites that need a login.
+- **Places and photos:** geocoding, nearby places, and a local photo index.
+- **Your PCs:** files, installed programs and running processes on paired devices.
+
+Each connection is optional. Without its credentials or its service, that capability is
+shown as unavailable and nothing else breaks.
+
+## Quick start
+
+Metnos installs on Linux x86-64 with systemd and Python 3.12.
 
 ```bash
 git clone https://github.com/brunialti/metnos.git
@@ -276,64 +238,93 @@ bash install/bootstrap.sh
 Install the system packages first: the [installer guide](install/README.md) has the
 command.
 
-The installer asks for administrator access, creates a dedicated `metnos` service account
-and runs six idempotent, resumable phases: dependencies, models and companion services,
-verified source and Tutor catalog, encrypted credentials, system services, first access. In
-its final screen it prints the address for this server and for every detected private-LAN
-IPv4 address, with a one-use first-access link.
-
-After installation:
+The installer asks for administrator access, creates a dedicated `metnos` service
+account and runs six phases that can be resumed: dependencies, models and companion
+services, verified source and Tutor catalog, encrypted credentials, system services,
+first access. At the end it prints the address of this server and a one-use first-access
+link.
 
 ```bash
 systemctl list-units 'metnos*'
 curl http://127.0.0.1:8770/agent/health
 ```
 
-Open the printed link on the server, or a printed LAN address from another device on the
-same trusted private network. Metnos serves plain HTTP on the private LAN, so do not forward
-its port from a router or expose it directly to the Internet.
+Open the printed link on the server, or a printed address from another device on the
+same trusted private network. Then send one harmless real request, such as “What time is
+it, and which time zone are you using?” A health answer proves that the server started;
+the answer in the chat proves that planning and execution work together.
 
-Then send a harmless complete turn, such as:
-“What time is it, and which time zone are you using?” An open health endpoint
-proves reachability; the answer proves that planning and execution work
-together.
+Requirements, options, model endpoints and existing services are in the
+[installer guide](install/README.md), also in [Italian](install/INSTALL.md).
 
-The [installer guide](install/README.md), also in [Italian](install/INSTALL.md), covers
-requirements, options, model endpoints and existing services.
+## FAQ
 
-## For readers and builders
+**Is Metnos free and open source?**
+Yes. Metnos is released under the MIT license. This repository holds the code, the
+installer and the portable certification tests.
 
-- [Visual quick tour](https://metnos.com/en/Metnos_QuickTour) — the product
-  through real natural-language scenes.
-- [Architecture guide](https://metnos.com/en/architecture/) — request flow,
-  policy, memory, Tutor, devices, intelligent executors, and observability.
-- [Public roadmap](https://metnos.com/en/roadmap) — verified delivery status,
-  ordered from the most recently defined roadmap to the oldest.
-- [Generated executor catalog](https://metnos.com/en/architecture/executor_catalog)
-  — the current signed capability inventory.
-- [Executor Standard](EXECUTOR_STANDARD.md) — the normative capability
-  contract.
-- [Policy and authority](https://metnos.com/en/architecture/policy.html) and
-  [sandboxing](https://metnos.com/en/architecture/sandbox.html) — trust
-  boundaries, execution grants, and isolation.
+**Can it run without the cloud? Do I need a GPU?**
+Yes, it runs with a local LLM. A GPU makes a local model faster but is not required. You
+can also point Metnos to a model server you already run, or choose a cloud model.
 
-The public repository is a deterministic, sanitized export of the
-run-essential source tree. Internal reports, credentials, private state, and
-development-only material are excluded and scanned before publication.
+**Where does my data go?**
+With a local model, your requests are planned on your machine. Metnos contacts the
+outside only to do what you asked, such as reaching your mail server, a website or an
+account you connected, or to call a cloud model if you configured one.
 
-Issues and patches are welcome. Include the failing request, platform,
-observable result, and logs with secrets removed.
+**How is it different from a chatbot, or from an agent with a terminal?**
+A chatbot answers; Metnos acts. An agent with a terminal can run whatever the model
+writes; Metnos can run only admitted tools, each with a signed contract and a sandbox.
 
-## License
+**What happens if the model gets it wrong?**
+A wrong plan is rejected by validation, stopped by the guard, or waits for your consent.
+If an undoable tool made a change, you can undo it. The boundaries limit what a mistake
+can do; they do not make mistakes impossible.
+
+**Can I add my own tools?**
+Yes. A tool is a small program with a manifest that follows the
+[Executor Standard](EXECUTOR_STANDARD.md), and it enters through the same admission gate
+as every other tool. External skills can be imported the same way. There is no generic
+passthrough for external tool servers such as MCP: an external tool has to become an
+admitted tool.
+
+**Which systems and languages are supported?**
+The server runs on Linux x86-64. Paired PCs can be Windows or Linux. Italian and English
+are complete; other languages are produced by the built-in localization pipeline.
+
+## Documentation
+
+- [Quick tour](https://metnos.com/en/Metnos_QuickTour): the product through one real request.
+- [Capability guide](https://metnos.com/en/domains): what to ask, area by area.
+- [Architecture guide](https://metnos.com/en/architecture/): request flow, memory, Tutor,
+  devices and security, with diagrams.
+- [Long jobs](https://metnos.com/en/system/lre) · [Models](https://metnos.com/en/system/models) ·
+  [Paired devices](https://metnos.com/en/architecture/remote_executors) ·
+  [Tutor](https://metnos.com/en/architecture/tutor).
+- [Executor Standard](EXECUTOR_STANDARD.md): the contract every tool must satisfy.
+- [Roadmap](https://metnos.com/en/roadmap): what is done, in progress and planned.
+
+## Contributing
+
+Issues and patches are welcome. Include the failing request, the platform, the result
+you observed, and logs with secrets removed.
+
+This repository is an export of the source needed to run and verify Metnos. Credentials,
+private state and development-only material are excluded and scanned for before
+publication.
+
+## License and credits
 
 [MIT](LICENSE), copyright (c) 2026 the owner.
 
+The name joins two Greek words for mind: *mētis*, the mind that adapts, and *noûs*, the
+mind that reasons.
+
 The optional reCAPTCHA image-grid classifier is
 [recaptcha-classification-57k](https://huggingface.co/DannyLuna/recaptcha-classification-57k)
-by DannyLuna, MIT license. It is not part of this repository: the installer
-offers to download it from Hugging Face, and without it image grids are left
-to you.
+by DannyLuna, MIT license. It is not part of this repository: the installer offers to
+download it from Hugging Face, and without it image grids are left to you.
 
-Third-party libraries, companion services and downloaded models retain their
-own licenses. The Metnos license does not replace their terms; check those
-terms before using or redistributing the corresponding components.
+Third-party libraries, companion services and downloaded models retain their own
+licenses. The Metnos license does not replace their terms; check those terms before
+using or redistributing the corresponding components.

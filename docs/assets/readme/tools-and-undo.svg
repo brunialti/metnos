@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 880 286" role="img" aria-labelledby="tu-title tu-desc" font-family="-apple-system,BlinkMacSystemFont,'Segoe UI','Noto Sans',Helvetica,Arial,sans-serif">
+  <title id="tu-title">Chart: what the built-in operations of the Metnos AI agent can do to your data</title>
+  <desc id="tu-desc">A single bar split in three parts. Metnos has 121 built-in operations: 101 tools and 20 functions built into the runtime. 65 only read or compute and leave nothing to undo, 25 change things and declare an inverse operation that undoes them, and 31 change things and declare no inverse.</desc>
+  <style>
+    .card{fill:#FCFAF6;stroke:#E4DCCC}
+    .t{fill:#26221C}.d{fill:#574F42}.m{fill:#8A8378}
+    .g{fill:#2E8B62}.b{fill:#4A6FB8}.o{fill:#C9671E}
+    @media (prefers-color-scheme: dark){
+      .card{fill:#1E1A16;stroke:#3D352C}
+      .t{fill:#F0E9DD}.d{fill:#CFC5B0}.m{fill:#9C9283}
+      .g{fill:#35A072}.b{fill:#5C8FE0}.o{fill:#D8762E}
+    }
+  </style>
+  <defs>
+    <clipPath id="tu-bar"><rect x="40" y="88" width="800" height="40" rx="6"/></clipPath>
+  </defs>
+
+  <rect class="card" x="0.5" y="0.5" width="879" height="285" rx="12"/>
+
+  <text class="t" x="28" y="40" font-size="19" font-weight="700">What the built-in operations can do to your data</text>
+  <text class="d" x="28" y="62" font-size="13.5">121 operations are built in: 101 tools and 20 functions of the runtime. Each declares its effect and its undo.</text>
+
+  <!-- 65 + 25 + 31 = 121, drawn to scale with 2px gaps -->
+  <g clip-path="url(#tu-bar)">
+    <rect class="g" x="40"    y="88" width="427.6" height="40"/>
+    <rect class="b" x="469.6" y="88" width="164.5" height="40"/>
+    <rect class="o" x="636.1" y="88" width="203.9" height="40"/>
+  </g>
+
+  <g>
+    <text class="t" x="40" y="168" font-size="28" font-weight="700">65</text>
+    <rect class="g" x="40" y="181" width="10" height="10" rx="2"/>
+    <text class="t" x="56" y="190.5" font-size="13.5" font-weight="700">read or compute only</text>
+    <text class="d" x="40" y="211" font-size="12.5">Nothing to undo.</text>
+    <text class="m" x="40" y="231" font-size="11.5">e.g. find_files, read_messages, get_now</text>
+  </g>
+  <g>
+    <text class="t" x="469.6" y="168" font-size="28" font-weight="700">25</text>
+    <rect class="b" x="469.6" y="181" width="10" height="10" rx="2"/>
+    <text class="t" x="485.6" y="190.5" font-size="13.5" font-weight="700">can be undone</text>
+    <text class="d" x="469.6" y="211" font-size="12.5">A declared inverse.</text>
+    <text class="m" x="469.6" y="231" font-size="11.5">e.g. move_files</text>
+  </g>
+  <g>
+    <text class="t" x="636.1" y="168" font-size="28" font-weight="700">31</text>
+    <rect class="o" x="636.1" y="181" width="10" height="10" rx="2"/>
+    <text class="t" x="652.1" y="190.5" font-size="13.5" font-weight="700">cannot be undone</text>
+    <text class="d" x="636.1" y="211" font-size="12.5">No declared inverse.</text>
+    <text class="m" x="636.1" y="231" font-size="11.5">e.g. send_messages, set_tasks</text>
+  </g>
+
+  <text class="m" x="28" y="264" font-size="12">Counted from the signed contracts of the tools and of the built-in functions, with the rule of the generated catalog.</text>
+</svg>
