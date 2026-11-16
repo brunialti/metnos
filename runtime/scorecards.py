@@ -59,6 +59,13 @@ def _summary(row: dict) -> dict | None:
         took = step.get("exec_ms")
         steps.append((str(name), bool(result.get("ok")), str(result.get("error_class") or ""),
                       took if isinstance(took, int) and not isinstance(took, bool) else None))
+    # A long step refused before it ran left no step: the refusal names its
+    # tool, and the card of that tool counts it.
+    admission = row.get("durable_admission")
+    if (isinstance(admission, dict) and admission.get("ok") is False
+            and admission.get("runner_name")):
+        steps.append((str(admission["runner_name"]), False,
+                      str(admission.get("error_class") or ""), None))
     started, ended = row.get("ts_start"), row.get("ts_end")
     seconds = None
     if isinstance(started, (int, float)) and isinstance(ended, (int, float)) and ended >= started:

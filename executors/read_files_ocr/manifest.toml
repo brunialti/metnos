@@ -5,13 +5,25 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "read_files_ocr"
-version     = "0.3.0"
+version     = "0.4.0"
 intelligence = "agentic"
-timeout_s   = 1800
+# Tetto di UNA chiamata nella chat. Lo strumento si ferma da solo prima e
+# dichiara i file che restano; un profilo dei lavori lunghi gli concede il
+# proprio tempo per ogni sorgente.
+timeout_s   = 540
 author      = "Roberto Brunialti"
 affinity    = ["read", "leggi", "ocr", "scansione", "image", "immagine", "pdf", "tesseract", "estrai", "testo"]
 revertible  = false
 lifecycle   = "active"
+
+[execution]
+# Legge soltanto. Seriale: l'OCR locale usa già i core, il modello visivo è
+# un ripiego limitato a una richiesta per immagine.
+effect            = "read_only"
+parallelism_class = 0
+resource_class    = "cpu"
+concurrency_key   = "none"
+equivalence_gate  = "unverified"
 
 [description]
 it = "SCOPO: estrae testo da immagini e PDF scansionati: OCR locale prima, VLM bounded solo se insufficiente. PATTERN: read_files_ocr(paths=[\"img.jpg\"], lang=\"ita+eng\"). NON: leggere file nativi o convertire formati. OUT: entries=[{content}]."
@@ -19,7 +31,7 @@ en = "SCOPO: extracts text from images and scanned PDFs: local OCR first, bounde
 
 [code]
 files  = ["read_files_ocr.py"]
-digest = "sha256:f6ff63ef4e965da5b15f4dee745ceb44bbac66522ca7f000480b5dfa17504593"
+digest = "sha256:d249256570cd668c5d838605faa102c3a94c855a0b6a26c666d02270075491e4"
 
 [args]
 type     = "object"

@@ -3828,6 +3828,10 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
         # bridge associates them with the authenticated attempt after return;
         # no owner, path or prompt crosses this transport side channel.
         env["METNOS_CAPTURE_MODEL_USAGE"] = "1"
+    # The time this call is granted before the runtime stops the child: an
+    # executor working through a list stops by itself in time and says what is
+    # left (`executor_helpers.granted_seconds`) instead of losing everything.
+    env["METNOS_EXECUTOR_TIMEOUT_S"] = str(timeout_s)
     # Esponi METNOS_TURN_ID al subprocess: gli executor revertibili lo usano
     # per nominare i blob backup deterministicamente
     # (`<HISTORY>/<turn_id>/blob/<sha256>.bin`).

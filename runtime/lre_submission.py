@@ -21,6 +21,7 @@ from durable_workloads.admission import (
 from durable_workloads.direct_invocation import (
     DirectInvocationUnsupported,
     build_direct_candidate,
+    contract_refusal,
     is_intrinsically_long,
     references_runtime,
     references_step,
@@ -239,6 +240,30 @@ def _automatic_error(code: str, *, error_class: str, **values) -> dict:
         result["error"] = _msg(code, **values)
     result["decision"] = "rejected"
     result["final_message_hint"] = result["error"]
+    return result
+
+
+def contract_refusal_error(executor: object, reason: object = "") -> dict:
+    """The long step could not be prepared: nothing is started, the words name
+    the tool, and the turn record keeps which check said no.
+
+    ``reason`` is the refusal raised by an admission check or the fixed name
+    of the boundary that said no: ``refused_check`` is always one of those
+    fixed sentences, never an argument, a path or other exception text.
+    """
+    name = str(getattr(executor, "name", "") or "")
+    result = _automatic_error(
+        "ERR_LRE_EXECUTOR_CONTRACT_UNSUPPORTED",
+        error_class="contract_unsupported", tool=name)
+    result["runner_name"] = name
+    check = str(reason) if isinstance(
+        reason, (DirectInvocationUnsupported, str)) else ""
+    if not getattr(executor, "lre_plan", ""):
+        # A direct plan: the contract itself, whatever it is asked, comes
+        # before what this one call got wrong.
+        check = contract_refusal(executor) or check
+    if check:
+        result["refused_check"] = check
     return result
 
 
@@ -474,11 +499,8 @@ def submit_automatic_lre(
                 admission_boundary=_admission_boundary,
             )
             return _receipt(store, result)
-    except DirectInvocationUnsupported:
-        return _automatic_error(
-            "ERR_LRE_EXECUTOR_CONTRACT_UNSUPPORTED",
-            error_class="contract_unsupported",
-        )
+    except DirectInvocationUnsupported as exc:
+        return contract_refusal_error(long_steps[0][2], exc)
     except IdempotencyConflictError:
         return _automatic_error(
             "ERR_LRE_IDEMPOTENCY_CONFLICT",

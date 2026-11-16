@@ -137,11 +137,12 @@ def admit_prerequisite(executor, arguments, observation, *, catalog_loader,
     from capabilities import effective_capabilities
     from durable_runtime_registry import invocation_plan_adapter
     from engine.types import Framework, StepSpec
-    from lre_submission import _automatic_error, _catalog_by_name, submit_automatic_lre
+    from lre_submission import _catalog_by_name, contract_refusal_error, submit_automatic_lre
     from policy import CAPABILITY_REGISTRY
     from vaglio import check_executor_guard
 
     boundary = "catalog"
+    target = None
     try:
         catalog = _catalog_by_name(catalog_loader(verify=True))
         boundary = "declaration"
@@ -182,8 +183,8 @@ def admit_prerequisite(executor, arguments, observation, *, catalog_loader,
         # fixed identifiers, not executor-controlled or sensitive content.
         _LOG.warning("prerequisite_rejected boundary=%s exception_type=%s",
                      boundary, type(exc).__name__)
-        return _automatic_error("ERR_LRE_EXECUTOR_CONTRACT_UNSUPPORTED",
-                                error_class="contract_unsupported")
+        return contract_refusal_error(
+            target if target is not None else executor, f"prerequisite {boundary}")
 
 
 __all__ = [

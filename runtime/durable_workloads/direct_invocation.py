@@ -22,6 +22,9 @@ AUTO_LRE_MIN_TIMEOUT_S: Final[int] = 600
 DIRECT_PLAN_ID: Final[str] = "metnos.direct.v1"
 DIRECT_REGISTRATION_ID: Final[str] = "metnos.direct-runners.v1"
 DIRECT_OUTPUT_SCHEMA: Final[str] = EXECUTOR_RESULT_SCHEMA
+# The argument of the consent protocol: the runtime sets it after the person
+# approved the card of the first call; a planner never writes it.
+CONSENT_ARGUMENT: Final[str] = "actor_consent_token"
 
 _DIGEST_RE = re.compile(r"sha256:[a-f0-9]{64}")
 _ARGUMENT_RE = re.compile(r"[a-z][a-z0-9_]{0,63}")
@@ -86,16 +89,37 @@ def _catalog_executors(catalog: object) -> tuple[object, ...]:
     ))
 
 
-def is_intrinsically_long(executor: object) -> bool:
-    # An interactive contract stays in the foreground even when its safety
-    # timeout is large. It cannot promise unattended restart/replay. This is
-    # classification before admission, never a fallback after LRE rejects work.
+def asks_the_person(executor: object) -> bool:
+    """True when the signed contract makes the person part of every run.
+
+    Three declarations say it, all of them in the signed execution policy or
+    argument schema, never an executor name: an ``interactive`` effect; the
+    consent token the runtime sets only after the person approved the card of
+    the first call; a frozen plan the person confirms before it is applied.
+    A missing or undeclared policy does not acquire this.
+    """
     policy = getattr(executor, "execution_policy", None)
     if (
-        getattr(executor, "execution_policy_declared", False) is True
-        and isinstance(policy, Mapping)
-        and policy.get("effect") == "interactive"
+        getattr(executor, "execution_policy_declared", False) is not True
+        or not isinstance(policy, Mapping)
     ):
+        return False
+    if policy.get("effect") == "interactive" or policy.get("frozen_plan"):
+        return True
+    schema = getattr(executor, "args_schema", None)
+    properties = schema.get("properties") if isinstance(schema, Mapping) else None
+    consent = (
+        properties.get(CONSENT_ARGUMENT) if isinstance(properties, Mapping) else None
+    )
+    return isinstance(consent, Mapping) and consent.get("runtime_resolved") is True
+
+
+def is_intrinsically_long(executor: object) -> bool:
+    # Work the person takes part in stays in the foreground even when its
+    # safety timeout is large: it asks and waits, so it cannot promise an
+    # unattended restart or replay. This is classification before admission,
+    # never a fallback after LRE rejects work.
+    if asks_the_person(executor):
         return False
     timeout = getattr(executor, "timeout_s", None)
     return type(timeout) is int and timeout >= AUTO_LRE_MIN_TIMEOUT_S
@@ -188,27 +212,40 @@ def _durable_effect(executor: object) -> str:
         raise DirectInvocationUnsupported("executor effect is not durable") from exc
 
 
-def _eligible(executor: object) -> bool:
+def contract_refusal(executor: object) -> str | None:
+    """Why this contract can never be a direct plan, or ``None``.
+
+    The answer depends on the signed contract alone, not on one call: a long
+    executor that gets a reason here is refused whatever it is asked. The
+    reason is a fixed sentence, never an argument, a path or exception text.
+    """
     try:
-        signed_by = str(getattr(executor, "signed_by", "") or "")
-        digest = str(getattr(executor, "digest", "") or "")
-        if (
-            not is_intrinsically_long(executor)
-            or not signed_by
-            or signed_by.startswith("(")
-            or _DIGEST_RE.fullmatch(digest) is None
-            or getattr(executor, "lifecycle", "") != "active"
-            or bool(getattr(executor, "dormant", False))
-            or getattr(executor, "transport", "") == "in-process"
-            or getattr(executor, "intelligence", "") != "deterministic"
-        ):
-            return False
+        if getattr(executor, "transport", "") == "in-process":
+            return "executor runs in process"
+        if getattr(executor, "intelligence", "") != "deterministic":
+            return "executor is not deterministic"
         _argument_schema(executor)
         _durable_effect(executor)
         _resources(executor, {"target": "server"})
-        return True
-    except (DirectInvocationUnsupported, TypeError, ValueError):
-        return False
+    except DirectInvocationUnsupported as exc:
+        return str(exc)
+    except (TypeError, ValueError):
+        return "executor contract is malformed"
+    return None
+
+
+def _eligible(executor: object) -> bool:
+    signed_by = str(getattr(executor, "signed_by", "") or "")
+    digest = str(getattr(executor, "digest", "") or "")
+    return bool(
+        is_intrinsically_long(executor)
+        and signed_by
+        and not signed_by.startswith("(")
+        and _DIGEST_RE.fullmatch(digest) is not None
+        and getattr(executor, "lifecycle", "") == "active"
+        and not bool(getattr(executor, "dormant", False))
+        and contract_refusal(executor) is None
+    )
 
 
 def direct_runtime_registration(
@@ -503,7 +540,10 @@ __all__ = [
     "AUTO_LRE_MIN_TIMEOUT_S",
     "DIRECT_PLAN_ID",
     "DirectInvocationUnsupported",
+    "CONSENT_ARGUMENT",
+    "asks_the_person",
     "build_direct_candidate",
+    "contract_refusal",
     "direct_runtime_registration",
     "is_intrinsically_long",
     "references_runtime",

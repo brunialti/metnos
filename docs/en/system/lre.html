@@ -56,11 +56,24 @@ contract. In the current automatic path, an action is considered
 least ten minutes. This decision uses structured metadata, not words such as
 “long”, “in the background”, or “many files”.</p>
 
-<p>A signed contract declaring an <code>interactive</code> effect stays in
-the foreground even with a large timeout: it may require user intervention
-and does not promise unattended recovery. For example, increasing a browser
-search budget does not turn it into an LRE job. An explicitly declared LRE
-plan still passes through all admission checks.</p>
+<p>An action the person takes part in stays in the foreground even with a
+large timeout: it asks and waits for an answer, so it does not promise
+unattended recovery. The executor's signed contract says so in one of three
+ways: an <code>interactive</code> effect, as in site navigation; the consent
+the runtime adds only after the person approved the card shown by the first
+call, as in installing a program; a plan the person confirms before it is
+applied. Increasing a browser search budget does not turn it into an LRE job,
+and a request to install a program shows its approval card in the
+conversation. An explicitly declared LRE plan still passes through all
+admission checks.</p>
+
+<p>Every shipped executor with a timeout of ten minutes or more therefore has
+a declared place to work: alone in LRE, with an LRE plan of its own, or in
+the turn together with the person. A check run at every release refuses a
+catalog in which a long executor has none. An executor that works through a
+list and declares a shorter timeout, such as reading the text of scans, knows
+the time it is granted: it stops by itself before the deadline, delivers what
+it read and states how many items remain.</p>
 
 <table>
  <thead><tr><th>Condition</th><th>Metnos decision</th></tr></thead>

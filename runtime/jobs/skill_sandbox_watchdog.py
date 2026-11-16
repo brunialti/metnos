@@ -1,17 +1,19 @@
-"""skill_sandbox_watchdog — controlla la soglia di trigger per la
-Fase C full del sandbox per-skill (ADR 0140).
+"""skill_sandbox_watchdog — the reminder about a sandbox per imported integration.
 
-Daily check (scheduler v2 @06:30): se uno dei trigger e' superato,
-emette un MSG_SKILL_SANDBOX_THRESHOLD via i canali admin
-(Telegram/HTTP) per attivare la migrazione a sandbox enforcement
-bubblewrap per-skill (Fase C full, 12-15 gg).
+Daily check of the night (ADR 0159, layer 4). Every tool already runs inside
+the common sandbox; a tighter one for each integration written by others is
+planned and not built. It would serve only where such code is installed, so
+the reminder fires only then:
 
-Trigger:
-- (a) Skill third-party installate distintamente >= 5
-- (b) Almeno 1 user_channel di tipo `guest` (non host) registrato
+- at least one enabled integration written by others (imported, not
+  first-party), and
+- at least one registered guest, or five such integrations or more.
 
-Logica fail-soft: il watchdog ritorna solo report, mai blocca o
-modifica stato. Roberto decide se attivare Fase C dopo la notifica.
+A guest alone, with only first-party integrations, asks for nothing more than
+the common sandbox (Roberto, 16/11/2026: «only when a sandbox would serve»).
+The person is told once per state of the counts, in the words of the catalog
+(`MSG_SKILL_SANDBOX_THRESHOLD`). Fail-soft: the check only reports, it never
+blocks or changes anything. Building that sandbox is the person's decision.
 """
 from __future__ import annotations
 
@@ -29,13 +31,13 @@ _sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 import config as _C  # §7.11 — rispetta METNOS_USER_DATA
 
 
-def _count_distinct_skills() -> int:
-    """Conta skill installate distinte (NON executor count).
-
-    ADR 0160: scan `skills/` (new) + `_imports/` (legacy back-compat).
-    """
-    from skills_paths import existing_skill_names as _esn
-    return len(_esn())
+def _count_third_party_integrations() -> int:
+    """Enabled integrations whose code was written by others: imported, not
+    first-party. Those are what a sandbox of their own would fence; a
+    first-party integration is Metnos code wherever its files are installed
+    (`SkillInfo.is_builtin`)."""
+    from skill_registry import list_skills
+    return sum(1 for info in list_skills() if info.enabled and not info.is_builtin)
 
 
 def _count_guest_users() -> int:
@@ -52,7 +54,7 @@ def _count_guest_users() -> int:
 
 
 def _audit_summary() -> dict:
-    """Sintesi dell'audit log delle skill invocations."""
+    """Summary of the audit log of integration calls."""
     try:
         from skill_audit import stats
         return stats()
@@ -61,15 +63,15 @@ def _audit_summary() -> dict:
 
 
 def check_threshold() -> dict[str, Any]:
-    """Ritorna dict {triggered, n_skills, n_guests, audit_stats}."""
-    n_skills = _count_distinct_skills()
+    """The counts and whether a sandbox per integration would serve now."""
+    n_third_party = _count_third_party_integrations()
     n_guests = _count_guest_users()
-    triggered = (n_skills >= THRESHOLD_N_SKILLS
-                  or n_guests >= THRESHOLD_N_GUESTS)
+    triggered = n_third_party >= 1 and (
+        n_guests >= THRESHOLD_N_GUESTS or n_third_party >= THRESHOLD_N_SKILLS)
     return {
         "ts": time.time(),
         "triggered": triggered,
-        "n_skills": n_skills,
+        "n_third_party": n_third_party,
         "n_guests": n_guests,
         "threshold_n_skills": THRESHOLD_N_SKILLS,
         "threshold_n_guests": THRESHOLD_N_GUESTS,
@@ -78,34 +80,30 @@ def check_threshold() -> dict[str, Any]:
 
 
 def task_skill_sandbox_watchdog() -> dict:
-    """Entry point per scheduler v2. Notifica admin se triggered."""
+    """Entry point of the nightly sequence: tells the person when a count is reached."""
     report = check_threshold()
     if not report["triggered"]:
         return {
             "ok": True,
             "summary": (
-                f"sandbox watchdog: {report['n_skills']} skill, "
-                f"{report['n_guests']} guest — sotto soglia"
+                f"sandbox watchdog: {report['n_third_party']} third-party, "
+                f"{report['n_guests']} guests: not needed"
             ),
             "report": report,
         }
-    # Triggered: scrivi marker file per CLI admin lookup
+    # Reached: the counts are kept beside the instance data for an administrator.
     marker = _C.PATH_USER_DATA / "sandbox_threshold_triggered.json"
     marker.parent.mkdir(parents=True, exist_ok=True)
     marker.write_text(json.dumps(report, indent=2, ensure_ascii=False))
-    # Tenta notifica admin via send_messages (fallback su log se non disponibile)
-    msg = (
-        f"⚠️ Soglia sandbox per-skill superata: "
-        f"{report['n_skills']} skill (>= {THRESHOLD_N_SKILLS}) "
-        f"o {report['n_guests']} guest (>= {THRESHOLD_N_GUESTS}). "
-        f"Valutare attivazione Fase C full (ADR 0140 → 0142 futuro). "
-        f"Dettagli: ~/.local/share/metnos/sandbox_threshold_triggered.json"
-    )
+    # Said in the words of the catalog, in the language of the instance.
+    from messages import get as _msg
+    msg = _msg("MSG_SKILL_SANDBOX_THRESHOLD",
+               n_third_party=report["n_third_party"], n_guests=report["n_guests"])
     try:
         from notify_admin import notify
         # Once per state of the triggers, not every night.
         notify(msg, kind="sandbox_threshold", event_key=(
-            f"sandbox_threshold:{report['n_skills'] >= THRESHOLD_N_SKILLS}:"
+            f"sandbox_needed:{report['n_third_party'] >= THRESHOLD_N_SKILLS}:"
             f"{report['n_guests'] >= THRESHOLD_N_GUESTS}"))
     except Exception:
         import logging

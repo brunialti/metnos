@@ -103,6 +103,11 @@ TRANSLATIONS = {
     "MSG_CONSENT_GATE_AFTER_LONG_JOB_ANY": (
         "⚠ Il lavoro lungo è finito. Sto per {action} degli elementi: confermi? (reversibile con «annulla»)",
         "⚠ The long job has ended. I am about to {action} some items: confirm? (reversible with «undo»)"),
+    # The long step could not be prepared as it was asked: said in plain words,
+    # with what the person can write differently.
+    "ERR_LRE_EXECUTOR_CONTRACT_UNSUPPORTED": (
+        "Non sono riuscito a preparare questo lavoro lungo ({tool}): non ho avviato nulla. Riprova scrivendo per esteso su che cosa deve lavorare, per esempio il percorso della cartella, e su quale dispositivo se non è il server.",
+        "I could not prepare this long job ({tool}): nothing was started. Try again writing out what it must work on, for example the folder path, and on which device if it is not the server."),
     "ERR_LRE_PLAN_NOT_ADMISSIBLE": (
         "Questa richiesta unisce un lavoro lungo ad altri passi in un modo che non so ancora portare a termine da solo. Non ho avviato nulla. Chiedi prima il lavoro lungo da solo; quando arriva la risposta, chiedi il resto.",
         "This request joins a long job with other steps in a way I cannot yet carry through by myself. Nothing was started. Ask for the long job alone first; when its answer arrives, ask for the rest."),

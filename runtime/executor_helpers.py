@@ -191,6 +191,25 @@ def assigned_workers(*, default: int = 1, maximum: int = 32) -> int:
         default=default, maximum=maximum, cpu_count=visible_cpus)
 
 
+def granted_seconds(default: float) -> float:
+    """Wall-clock time the runtime grants this call before it stops the child.
+
+    The runtime owns the value: it is the timeout it enforces on the process.
+    An executor that works through a list uses it to stop by itself in time
+    and report what is left (truncation fields) instead of being stopped with
+    nothing to show. Absence or corruption of the value falls back to
+    ``default``, the ceiling the executor's own manifest declares.
+    """
+    import math
+    import os
+
+    try:
+        value = float(os.environ.get("METNOS_EXECUTOR_TIMEOUT_S") or "")
+    except (TypeError, ValueError):
+        return float(default)
+    return value if math.isfinite(value) and value > 0 else float(default)
+
+
 def managed_provider_result(key: str) -> dict | None:
     """Return one client-injected, read-only managed-provider result.
 

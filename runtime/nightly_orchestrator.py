@@ -53,6 +53,8 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
 
 _COUNTERS = ("fail_count", "failed", "error_count", "n_errors", "errors")
 _NESTED_DEPTH = 3
+# How a report names a count of records per label of one dimension.
+_BREAKDOWN_PREFIX = "by_"
 
 
 def _declared_failure(result, _depth: int = 0) -> str | None:
@@ -94,7 +96,13 @@ def _declared_failure(result, _depth: int = 0) -> str | None:
             return field
     if _depth < _NESTED_DEPTH:
         for field, value in result.items():
-            inner = _declared_failure(value, _depth + 1) if isinstance(value, dict) else None
+            # A breakdown (`by_state`, `by_outcome`) counts records per label:
+            # «failed» or «error» there names a state the records are in, not
+            # something the step failed to do. On 16/11/2026 two such counts
+            # made a clean night look partial.
+            if not isinstance(value, dict) or str(field).startswith(_BREAKDOWN_PREFIX):
+                continue
+            inner = _declared_failure(value, _depth + 1)
             if inner:
                 return f"{field}.{inner}"
     return None

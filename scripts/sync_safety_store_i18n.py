@@ -21,6 +21,19 @@ TRANSLATIONS = {
     'ERR_SAFETY_STORE_UNAVAILABLE': (
         'Il registro delle firme di sicurezza non è raggiungibile: non ho letto né cambiato niente.',
         'The safety-signature register cannot be reached: nothing was read or changed.'),
+    # The reminder of the nightly check on imported integrations (ADR 0159,
+    # layer 4): plain words, no decision numbers, no path the person cannot open.
+    'MSG_SKILL_SANDBOX_THRESHOLD': (
+        '🔒 Promemoria di sicurezza\n'
+        'Integrazioni scritte da altri: {n_third_party}. Ospiti registrati: {n_guests}.\n'
+        'Ogni strumento gira già in un recinto comune. Per le integrazioni scritte da altri sarebbe '
+        'utile un recinto più stretto, uno per ciascuna: non è ancora stato costruito.\n'
+        'Non c\u2019è nulla di urgente: Metnos continua a funzionare come prima.',
+        '🔒 Security reminder\n'
+        'Integrations written by others: {n_third_party}. Registered guests: {n_guests}.\n'
+        'Every tool already runs inside a common sandbox. Integrations written by others would be '
+        'safer in a tighter sandbox, one for each: it has not been built yet.\n'
+        'Nothing is urgent: Metnos keeps working as before.'),
 }
 
 
