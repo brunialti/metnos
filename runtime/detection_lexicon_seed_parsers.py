@@ -84,7 +84,22 @@ COMPOUND_CONCEPTS = (
     "parser.compound.recipient_preposition",
 )
 
+# Words a request uses to say which record of a group stays or goes, and to
+# name a copy without asking to copy (`request_grounding`).
+GROUNDING_CONCEPTS = (
+    "parser.grounding.newest",
+    "parser.grounding.oldest",
+    "parser.grounding.comparison_connector",
+    "parser.grounding.keep_verb",
+    "parser.grounding.act_verb",
+    "parser.grounding.move_verb",
+    "parser.grounding.copy_word",
+    "parser.grounding.copy_verb",
+    "parser.grounding.definite_determiner",
+)
+
 FAMILY_CONCEPTS = {
+    "grounding": GROUNDING_CONCEPTS,
     "ordering": ORDERING_CONCEPTS,
     "time_resolver": TIME_RESOLVER_CONCEPTS,
     "time_parser": TIME_PARSER_CONCEPTS,
@@ -93,6 +108,15 @@ FAMILY_CONCEPTS = {
 }
 
 _KINDS = {
+    "parser.grounding.newest": "phrases",
+    "parser.grounding.oldest": "phrases",
+    "parser.grounding.comparison_connector": "phrases",
+    "parser.grounding.keep_verb": "phrases",
+    "parser.grounding.act_verb": "phrases",
+    "parser.grounding.move_verb": "phrases",
+    "parser.grounding.copy_word": "phrases",
+    "parser.grounding.copy_verb": "phrases",
+    "parser.grounding.definite_determiner": "phrases",
     "parser.ordering.mode_verb": "mapping",
     "parser.ordering.group_connector": "phrases",
     "parser.ordering.sort_connector": "phrases",
@@ -469,6 +493,72 @@ def register_all() -> None:
       en=["the", "a", "an"])
     R("parser.compound.recipient_preposition", "phrases", match_mode="word",
       it=["a", "ad"], en=["to"])
+
+    # Which record of a group a request means by its age, and whether it is
+    # the one that stays or the one acted upon (`request_grounding`).
+    R("parser.grounding.newest", "phrases", match_mode="word",
+      it=["piu recente", "più recente", "piu recenti", "più recenti",
+          "piu nuovo", "più nuovo", "piu nuova", "più nuova",
+          "piu nuovi", "più nuovi", "piu nuove", "più nuove",
+          "piu giovane", "più giovane", "piu giovani", "più giovani"],
+      en=["most recent", "more recent", "newest", "newer", "latest"])
+    R("parser.grounding.oldest", "phrases", match_mode="word",
+      it=["piu vecchio", "più vecchio", "piu vecchia", "più vecchia",
+          "piu vecchi", "più vecchi", "piu vecchie", "più vecchie",
+          "meno recente", "meno recenti", "piu antico", "più antico",
+          "piu antica", "più antica", "piu antichi", "più antichi",
+          "piu antiche", "più antiche"],
+      en=["oldest", "older", "least recent", "less recent", "earliest"])
+    # «older than 30 days» compares with a threshold and chooses nothing; the
+    # connector counts only before a quantity of time («of each pair» is not).
+    R("parser.grounding.comparison_connector", "phrases", match_mode="word",
+      it=["di"], en=["than"])
+    R("parser.grounding.keep_verb", "phrases", match_mode="word",
+      it=["tieni", "tenere", "tenendo", "tenga", "tengo", "tienimi",
+          "tienili", "tienile", "conserva", "conservare", "conservando",
+          "conservi", "mantieni", "mantenere", "mantenendo", "mantenga",
+          "lascia", "lasciare", "lasciando", "lasci", "resta", "resti",
+          "restare", "restano", "rimane", "rimanga", "rimanere",
+          "rimangono"],
+      en=["keep", "keeps", "keeping", "retain", "retaining", "preserve",
+          "preserving", "leave", "leaving", "stay", "stays", "remain",
+          "remains"])
+    R("parser.grounding.act_verb", "phrases", match_mode="word",
+      it=["cancella", "cancellare", "cancellando", "cancelli", "cancellali",
+          "cancellale", "cancellalo", "cancellala", "elimina", "eliminare",
+          "eliminando", "elimini", "eliminali", "eliminale", "eliminalo",
+          "eliminala", "rimuovi", "rimuovere", "rimuovendo", "rimuovili",
+          "rimuovile", "togli", "togliere", "togliendo", "toglili",
+          "toglile", "cestina", "cestinare", "butta", "buttare", "sposta",
+          "spostare", "spostando", "sposti", "spostali", "spostale",
+          "spostalo", "spostala", "muovi", "muovere", "trasferisci",
+          "trasferire", "archivia", "archiviare"],
+      en=["delete", "deletes", "deleting", "remove", "removes", "removing",
+          "erase", "erasing", "trash", "discard", "move", "moves", "moving",
+          "relocate", "transfer", "archive"])
+    R("parser.grounding.move_verb", "phrases", match_mode="word",
+      it=["sposta", "spostare", "spostando", "sposti", "spostali",
+          "spostale", "spostalo", "spostala", "muovi", "muovere",
+          "trasferisci", "trasferire"],
+      en=["move", "moves", "moving", "relocate", "transfer"])
+    # Words that are both a thing and the verb that makes it.
+    R("parser.grounding.copy_word", "phrases", match_mode="word",
+      it=["copia", "copie", "duplicato", "duplicati"],
+      en=["copy", "copies", "duplicate", "duplicates"])
+    # Forms that are only the verb: with one of these a copy is asked for.
+    R("parser.grounding.copy_verb", "phrases", match_mode="word",
+      it=["copiare", "copiando", "copiali", "copiale", "copialo", "copiala",
+          "copiami", "copiato", "copiata", "copiati", "copiate", "ricopia",
+          "ricopiare", "duplica", "duplicare",
+          "duplicando", "duplicali", "duplicale", "duplicalo", "duplicala"],
+      en=["copying", "copied", "duplicating", "duplicated"])
+    R("parser.grounding.definite_determiner", "phrases", match_mode="word",
+      it=["il", "lo", "la", "i", "gli", "le", "l", "del", "dello", "della",
+          "dei", "degli", "delle", "dell", "al", "allo", "alla", "ai",
+          "agli", "alle", "all", "questa", "queste", "quella", "quelle",
+          "ogni", "ciascuna", "sua", "sue", "loro"],
+      en=["the", "this", "that", "these", "those", "each", "every", "its",
+          "their"])
 
 
 def _all_seed_rows_ready() -> bool:

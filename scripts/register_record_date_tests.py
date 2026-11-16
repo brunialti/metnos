@@ -18,6 +18,7 @@ GROUPS = {
         "tests/runtime/engine/test_planner_sees_output_fields.py",
         "tests/runtime/executors/test_find_files_hash.py",
         "tests/runtime/engine/test_from_step_restated_rows.py",
+        "tests/runtime/engine/test_request_grounding.py",
     ),
     "cluster": (
         "tests/runtime/entries/test_sort_entries_typed.py",
@@ -27,6 +28,8 @@ GROUPS = {
         "tests/runtime/engine/test_ordering_clause.py",
         "tests/runtime/engine/test_ensure_extract_clause.py",
         "tests/runtime/engine/test_piping_from_step.py",
+        "tests/runtime/engine/test_guard_pipeline_contract.py",
+        "tests/runtime/i18n/test_detection_lexicon_readiness.py",
         "tests/runtime/engine/test_planner_sees_every_argument.py",
         "tests/runtime/engine/test_table_reading_order.py",
         "tests/runtime/skills/test_manifest_language_state_release_check.py",

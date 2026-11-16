@@ -67,6 +67,7 @@ en = "If true, replace dst if it exists (removes it first). Default false: the s
 [args.properties.copy]
 type        = "boolean"
 default     = false
+semantic_type = "copy_mode"
 
 [args.properties.copy.description]
 it = "Se true copia i file e conserva le origini. Usalo quando l’utente chiede una copia; false sposta i file."

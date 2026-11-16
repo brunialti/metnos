@@ -615,6 +615,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'notify_admin.py': ('9406cac514d6575bc84a4c83d3dff512d3e9092d0cd6cb49ce1549bffeeb95bc', (('comparison', 1), ('prefix-suffix', 1))),
     'field_synonyms.py': ('b7eea7e2cc029b7284fef1fdea08b447822ca2686ebb77ed358175165162f79c', (('prefix-suffix', 1),)),
     'record_dates.py': ('d5089d7476d8bb98764e367468907cc3c3edfbaa86be7597b20d31f9a78211d9', (('comparison', 1), ('prefix-suffix', 1))),
+    'request_grounding.py': ('ca4f87524e9f59a2a6628cfe9ac023e993a40b2edd91b2d14a138d25814733c1', (('helper-argument', 1), ('iteration', 1), ('regex', 1))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

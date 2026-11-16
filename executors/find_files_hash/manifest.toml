@@ -93,6 +93,7 @@ en = "Optional analyzed-file limit. 0 means unlimited and is the default; a posi
 type = "string"
 enum = ["oldest", "newest"]
 default = "oldest"
+semantic_type = "kept_by_age"
 
 [args.properties.keep.description]
 it = "Quale file di ogni gruppo di identici resta, per data di ultima modifica: 'oldest' il più vecchio (default), 'newest' il più recente. Quello che resta è duplicate_of; path elenca gli altri: un passo successivo con from_step cancella o sposta quelli. Per togliere i più recenti: keep='oldest'. Per togliere i più vecchi: keep='newest'."

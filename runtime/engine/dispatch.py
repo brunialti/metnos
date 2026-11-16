@@ -35,6 +35,7 @@ from . import (
     is_output_policy_enabled,
 )
 from executor_helpers import catalog_names
+from request_grounding import guards as _request_grounding_guards
 import detection_lexicon_seed_reconciliation as _reconciliation_lex
 # SoT delle operazioni singolari ratificate (ADR 0002): il loro oggetto non
 # esiste nel vocabolario chiuso, quindi nessun allineamento per-oggetto le
@@ -7399,6 +7400,9 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"query", "step.tool", "step.args", "catalog"}),
           rationale="contenuto assente dalla richiesta + un'altra sorgente nominata = copia, mai testo inventato dichiarato come copia (turno 6978422a)",
           adr="0237"),
+    # What the sentence itself says about an argument the planner only has to
+    # copy from it (`request_grounding`): declared and tested in that module.
+    *_request_grounding_guards(Guard),
     Guard("strip_unknown_args",
           lambda fw, i, q, c: _strip_unknown_args(fw, c),
           v3_only=True, scope="structure", writes=frozenset({"args.*"}),
