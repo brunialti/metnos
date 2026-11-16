@@ -21,6 +21,7 @@ import logging
 import re
 from typing import Optional, Callable, Protocol, Sequence
 from config import env_int
+from executor_metadata import output_record as _output_record
 from from_step_projection import input_conditions
 
 from .types import Intent, Framework
@@ -150,6 +151,14 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         if required:
             bits.append(f" [required: {','.join(required)}]")
         if roo:
+            # A group names only what the planner can write: an argument the
+            # runtime fills is not a way to satisfy it. Shown with `entries`
+            # and without `from_step`, a group made the planner add an
+            # `entries` of its own beside `from_step` (16/11/2026).
+            roo = [[name for name in group if name in props or name == "from_step"]
+                   for group in roo if isinstance(group, list)]
+            roo = [group for group in roo if group]
+        if roo:
             bits.append(f" [requires_one_of: {roo}]")
         conditions = input_conditions(schema)
         if conditions:
@@ -181,6 +190,14 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
                 defaults.append(f"{pname}={value}")
         if defaults:
             bits.append(f" defaults=[{'; '.join(defaults)}]")
+        # The fields of the rows a tool returns, as its manifest declares
+        # them (15/11/2026): a later step names them (`source`, `by`,
+        # `${stepN.entries.*.<field>}`), and a planner that never saw them
+        # wrote names of its own («path1», «path2») that the consumer refused.
+        rows_key, row_fields = _output_record(
+            getattr(e, "output_schema", "") or "")
+        if row_fields:
+            bits.append(f" → {rows_key}{{{','.join(row_fields)}}}")
         lines.append("".join(bits))
     return "\n".join(lines)
 

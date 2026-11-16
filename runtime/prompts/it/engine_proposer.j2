@@ -80,10 +80,20 @@ NON DEVI: tradurre o inventare le chiavi `source`, mapparle per posizione o cont
 OK: schema fields=["date","amount"], filtro where_field="date", column_specs=[{"header":"Data","source":"date"},{"header":"Importo","source":"amount"}]; le intestazioni cambiano lingua, le source restano identiche.
 ERRORE: passare solo columns=["Data","Importo"] per quelle chiavi; usare source="Importo" per amount; scegliere fra emissione e scadenza senza il ruolo richiesto.
 
+DEVI: nominare un campo di uno step precedente (`source`, `by`, `group_by`, `where_field`, `key`, `${stepN.entries.*.<campo>}`) solo fra quelli che il tool di quello step elenca dopo `→` nella lista dei tool.
+NON DEVI: inventare, tradurre o numerare un campo che quel tool non elenca.
+OK: esempio astratto, non copiare letteralmente: tool `→ entries{<a>,<b>}` → column_specs=[{"header":"<Intestazione>","source":"<a>"},{"header":"<Altra>","source":"<b>"}].
+ERRORE: source="<a>1" e source="<a>2" per due colonne; `${step1.entries.*.<a>2}`.
+
 DATA PIPING
 - Liste fra step: `from_step: N` (int 1-based).
 - Scalari: `${stepN.field}` (dot-path: `${step1.entries.0.name}`).
 - Proiezione lista: `${step1.entries.0.examples.*.image_path}` ritorna list.
+
+DEVI: passare a uno step le righe di uno step precedente con il solo `from_step: N`: il tool sa quale campo delle righe usare.
+NON DEVI: aggiungere `entries` insieme a `from_step`, né costruire `entries` con segnaposto.
+OK: esempio astratto, non copiare letteralmente: <azione>(from_step=1).
+ERRORE: <azione>(from_step=1, entries=[{"<campo>": "${step1.entries.0.<campo>}"}]).
 
 DEVI: al PRIMO step valorizzare gli args SOLO con letterali (path, query, account); MAI `from_step` al primo step.
 NON DEVI: emettere `from_step: 0`. `from_step` e' 1-based e punta a uno step PRECEDENTE gia' eseguito (>=1); se non c'e', OMETTI del tutto `from_step`.
@@ -138,6 +148,12 @@ I. FOGLIO ESISTENTE (dividere le righe in schede, aggiungere una colonna di clas
 - NON DEVI: cercare il nome della scheda, o una sua variante, come valore di un'altra colonna.
 - OK: esempio astratto, non copiare letteralmente: colonne «<X>, <A>, <B>», schede «<A>» e «<B>» → filter_entries(from_step=1, where_field="<A>", where_present=true).
 - ERRORE: filter_entries(from_step=1, where_field="<X>", where_value="<A>").
+
+M. IL PIÙ RECENTE / IL PIÙ VECCHIO (per data, qualunque oggetto)
+- DEVI: scegliere «il più recente», «l'ultimo», «il più vecchio» con sort_entries(from_step=N, by="date", desc=<true per il più recente, false per il più vecchio>, top=<quanti>); con «per ogni <X>» aggiungi group_by="<campo di X>".
+- NON DEVI: scegliere per data con filter_entries o compute_entries.
+- OK: esempio astratto, non copiare letteralmente: «i <K> <oggetti> più recenti» → [<produttore>(...), sort_entries(from_step=1, by="date", desc=true, top=<K>), ...]; «per ogni <X> il più vecchio» → sort_entries(from_step=1, by="date", desc=false, top=1, group_by="<campo di X>").
+- ERRORE: «per ogni <X> il più recente» → sort_entries(by="date", desc=true) seguito da filter_entries(where_field="<campo di X>").
 
 C. MUTATING (move/delete/send/write/create/set)
 - Lo step del verbo d'azione richiesto DEVE esserci: mai fermarsi al produttore.

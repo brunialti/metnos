@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_files_hash"
-version     = "0.5.1"
+version     = "0.6.0"
 timeout_s   = 600
 author      = "Roberto Brunialti"
 affinity    = [
@@ -22,8 +22,8 @@ concurrency_key   = "none"
 equivalence_gate  = "verified"
 
 [description]
-it = "SCOPO: trova duplicati esatti tramite SHA-256 completo; i tipi generali sono espansi in glob. PATTERN: find_files_hash(base_path=\"/foto\", patterns=[\"*.jpg\"]). NON: concatenare altri tool; max_files solo per scansioni parziali esplicite. OUT: duplicati e conteggi completi; cache persistente per utente."
-en = "SCOPO: finds exact duplicates through complete SHA-256; broad file types expand into globs. PATTERN: find_files_hash(base_path=\"/photos\", patterns=[\"*.jpg\"]). NON: chain other tools; max_files only for explicitly partial scans. OUT: duplicates and complete counts; persistent per-user cache."
+it = "SCOPO: trova duplicati esatti (SHA-256); ogni riga una coppia: duplicate_of il file che resta, path l'altro, da togliere. PATTERN: find_files_hash(base_path=\"/foto\", patterns=[\"*.jpg\"]). NON: find_files prima; max_files solo parziale. OUT: entries=[{path,duplicate_of,mtime,duplicate_of_mtime,size,sha256,group_count}] e conteggi completi; cache per utente."
+en = "SCOPO: finds exact duplicates (SHA-256); each row a pair: duplicate_of the file that stays, path the other, to remove. PATTERN: find_files_hash(base_path=\"/photos\", patterns=[\"*.jpg\"]). NON: find_files first; max_files only if partial. OUT: entries=[{path,duplicate_of,mtime,duplicate_of_mtime,size,sha256,group_count}] and complete counts; per-user cache."
 
 [code]
 files  = ["find_files_hash.py"]
@@ -89,6 +89,15 @@ default = 0
 it = "Limite opzionale dei file analizzati. 0 significa nessun limite ed è il default; un valore positivo rende esplicita una scansione parziale."
 en = "Optional analyzed-file limit. 0 means unlimited and is the default; a positive value explicitly makes the scan partial."
 
+[args.properties.keep]
+type = "string"
+enum = ["oldest", "newest"]
+default = "oldest"
+
+[args.properties.keep.description]
+it = "Quale file di ogni gruppo di identici resta, per data di ultima modifica: 'oldest' il più vecchio (default), 'newest' il più recente. Quello che resta è duplicate_of; path elenca gli altri: un passo successivo con from_step cancella o sposta quelli. Per togliere i più recenti: keep='oldest'. Per togliere i più vecchi: keep='newest'."
+en = "Which file of each group of identical ones stays, by last-modified date: 'oldest' the oldest (default), 'newest' the most recent. The one that stays is duplicate_of; path lists the others: a later step with from_step deletes or moves those. To remove the most recent ones: keep='oldest'. To remove the oldest ones: keep='newest'."
+
 [args.properties.max_results]
 type = "integer"
 minimum = 0
@@ -106,7 +115,7 @@ schema_inline = """
   ok: bool,
   ok_count: int,
   fail_count: int,
-  entries: Array<{path: str, duplicate_of: str, size: int, sha256: str, group_count: int}>,
+  entries: Array<{path: str, duplicate_of: str, size: int, sha256: str, group_count: int, mtime: float, duplicate_of_mtime: float}>,
   entry_field_roles: Array<{field: str, roles: Array<str>}>,
   failed: Array<{path: str, error_class: str, error_code: str, error: str}>,
   scanned_files: int,
@@ -131,7 +140,7 @@ schema_inline = """
   visited_dirs: int,
   metadata: {
     base_path: str, patterns: Array<str>, recursive: bool,
-    case_sensitive: bool
+    case_sensitive: bool, keep: 'oldest' | 'newest'
   },
   authoritative_presentation?: {scope: 'always', text: str, covers_truncation: bool},
   partial?: bool,
@@ -195,6 +204,22 @@ name = "risultato_vuoto_valido"
 setup = "mkdir -p /tmp/metnos_hash_find && printf 'solo' > /tmp/metnos_hash_find/solo.txt"
 input = { base_path = "/tmp/metnos_hash_find" }
 expect = { ok = true, field_eq = { duplicate_groups_count = 0, redundant_files_count = 0 } }
+teardown = "rm -rf /tmp/metnos_hash_find"
+
+[[tests]]
+name = "originale_il_piu_vecchio"
+setup = "mkdir -p /tmp/metnos_hash_find && printf 'uguale' > /tmp/metnos_hash_find/z_vecchio.jpg && cp /tmp/metnos_hash_find/z_vecchio.jpg /tmp/metnos_hash_find/a_nuovo.jpg && touch -d '2026-01-01 10:00:00' /tmp/metnos_hash_find/z_vecchio.jpg && touch -d '2026-06-01 10:00:00' /tmp/metnos_hash_find/a_nuovo.jpg"
+input = { base_path = "/tmp/metnos_hash_find", patterns = ["*.jpg"] }
+expect = { ok = true, entries_field_eq = { 0 = { path = "/tmp/metnos_hash_find/a_nuovo.jpg", duplicate_of = "/tmp/metnos_hash_find/z_vecchio.jpg" } } }
+env = { METNOS_FIND_HASH_CACHE = "0" }
+teardown = "rm -rf /tmp/metnos_hash_find"
+
+[[tests]]
+name = "resta_il_piu_recente_a_richiesta"
+setup = "mkdir -p /tmp/metnos_hash_find && printf 'uguale' > /tmp/metnos_hash_find/z_vecchio.jpg && cp /tmp/metnos_hash_find/z_vecchio.jpg /tmp/metnos_hash_find/a_nuovo.jpg && touch -d '2026-01-01 10:00:00' /tmp/metnos_hash_find/z_vecchio.jpg && touch -d '2026-06-01 10:00:00' /tmp/metnos_hash_find/a_nuovo.jpg"
+input = { base_path = "/tmp/metnos_hash_find", patterns = ["*.jpg"], keep = "newest" }
+expect = { ok = true, entries_field_eq = { 0 = { path = "/tmp/metnos_hash_find/z_vecchio.jpg", duplicate_of = "/tmp/metnos_hash_find/a_nuovo.jpg" } } }
+env = { METNOS_FIND_HASH_CACHE = "0" }
 teardown = "rm -rf /tmp/metnos_hash_find"
 
 [[tests]]

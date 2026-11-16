@@ -1,37 +1,40 @@
 #!/usr/bin/env python3
-"""sort_entries — ordina una lista di entries per un campo, opzionale top-K.
+"""sort_entries — order a list of entries by one field, optionally keep the first ones.
 
-Spec:
-- input deve essere una `entries: list`;
-- ogni elemento e' un dizionario flat (chiavi top-level, niente path dotted);
-- il sort agisce sul valore della chiave indicata da `by`;
-- confronto: max/min per numeri (int, float), lessicografico per stringhe.
-- entries senza il campo o con valore non comparabile (None, list, dict, ...)
-  finiscono in coda (sort stable, no errore).
+- `entries` is a list of flat records; `by` names the field to order by.
+- Numbers compare as numbers, text as text; a field that holds dates compares
+  as instants whatever their form (`record_dates`), so «the most recent» is
+  the latest in time, not the last in the alphabet.
+- `by="date"` (or the person's word for it) is the date of the record: its
+  last change, else its making, else the date it carries. Records that carry
+  no date are refused, never answered with the first row.
+- Entries without the field, or with a value that cannot be compared, go last
+  whatever the direction.
+- `top` keeps the first N; with `group_by` the first N of each group of rows
+  sharing that field's value («for each sender»), one when no number is given.
 
-Pure compute, no I/O esterna.
+Pure compute, no external I/O.
 
-Tipico uso in pipeline:
-    find_files → sort_entries(by="size", desc=True, top=5) → final_answer
-    read_messages → sort_entries(by="size", desc=True) → top-N final_answer
-    find_dirs → sort_entries(by="file_count", desc=True, top=3) → final_answer
+    find_files → sort_entries(by="size", desc=True, top=5)
+    read_messages → sort_entries(by="date", desc=True, top=1, group_by="from")
 
-Contratto:
-    stdin:  JSON {entries: list[dict], by: str, desc?: bool, top?: int}
-    stdout: JSON {ok, entries: list[dict], sorted_by, desc, count, total_input}
+Contract:
+    stdin:  JSON {entries, by, desc?, top?, group_by?, value_type?}
+    stdout: JSON {ok, entries, count, total_input, sorted_by, desc, grouped_by?}
 """
 from __future__ import annotations
 
+import json
 import os
 import sys
-from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     str(p / "runtime") for p in Path(__file__).resolve().parents
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
-from executor_helpers import run_stdio, date_text  # noqa: E402
+from executor_helpers import run_stdio  # noqa: E402
+from record_dates import date_fields, holds_dates, instant  # noqa: E402
 
 
 def invoke(args):
@@ -40,6 +43,7 @@ def invoke(args):
     desc = bool(args.get("desc", False))
     top = args.get("top")
     value_type = args.get("value_type") or "auto"
+    group_by = args.get("group_by")
 
     if not isinstance(entries, list):
         return {
@@ -63,12 +67,19 @@ def invoke(args):
                 "error_code": "invalid_top",
                 "error": _msg("ERR_ARG_NOT_INT", arg="top"),
             }
+    if group_by is not None and (not isinstance(group_by, str) or not group_by.strip()):
+        return {
+            "ok": False,
+            "error_class": "invalid_input",
+            "error_code": "invalid_group_by",
+            "error": _msg("ERR_ARG_NOT_STRING", arg="group_by"),
+        }
     if value_type not in {"auto", "date"}:
         return {
             "ok": False,
             "error_class": "invalid_input",
             "error_code": "invalid_value_type",
-            "error": "value_type must be 'auto' or 'date'",
+            "error": _msg("ERR_ARG_ENUM", arg="value_type", allowed="auto, date"),
         }
 
     # §2.4 robustezza al confine NL→determinismo: `by` arriva spesso come
@@ -81,12 +92,29 @@ def invoke(args):
     requested_by = by
     if entries and not any(isinstance(e, dict) and by in e for e in entries):
         try:
-            from ordering_clause import resolve_field as _rf
+            from ordering_clause import is_date_term, resolve_field as _rf
             _resolved = _rf(by, entries)
+            _date_asked = is_date_term(by)
         except Exception:
-            _resolved = None
+            _resolved, _date_asked = None, False
         if _resolved:
             by = _resolved
+        elif _date_asked:
+            # A date was asked for and these records carry none, or several
+            # that no producer documents: choosing the first row as «the most
+            # recent» would be an answer nobody computed.
+            return {
+                "ok": False,
+                "error_class": "invalid_input",
+                "error_code": "no_record_date",
+                "error": _msg(
+                    "ERR_UNKNOWN_FIELDS", unknown=by,
+                    supported=", ".join(
+                        [name for name, _role in date_fields(entries)]
+                        or sorted({str(key) for entry in entries[:50]
+                                   if isinstance(entry, dict) for key in entry
+                                   if not str(key).startswith("_")}))),
+            }
 
     # Chiave di ordinamento. Le entry senza il campo / con valore non
     # comparabile finiscono SEMPRE IN CODA, a prescindere da desc (CLAUDE.md
@@ -114,35 +142,70 @@ def invoke(args):
     have = [e for e in entries if _val(e) is not None]
     missing = [e for e in entries if _val(e) is None]
     unparsed_count = 0
-    if value_type == "date":
-        def _date_key(entry):
-            value = _val(entry)
-            if not isinstance(value, str):
-                return None
-            raw = date_text(value).strip().replace("Z", "+00:00")
-            try:
-                return datetime.fromisoformat(raw)
-            except ValueError:
-                return None
-
-        dated = [entry for entry in have if _date_key(entry) is not None]
-        unparsed = [entry for entry in have if _date_key(entry) is None]
-        # ISO inputs may mix offset-aware datetimes and date-only values.
-        # Their normalized textual prefix is chronologically sortable and
-        # avoids comparing aware and naive datetime objects. It is sortable as
-        # long as the text IS the date: an assumed-year mark in front of it is
-        # a statement about the date, not part of it, and taking it literally
-        # sent every marked value to one end of the list.
-        dated.sort(key=lambda entry: str(date_text(_val(entry))), reverse=desc)
+    # A field that holds dates is compared as instants whatever their form
+    # (epoch number, ISO with or without a zone, a mail-style date): as text
+    # «Fri, 13 Nov» sorts before «Mon, 02 Nov», and 23:30+00:00 before
+    # 00:10+01:00 of the day after.
+    dated_field = value_type == "date" or holds_dates(entries, by)
+    if dated_field:
+        keyed = [(instant(_val(entry)), entry) for entry in have]
+        dated = [pair for pair in keyed if pair[0] is not None]
+        unparsed = [entry for moment, entry in keyed if moment is None]
+        dated.sort(key=lambda pair: pair[0], reverse=desc)
         unparsed.sort(key=lambda entry: str(_val(entry)).casefold(), reverse=desc)
         unparsed_count = len(unparsed)
-        sorted_entries = dated + unparsed + missing
+        sorted_entries = [entry for _moment, entry in dated] + unparsed + missing
     else:
         have.sort(key=_key, reverse=desc)
         sorted_entries = have + missing
     total_input = len(entries)
     truncated = False
-    if top is not None and 0 < top < len(sorted_entries):
+    group_count = None
+    requested_group = group_by
+    if group_by:
+        # «For each …»: the same order inside every group of rows that share
+        # the value of this field, and `top` counted group by group: one for
+        # each when no number is given (0 keeps them all, as everywhere).
+        # Groups keep the order in which the sorted list first meets them;
+        # rows without the value form one group of their own.
+        if entries and not any(isinstance(e, dict) and group_by in e for e in entries):
+            try:
+                from ordering_clause import resolve_field as _rf
+                _group_field = _rf(group_by, entries)
+            except Exception:
+                _group_field = None
+            if not _group_field:
+                return {
+                    "ok": False,
+                    "error_class": "invalid_input",
+                    "error_code": "group_field_not_found",
+                    "error": _msg(
+                        "ERR_UNKNOWN_FIELDS", unknown=group_by,
+                        supported=", ".join(sorted(
+                            {str(key) for entry in entries[:50]
+                             if isinstance(entry, dict) for key in entry
+                             if not str(key).startswith("_")}))),
+                }
+            group_by = _group_field
+
+        def _group(entry):
+            value = entry.get(group_by) if isinstance(entry, dict) else None
+            if isinstance(value, str):
+                return ("text", " ".join(value.split()).casefold())
+            if value is None or isinstance(value, (bool, int, float)):
+                return ("value", value)
+            return ("json", json.dumps(value, sort_keys=True, default=str))
+
+        groups: dict = {}
+        for entry in sorted_entries:
+            groups.setdefault(_group(entry), []).append(entry)
+        group_count = len(groups)
+        per_group = 1 if top is None else top
+        kept = [rows if not per_group else rows[:per_group] for rows in groups.values()]
+        grouped = [entry for rows in kept for entry in rows]
+        truncated = len(grouped) < len(sorted_entries)
+        sorted_entries = grouped
+    elif top is not None and 0 < top < len(sorted_entries):
         sorted_entries = sorted_entries[:top]
         truncated = True
 
@@ -154,9 +217,14 @@ def invoke(args):
         "sorted_by": by,
         "desc": desc,
     }
-    if value_type == "date":
+    if dated_field:
         out["value_type"] = "date"
         out["unparsed_count"] = unparsed_count
+    if group_by:
+        out["grouped_by"] = group_by
+        out["group_count"] = group_count
+        if group_by != requested_group:
+            out["requested_group_by"] = requested_group
     if by != requested_by:
         # Trasparenza §2.8: la chiave utente è stata risolta su un campo
         # reale diverso (es. «mailbox» → account).

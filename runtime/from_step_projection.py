@@ -20,6 +20,7 @@ legacy and v3 execution paths share exactly the same projection semantics.
 """
 from __future__ import annotations
 
+import re
 from typing import Any
 
 from tabular_records import SOURCE_METADATA_FIELDS, has_explicit_column_sources
@@ -154,6 +155,124 @@ def normalize_from_step_contract(consumer_schema: dict | None) -> dict:
         groups.append([*alternatives, "from_step"])
         schema["requires_one_of"] = groups
     return schema
+
+
+# The whole list of rows of a step, and one field of every row of it.
+_ROWS_OF_STEP = re.compile(
+    r"\s*(?:\$\{|\{\{)\s*step(\d+)\.(?:entries|results)\s*(?:\}\}|\})\s*")
+_FIELD_OF_ROWS = re.compile(
+    r"\s*(?:\$\{|\{\{)\s*step(\d+)\.(?:entries|results)"
+    r"\.\*\.([A-Za-z_][\w.]*)\s*(?:\}\}|\})\s*")
+
+
+def _restates(value: Any, step: int) -> bool:
+    """The value is the rows of `step` said again: the whole list, or records
+    that give every field the value that same field has in every row."""
+    if isinstance(value, str):
+        match = _ROWS_OF_STEP.fullmatch(value)
+        return match is not None and int(match.group(1)) == step
+    if not isinstance(value, list) or not value:
+        return False
+    for record in value:
+        if not isinstance(record, dict) or not record:
+            return False
+        for field, text in record.items():
+            match = _FIELD_OF_ROWS.fullmatch(text) if isinstance(text, str) else None
+            if (match is None or int(match.group(1)) != step
+                    or match.group(2) != field):
+                return False
+    return True
+
+
+def without_restated_rows(args: dict) -> dict:
+    """Drop an `entries` that only says again what `from_step` already pipes.
+
+    Planned on 16/11/2026 for «delete the newer copy of each pair»:
+    `delete_files(from_step=1, entries=[{"path": "${step1.entries.*.path}"}])`.
+    The explicit `entries` won over the pipe, as an explicit target must, and
+    reached the tool as one record holding a list. An `entries` that is the
+    whole list of rows of that same step, or records giving each field the
+    value the same field has in every row, chooses nothing: the rows are the
+    ones `from_step` names. Anything else is a choice and stays: a single row
+    (`.0.`), a literal, another step, and a record that fills a field from
+    another one (`{"path": "${step1.entries.*.duplicate_of}"}` names other
+    files than the rows' own `path`).
+    """
+    if not isinstance(args, dict) or "entries" not in args:
+        return args
+    step = args.get("from_step")
+    if isinstance(step, str) and step.isdigit():
+        step = int(step)
+    if not isinstance(step, int) or isinstance(step, bool):
+        return args
+    if not _restates(args["entries"], step):
+        return args
+    return {key: value for key, value in args.items() if key != "entries"}
+
+
+# Any reference to the rows of a step: all of them, one of them, a field.
+_ANY_ROW_OF_STEP = re.compile(
+    r"\s*(?:\$\{|\{\{)\s*step(\d+)\.(?:entries|results)"
+    r"(?:\.(?:\*|\d+)\.[A-Za-z_][\w.]*)?\s*(?:\}\}|\})\s*")
+
+
+def _leaves(value: Any):
+    if isinstance(value, dict):
+        for item in value.values():
+            yield from _leaves(item)
+    elif isinstance(value, (list, tuple)):
+        for item in value:
+            yield from _leaves(item)
+    else:
+        yield value
+
+
+def contradicts_from_step(args: dict) -> bool:
+    """The step names all the rows of a step and, with them, another choice
+    among those same rows.
+
+    Planned on 16/11/2026 for «move the older file of each pair»:
+    `move_files(from_step=1, entries=[{"path": "${step1.entries.0.duplicate_of}"}])`.
+    The explicit `entries` won, as an explicit target must: one file was the
+    target, and it was the file to keep, while the question had counted every
+    pair. An `entries` built from nothing but the rows of the step `from_step`
+    names, and that is not those rows said again, says two things at once:
+    which of the two was meant cannot be told, and a step that removes or
+    moves must not guess. A literal or another step in `entries` is a target
+    of its own, not a contradiction.
+    """
+    if not isinstance(args, dict) or "entries" not in args:
+        return False
+    step = args.get("from_step")
+    if isinstance(step, str) and step.isdigit():
+        step = int(step)
+    if not isinstance(step, int) or isinstance(step, bool):
+        return False
+    if _restates(args["entries"], step):
+        return False
+    leaves = list(_leaves(args["entries"]))
+    if not leaves:
+        return False
+    for leaf in leaves:
+        match = _ANY_ROW_OF_STEP.fullmatch(leaf) if isinstance(leaf, str) else None
+        if match is None or int(match.group(1)) != step:
+            return False
+    return True
+
+
+def contradiction_refusal(args: dict) -> dict | None:
+    """The result of a step that is not run because it names the rows of a
+    step twice, differently; None when it does not."""
+    if not contradicts_from_step(args):
+        return None
+    from messages import get as _msg
+
+    return {
+        "ok": False,
+        "error_class": "contradictory_source",
+        "error_code": "ERR_FROM_STEP_CONTRADICTED",
+        "error": _msg("ERR_FROM_STEP_CONTRADICTED", step=args.get("from_step")),
+    }
 
 
 def has_explicit_from_step_alternative(

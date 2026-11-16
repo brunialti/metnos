@@ -199,13 +199,13 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
     'engine/dispatch.py': ('b6657d774e8d743b2c3e5af6f45bb62576bbb74e8599c16c67a4d7aa03583d42', (('comparison', 254), ('helper-argument', 54), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 2))),
-    'engine/executor.py': ('53c17f006bd9038b57286175c59fdf1c11e1ed573a049a422a27e9bf40f94d2e', (('comparison', 68), ('helper-argument', 14), ('iteration', 2), ('membership', 3), ('prefix-suffix', 2), ('regex', 3))),
+    'engine/executor.py': ('c24be22848f244ac55b4e117129718ca5c48946a379d052ce362f74fd9bc5019', (('comparison', 68), ('helper-argument', 14), ('iteration', 2), ('membership', 3), ('prefix-suffix', 2), ('regex', 3))),
     'engine/fastpath.py': ('fe9c37e09e6b884d136b28a244b7d51e72e3c29b53740d01cb61ad912950ffeb', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),
     'engine/grammar_framework.py': ('1e14e30dfe0909732c4b1d5f785843789c7b1f88b2e9a6f9a66eb50a042ed788', (('comparison', 1), ('helper-argument', 1))),
     'engine/guard_stats.py': ('feaa61f7511dc6e15486fa96ee8df9ffdaf997c2491475ce03c0adb30bb016e3', (('comparison', 1),)),
     'engine/parallel_steps.py': ('8eba4b51f294891328191fb4fea78d03875f20bdcd1d2687def294a12116c726', (('comparison', 4),)),
-    'engine/proposer.py': ('4369183ef93ab117d35d6d6016bf115979016539ad4c1931aa38c0b3edfe6097', (('comparison', 13), ('helper-argument', 2), ('membership', 1), ('prefix-suffix', 1))),
+    'engine/proposer.py': ('ea317eadbe6f3a60e091f9e1e07bd2df7866ed7b9ce32bee078cabd3e0374df7', (('comparison', 14), ('helper-argument', 2), ('membership', 1), ('prefix-suffix', 1))),
     'engine/proposer_metis.py': ('6b8d8ee3691678bb6f313930dfbf96b930a7e5babb9d905708dd7a0fe7535f96', (('comparison', 4), ('helper-argument', 1), ('membership', 1))),
     'engine/recovery.py': ('cf535ae0b259c4fcf06072bafdaccd26a2279599a8a33bc50c5ce0924dff71c9', (('comparison', 6),)),
     'engine/recovery_metis.py': ('22b552ede0d5de4ccfc29b9a534b900792a4abcb1b7cb10ec73d66d1f8b6ff2f', (('comparison', 28), ('helper-argument', 1))),
@@ -269,7 +269,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_template_table_v1.py': ('78f2c14fe9d16338faadee2a6c9f3c4abf3337a6c910b97045035634b7e937d8', (('helper-argument', 1),)),
     'executor_catalog_identity.py': ('1edab6d0f794c26c0d8fab8411bc50151cfecb7e4c4286acc11d531b256004e0', (('comparison', 3), ('helper-argument', 2))),
     'executor_helpers.py': ('16209803bc8b4e3f371f060d2a97dd720c9b839e40decf687320ae3c905f9318', (('comparison', 5), ('helper-argument', 1))),
-    'executor_metadata.py': ('48e6a0850d0de86bd96f2f0ecf95468772fc5ba4ff82fbab18d2e4c2402c650d', (('comparison', 6),)),
+    'executor_metadata.py': ('c28fa0f2f442b1b12c546eb3e0c5893859059b94d66e39f082b66023e558bc1e', (('comparison', 6), ('iteration', 1), ('prefix-suffix', 1))),
     'executor_scheduler.py': ('b4d3206cbae1afe77b676b978462dd117f718e63c701c776026b157bda98d857', (('comparison', 17),)),
     'executor_standard.py': ('1d6af43928752e2f8406792257b353d239beb62b04efa4600da8c01ac5d5f8d9', (('comparison', 16), ('membership', 3))),
     'executor_typing.py': ('64d8579ea136a5cf9e4c3e8ce6165fc79d967cdb04c7692b5d5454d3e004a893', (('comparison', 2),)),
@@ -278,7 +278,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'fast_path.py': ('6cf05c16268f612fe6ef7a8aa237cdee533d0ddadaa14b285fe3223d7865c390', (('comparison', 9), ('helper-argument', 1), ('regex', 1))),
     'filter_field_resolver.py': ('fd088eaab8beb364b949127d26454b63e36ea8b54e99fa3efbcfbf010cc7097b', (('comparison', 6), ('iteration', 2), ('membership', 1), ('prefix-suffix', 1))),
     'from_contains_resolver.py': ('e4f1c77d1fdcd33792a930a2ecd700df55c5a503e647b3ebbc020f1e35f9ede8', (('comparison', 1),)),
-    'from_step_projection.py': ('3d202444c9bb0f7f57d801a9c745db1f1cd16662444eccdfed7ec0e841ce7a32', (('comparison', 10),)),
+    'from_step_projection.py': ('056973a10a7f4ea1ad3cf928d4b219b2258b4ad6834e2ee1df2811562527c283', (('comparison', 13), ('regex', 3))),
     'generated_executor_contract.py': ('db139b1eb6cf5496f6971dff7a0e33768b353448645792edd7a126bfbfa0817b', (('comparison', 7), ('prefix-suffix', 1))),
     'geo_provider.py': ('3e4628c4bbd9b4387b25574ccfc5df313aca6234f6e5d6b0bfeec806d57eb183', (('comparison', 4), ('helper-argument', 1))),
     'google_places_client.py': ('1e34e06900fe195943a9b12cab2d19317f7b34ad6bcfe99be1a59dc9702d6d93', (('comparison', 1),)),
@@ -343,7 +343,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'nlu.py': ('a3d7dac0348b73354b4464d84931d4509c7d306176bb86bf5f28835d2ece085d', (('comparison', 3),)),
     'observability.py': ('149e32b25e0a0d99a18d8d66abb4d64bac91fd1b8754fb8bd307a8db3953d60a', (('comparison', 5),)),
     'orchestration.py': ('93922ad0f8718d8ac4dc7ac9488c0039b57dabb6a88a89abbb1dae2b1c631346', (('comparison', 91), ('helper-argument', 3), ('iteration', 2), ('membership', 11))),
-    'ordering_clause.py': ('079e02f456c85755ed00a1b3bd09e77abc4636bd14031f1fbe6a80e38d319bf2', (('comparison', 11),)),
+    'ordering_clause.py': ('0641b9097d914f769e2f197d5474458ba09863a487c840a31f891e213510e578', (('comparison', 12),)),
     'output_format.py': ('26890c3121f27cf156e8c5b36af86c828f7833cbf94cdba5b713b6b19798bcf1', (('comparison', 2),)),
     'output_policy.py': ('ceefc24436e75a0d5444bf9746c6a9eadf468ee0a425534b220f33ffa92f3281', (('comparison', 31), ('regex', 1))),
     'paired_device_arg_resolver.py': ('cd4703ea17ef7756b1b31dd403937bfd442dd81b40522bc9fd48d286bb6d3ce2', (('comparison', 2), ('regex', 1))),
@@ -613,7 +613,8 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'examined_content_receipts.py': ('cb3b694a19ff068fa68ff963647d05e0731d9c41adef6e37eec0d98634ec1151', (('comparison', 1), ('helper-argument', 1), ('regex', 1))),
     'scorecards.py': ('4419f5b6ce806b4cb3fe38b8b05b2ba3e094ef22b5d37fc7888cca43333a3336', (('comparison', 2),)),
     'notify_admin.py': ('9406cac514d6575bc84a4c83d3dff512d3e9092d0cd6cb49ce1549bffeeb95bc', (('comparison', 1), ('prefix-suffix', 1))),
-    'field_synonyms.py': ('75fe5590396b7fa41da6ccd1cf453b41db1c5f807260d9a4e22eed1489e60d2f', (('prefix-suffix', 1),)),
+    'field_synonyms.py': ('b7eea7e2cc029b7284fef1fdea08b447822ca2686ebb77ed358175165162f79c', (('prefix-suffix', 1),)),
+    'record_dates.py': ('d5089d7476d8bb98764e367468907cc3c3edfbaa86be7597b20d31f9a78211d9', (('comparison', 1), ('prefix-suffix', 1))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -957,7 +958,7 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
     "3fed6a619d6b87305ddabe37b639497fa0a94636c92849126ea1273d5dac268a", "4036e9b4e5bd839ccac0b501a506a39c766cf5d3507410664599a6e9a6ad36bc", "40a1a823a35318a6d41d2484e7e1eb9ef610aed7e7f49da72eb898f6ed0ea572", "40d172ea49df5fdbff7dd27650cd8df9d618b7bbffbf4839427ea56ca0af1f40",
     "40dffb312eed363efcb734dcb6e2a35b895fee7e2d630c7c1aff8e11e9e739bc", "412fc1e04fbfa00b5ccd2ca4574116d874c69a6462f502a54745e7bd56534395", "43612cc78f74b594eec202f5f2b2cce9bfdb51c113fe98baab2307174ae36e9e", "43d55ca2b856b628690a92ef9dbedf62ef617f73492f6510d21a2ada0313cacc",
     "441b20a85eedf98d85e2cfe0bbed1d5bcbdb3d90946eebe7484b22ca5d96778f", "449addc0bc38d8b4163f19ba7d16a2a76fe44cfe8eab28d01a75d9f238adf81f", "451ac7d000612216a0af7295b72dc19a021398b67d5e2297cef532b5ff577d07", "4549ae1d54cd0b317d67058f9ce5ce02a35fb279844e26e32a6849fe8de22589",
-    "458ea072d887ab029f0d86b82fd519249a16f59361d551115575e6ee2e7beefb", "45ab36ba6961c28cf01588e1998bfcfcb6f2afa12c8a48017e6147e77a1ed456", "4676c04e809951a769349f00846577ca2ed860d769d1aef5eeeda6d4762b7ec0", "474fc18221c812dbeb5eec3d8c13d366d383489a5e1040c0f61adae35809f01d",
+    "458ea072d887ab029f0d86b82fd519249a16f59361d551115575e6ee2e7beefb", "45ab36ba6961c28cf01588e1998bfcfcb6f2afa12c8a48017e6147e77a1ed456", "66caafa327b63be13c427d74c546101d76ef5005e06513bb92bd7962f1dc1ac8", "474fc18221c812dbeb5eec3d8c13d366d383489a5e1040c0f61adae35809f01d",
     "479b73618ddb00aa892f7eba7b9915350c5747ce6660b3e9bb5083627eedf572", "4819322ac00da62d4aa2431b6137c85c1c58740168bb8ab1a9622737da9f1c7e", "484f37176eebfe3c6ba06c202710fcfd7fc06412c8e1d54473e9477dd29489c6",
     "488f1977c5f28199f07ecf237085e1d884901c67596cc6e0422d5b10ded0eded", "495d5bde9f2448ab2e177412e3206bbc8b75490434a7f165cbe278bbe418d006", "4971c79f9e54c805fd3a2b44aea3d87bef122630e6fd1b5b94a1ae94803ecc75", "4a600b9b4bc5dfc6a048abd1feda64674169846722363b66dd8ab08eb7f6f6da",
     "4a707ff9b01734fb625e5f3ef63653330fc79c764520d49e606ab99561decfd2", "4ad993cee11d2dd2bb385ab4bf6a25e50a857ad14264d57fedfab2f5dfd4ffd9", "4b327b53c2d07b4c985ec559bf64d24759d682b190f0a142cbaadd8a74d36a6c", "4b8558a1b0f5a076227b4b0b0255cb632067dfa9c0121500bfaa1468dc8faa60",
@@ -1274,6 +1275,8 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed refusal codes of the final checks and the message key of each",
     "dd283acae7436c1b311108a589f2287e99a7d52bc42fd6382cf8421167fe924e":
         "names of Python calls that write, create, move or remove on disk",
+    "09685ff3b3fd8e7aed8bc392e5cc3221beeaee8ca1cdc86fbba092f819a817e9":
+        "closed keys under which a tool's output schema declares its rows",
 }
 VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = (
     VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS
@@ -1297,7 +1300,7 @@ VALUE_BOUND_TECHNICAL_LITERAL_FINGERPRINTS = frozenset({
     "505b8f43489e56b6318cf6cc4e26eb5dc43bb91cf6f1a2cb095cd1c174d2088e", "515b0aa97b4b9ef63fc1acc7d52b08f0e8ea4ec5a4a4825ed37012b4e74ab789", "51bb445b5314a7eec096363bc0a2fab34f6375ea5111f017c7e2c6e17845e6b4", "533f8d83592aa571470ad3bcec9064f77c818add3a20e905b5eeee4b9e3e722a",
     "547a1b9e353b09e40111cfd0785b87046c025dea3243fa962cf9e6f2b024d249", "549c606ac4614199306a81debad5a81e878ae50592eec61e77f3fc73a3f795de", "54af8df83f0ec3eae190849def214fb119cb6c196b1477cc27f44a8a26216497", "59ea74c7368ace28698c1a115f52d84f9ba56d5457961d587cec30b373169fa5",
     "5e7397e65e06b6bab4108b9e7357a4b320780166a9d690f57da942a457421a09", "601a9004bca39cb6e6b4cdfc8f8311ab7bbcad99a84d8c7167566db1dcc7789a", "61fb302b5a6c965a14d120e26624dc23140d7ceebc552748d789602311ab854f", "624481103cb40d0804a4cb27e89ab4e4e493673f4f43a142728abcdc2523a67e",
-    "64297458a49c57bc33a11734af113d6205d891ff7f0f88dbf5dbab88a40424c6", "64fe4793aa01d6593d4b297c5cddfd3893b4ea441fcf26324118ff61fdc6a1c8", "66d0b839c1fb70fc4f65ffcf818a713f58a31ab1d883af26fa8b43a2c3d2cff0", "6752e75425418776f278685e5d63fb98c512c0f577dfc4c2cafc69bfd29c2dda",
+    "64297458a49c57bc33a11734af113d6205d891ff7f0f88dbf5dbab88a40424c6", "64fe4793aa01d6593d4b297c5cddfd3893b4ea441fcf26324118ff61fdc6a1c8", "e6c402a35a54e408f56c11f183deb009e6dac5907bb0dec7a14ba57bd94b2bbd", "6752e75425418776f278685e5d63fb98c512c0f577dfc4c2cafc69bfd29c2dda",
     "6760f75456aa1fd46c0c3a171faa5a010a035b5931e2f655a7c325380f4013fc", "67ba0c6145b89265e412f7622e7e75ac7135b4fc36e5b734ab2abc5479b4a5f6", "69c66cfc435f4ad4b8d587e35f31e9250b847fc0a678fa3b4e02b96d7b108319", "69db7142bd0d4b874053af2c907564d4f2c5149b8aad81d3d0a86b339470dd26",
     "69f2689d49a853a298739020202202d4f7c7787d14bff08c61db7fae1a0d6d92", "6afb910f781d9a813c5b31cbacba67174ae6bbd184467bd8b9f9de6672e75458", "6b718d76e21e127b897d74c5926af49e855c1192bbb80494cdec85fb6d05fe30", "6b9eeecfc7e436621721a4d7daf03cb47b08878f068c4bc0b15236e404e650b6",
     "6bb4577e636eae37084abb396be2705056667d7dfb6ef3f18ce99cc7f6c66ddb", "6f0ead88df16fa6ab84cd1f48c92f7bbfd6b9e993f26829e61795c6006ec0ea9", "7074e73b40dbf89739ed5417601d0dadb0151a33b1daae23d9d0392fc8016b60", "71d8acf32400e387cd52a6012b829bb36646cd51e6ed003c5d80f046065fddf5",

@@ -216,6 +216,15 @@ argomenti dichiarati, con i valori ammessi e i valori predefiniti. Restano fuori
 solo gli argomenti di configurazione che risolve il runtime. Un argomento che il
 componente non vede non pu&ograve; entrare in un piano.</p>
 
+<p>Dello strumento riceve anche i campi delle righe che restituisce, cos&igrave; come
+il manifest li dichiara: un passo successivo nomina solo quelli, per esempio la
+colonna di un foglio o il campo su cui ordinare. Uno strumento che dichiara le
+righe senza i loro campi non ne mostra. Le righe di un passo arrivano al
+successivo con il solo riferimento al passo; un elenco che ripete quelle stesse
+righe non cambia il passaggio. Un passo che indica insieme tutte le righe di un
+passo e una scelta diversa fra quelle stesse righe non viene eseguito: lo dice e
+non tocca nulla.</p>
+
 <p>Prima dell'esecuzione, il motore risolve i riferimenti, i dati raccolti da un
 dialogo e i valori interni del runtime. Poi controlla le condizioni di ogni
 passo e invoca l'executor previsto. Passi indipendenti vengono

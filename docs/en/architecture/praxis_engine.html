@@ -206,6 +206,14 @@ all declared arguments with their allowed and default values. Only configuration
 arguments resolved by the runtime are left out. An argument the component
 cannot see cannot enter a plan.</p>
 
+<p>It also receives the fields of the rows the tool returns, as the manifest
+declares them: a later step names only those, for example the column of a sheet
+or the field to sort by. A tool that declares its rows without their fields
+shows none. The rows of a step reach the next one through the reference to the
+step alone; a list that repeats those same rows does not change the hand-over.
+A step that names both all the rows of a step and another choice among those
+same rows is not run: it says so and changes nothing.</p>
+
 <p>Before execution, the engine resolves references, data gathered through a
 dialog, and internal runtime values. It then checks each step's conditions and
 invokes the selected executor. Independent steps run in parallel only

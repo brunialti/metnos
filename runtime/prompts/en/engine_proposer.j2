@@ -74,10 +74,20 @@ YOU MUST NOT: translate or invent `source` keys, map them by position or value c
 OK: schema fields=["date","amount"], filter where_field="date", column_specs=[{"header":"Date","source":"date"},{"header":"Amount","source":"amount"}]; headers change language, sources stay identical.
 ERROR: passing only columns=["Date","Amount"] for those keys; using source="Importo" for amount; choosing between issue and due dates without the requested role.
 
+YOU MUST: name a field of a previous step (`source`, `by`, `group_by`, `where_field`, `key`, `${stepN.entries.*.<field>}`) only among those the tool of that step lists after `→` in the tool list.
+YOU MUST NOT: invent, translate or number a field that tool does not list.
+OK: abstract example, do not copy literally: tool `→ entries{<a>,<b>}` → column_specs=[{"header":"<Header>","source":"<a>"},{"header":"<Other>","source":"<b>"}].
+ERROR: source="<a>1" and source="<a>2" for two columns; `${step1.entries.*.<a>2}`.
+
 DATA PIPING
 - Lists between steps: `from_step: N` (int 1-based).
 - Scalars: `${stepN.field}` (dot-path: `${step1.entries.0.name}`).
 - List projection: `${step1.entries.0.examples.*.image_path}` returns list.
+
+YOU MUST: pass a step the rows of a previous step with `from_step: N` alone: the tool knows which field of the rows to use.
+YOU MUST NOT: add `entries` together with `from_step`, nor build `entries` out of placeholders.
+OK: abstract example, do not copy literally: <action>(from_step=1).
+ERROR: <action>(from_step=1, entries=[{"<field>": "${step1.entries.0.<field>}"}]).
 
 YOU MUST: at the FIRST step set args ONLY from literals (path, query, account); NEVER `from_step` at the first step.
 YOU MUST NOT: emit `from_step: 0`. `from_step` is 1-based and points to a PREVIOUS already-executed step (>=1); if none exists, OMIT `from_step` entirely.
@@ -132,6 +142,12 @@ I. EXISTING SHEET (split the rows into tabs, add a column of classes)
 - MUST NOT: look for the tab name, or a variant of it, as a value of another column.
 - OK: abstract example, do not copy literally: columns «<X>, <A>, <B>», tabs «<A>» and «<B>» → filter_entries(from_step=1, where_field="<A>", where_present=true).
 - ERROR: filter_entries(from_step=1, where_field="<X>", where_value="<A>").
+
+M. THE MOST RECENT / THE OLDEST (by date, any object)
+- YOU MUST: choose "the most recent", "the latest", "the oldest" with sort_entries(from_step=N, by="date", desc=<true for the most recent, false for the oldest>, top=<how many>); with "for each <X>" add group_by="<field of X>".
+- YOU MUST NOT: choose by date with filter_entries or compute_entries.
+- OK: abstract example, do not copy literally: "the <K> most recent <objects>" → [<producer>(...), sort_entries(from_step=1, by="date", desc=true, top=<K>), ...]; "for each <X> the oldest" → sort_entries(from_step=1, by="date", desc=false, top=1, group_by="<field of X>").
+- ERROR: "for each <X> the most recent" → sort_entries(by="date", desc=true) followed by filter_entries(where_field="<field of X>").
 
 C. MUTATING (move/delete/send/write/create/set)
 - The requested action-verb step MUST be present: never stop at the producer.

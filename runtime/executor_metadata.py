@@ -120,6 +120,76 @@ def output_schema(manifest: dict | None = None) -> str:
     return value.strip() if isinstance(value, str) else ""
 
 
+_RECORD_KEYS = ("entries", "results")
+
+
+def output_record(schema: str) -> tuple[str, tuple[str, ...]]:
+    """The rows a tool returns, as its `[output]` schema declares them: the
+    key that holds them (`entries` or `results`) and the field names of the
+    record inside `Array<{...}>`.
+
+    ("", ()) when the schema declares the rows without their fields
+    (`Array<object>`): nothing is guessed. Nested records, comments and types
+    are skipped; a `?` after a name only says the field may be absent.
+    """
+    if not isinstance(schema, str):
+        return "", ()
+    for key in _RECORD_KEYS:
+        position = 0
+        while True:
+            position = schema.find(key, position)
+            if position < 0:
+                break
+            before = schema[position - 1] if position else " "
+            rest = schema[position + len(key):].lstrip(" ?")
+            position += len(key)
+            if before.isalnum() or before == "_" or not rest.startswith(":"):
+                continue
+            body = rest[1:].lstrip()
+            opening = next((mark for mark in ("Array<{", "[{", "{")
+                            if body.startswith(mark)), None)
+            if opening is None:
+                break
+            names = _top_level_names(body[len(opening):])
+            if names:
+                return key, names
+            break
+    return "", ()
+
+
+def _top_level_names(body: str) -> tuple[str, ...]:
+    names: list[str] = []
+    depth, start, index, quote = 0, 0, 0, ""
+    pieces: list[str] = []
+    while index < len(body):
+        char = body[index]
+        if quote:
+            quote = "" if char == quote else quote
+        elif char in "'\"":
+            quote = char
+        elif char == "#":
+            # A comment runs to the end of its line and declares nothing.
+            end = body.find("\n", index)
+            end = len(body) if end < 0 else end
+            body = body[:index] + " " * (end - index) + body[end:]
+        elif char in "{[<(":
+            depth += 1
+        elif char in "}]>)":
+            if depth == 0:
+                break
+            depth -= 1
+        elif char == "," and depth == 0:
+            pieces.append(body[start:index])
+            start = index + 1
+        index += 1
+    pieces.append(body[start:index])
+    for piece in pieces:
+        name = piece.split(":", 1)[0].strip().rstrip("?").strip().strip("'\"")
+        if name and name.replace("_", "").isalnum() and name not in names:
+            names.append(name)
+    return tuple(names)
+
+
 def execution_policy(manifest: dict | None = None) -> dict:
     """Return the normalized, fail-closed executor execution policy.
 

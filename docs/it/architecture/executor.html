@@ -927,6 +927,21 @@ quasi totalit&agrave; delle manipolazioni che servono, senza dover
 introdurre verbi nuovi.
 </p>
 
+<p>
+Scegliere &laquo;il pi&ugrave; recente&raquo; o &laquo;il pi&ugrave; vecchio&raquo; &egrave; compito di
+<code>sort_entries</code>, e vale per ogni oggetto: ordina per data e tiene i primi
+(<code>by="date"</code>, <code>desc</code>, <code>top</code>). La data di un oggetto
+segue una sola regola: l'ultima modifica, se c'&egrave;; altrimenti la creazione;
+altrimenti la data che l'oggetto porta. Le date si confrontano come istanti,
+qualunque sia la forma in cui arrivano: un numero, una data con o senza fuso, la
+data di un messaggio. Con <code>group_by</code> la scelta si fa gruppo per gruppo
+(&laquo;la pi&ugrave; recente di ogni mittente&raquo;). Se gli oggetti non portano una data,
+o ne portano pi&ugrave; d'una senza che si sappia quale, lo strumento lo dice invece
+di scegliere. La ricerca dei duplicati segue la stessa regola: di ogni gruppo di
+file identici resta il pi&ugrave; vecchio e gli altri sono le copie, oppure il
+contrario a richiesta (<code>keep</code>); ogni riga riporta le due date.
+</p>
+
 <h2>7.4 <code>send_messages</code> &mdash; "manda un messaggio a un familiare"</h2>
 
 <p>

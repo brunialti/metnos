@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "delete_files"
-version     = "0.3.0"
+version     = "0.3.1"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -28,7 +28,7 @@ digest = "sha256:6ff34a57a05f8a2ffbefd14cfd44f8b5cf95cc4e1180891156d0234f13a1cd2
 [args]
 type     = "object"
 required = []
-requires_one_of = [["paths", "file_ids", "file_id", "entries"]]
+requires_one_of = [["paths", "file_ids", "file_id", "entries", "from_step"]]
 
 [args.properties.paths]
 type        = "array"
@@ -58,6 +58,7 @@ en = "Singular form of `file_ids` for Google Drive."
 [args.properties.entries]
 type = "array"
 items = { type = "object" }
+runtime_resolved = true
 
 [args.properties.entries.description]
 it = "Record risolti dal runtime: path locali oppure ID Drive, secondo il client finale."

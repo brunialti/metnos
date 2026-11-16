@@ -19,6 +19,11 @@ TRANSLATIONS = {
     'ERR_FILTER_WHERE_TEST': (
         'La selezione nomina il dato «{field}» ma non dice che cosa deve valere: manca il criterio.',
         'The selection names «{field}» but does not say what it must hold: the test is missing.'),
+    'ERR_FROM_STEP_CONTRADICTED': (
+        'Non ho eseguito questo passo: il piano indicava insieme tutti i risultati del passo {step} e una parte '
+        'soltanto di quelli. Nulla è stato modificato.',
+        'This step was not run: the plan named both all the results of step {step} and only some of them. '
+        'Nothing was changed.'),
     'MSG_TERM_UNKNOWN_FIELD_ACTION': (
         'Posso scegliere solo in base ai dati elencati: riformula la richiesta con uno di quelli',
         'I can select only by the data listed: rephrase the request with one of those'),

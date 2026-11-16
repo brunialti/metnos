@@ -783,6 +783,8 @@ from from_step_projection import (  # noqa: E402
     consumer_match_arg as _consumer_match_arg,
     from_step_alternatives as _from_step_alternatives,
     has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
+    without_restated_rows as _without_restated_rows,
+    contradiction_refusal as _contradiction_refusal,
     project_from_entries as _project_from_entries,
 )
 from tabular_records import (  # noqa: E402
@@ -1073,6 +1075,7 @@ def _resolve_from_step(args: dict, history: list[StepRun],
     consumer-arg (parità con agent_runtime.resolve_from_step Layer 4)."""
     if "from_step" not in args:
         return args
+    args = _without_restated_rows(args)
     # Un target esplicito dichiarato dal manifest prevale sul piping: espandere
     # anche from_step potrebbe allargare involontariamente un'azione mutante.
     if _has_explicit_from_step_alternative(args, consumer_schema):
@@ -2759,6 +2762,18 @@ class Executor:
                 result.steps,
                 consumer_schema=self._schema_map.get(step.tool),
             )
+            # A step that names all the rows of a step and another choice
+            # among those same rows is not run: which was meant cannot be
+            # told, and guessing would act on the wrong records.
+            _refusal = _contradiction_refusal(_step_args)
+            if _refusal is not None:
+                log.warning("Executor: %s names the rows of step %s twice, "
+                            "differently: not run", step.tool,
+                            _step_args.get("from_step"))
+                result.steps.append(StepRun(
+                    step_idx=len(result.steps) + 1, tool=step.tool,
+                    args=_step_args, ok=False, latency_ms=0, result=_refusal))
+                continue
             # Resolve in ordine: from_step → stepref → fillers → runtime
             args = _resolve_from_step(
                 _step_args, result.steps,

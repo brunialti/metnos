@@ -178,6 +178,32 @@ def resolve_field(key_text: str, entries: list) -> Optional[str]:
     for cand in (kt, kt.replace(" ", "_")):
         if cand in keys:
             return keys[cand]
+    # 1b. a date: one rule for every object (`record_dates`). A name that
+    # says which date (the last change, the making) is looked for under the
+    # names producers give that one; the plain word is the record's date.
+    # When the rule finds none, the name is still tried as any other name.
+    if is_date_term(kt):
+        from record_dates import DATE_ROLES, date_field, holds_dates
+        name = kt.replace(" ", "_")
+        specific = next((group for role, group in DATE_ROLES
+                         if role != "dated" and name in group), None)
+        if specific is not None:
+            dated = next((keys[field.casefold()] for field in specific
+                          if field.casefold() in keys
+                          and holds_dates(entries, keys[field.casefold()])), None)
+        else:
+            dated = date_field(entries)
+            dated = keys.get(dated.casefold(), dated) if dated else None
+        if dated:
+            return dated
+    # 1c. the same field under the name another producer gives it
+    # (`field_synonyms`), when the records carry exactly one such variant.
+    from field_synonyms import field_group
+    variants = [keys[name] for name in dict.fromkeys(
+        variant.casefold() for variant in field_group(kt.replace(" ", "_"))[1:])
+        if name in keys]
+    if len(variants) == 1:
+        return variants[0]
     # 2. famiglie di sinonimi (qualunque token della chiave)
     tokens = set(kt.split()) | {kt}
     lexicon = _parser_lex.load_family("ordering")
@@ -197,6 +223,20 @@ def resolve_field(key_text: str, entries: list) -> Optional[str]:
             if len(lk) >= 3 and (tok in lk or lk in tok):
                 return real
     return None
+
+
+def is_date_term(key_text: str) -> bool:
+    """The person's word, or the field name, asks for the date of a record."""
+    kt = (key_text or "").strip().casefold()
+    if not kt:
+        return False
+    from record_dates import DATE_FIELDS
+    if kt.replace(" ", "_") in DATE_FIELDS:
+        return True
+    lexicon = _parser_lex.load_family("ordering")
+    aliases = (lexicon or {}).get("parser.ordering.field_alias", {})
+    words = {str(item).casefold() for item in aliases.get("date", ())}
+    return bool((set(kt.split()) | {kt}) & words)
 
 
 # ── 3. Normalizzazione del Framework (qualunque layer) ───────────────────

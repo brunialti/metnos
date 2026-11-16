@@ -45,6 +45,8 @@ _HASH_CHUNK_BYTES = 1024 * 1024
 _SAMPLE_CHUNK_BYTES = 16 * 1024
 _MAX_IO_WORKERS = 32
 _CACHE_SCHEMA_VERSION = 1
+# Which file of a group of identical ones stays, by its date: the original.
+_KEEP = ("oldest", "newest")
 
 
 @dataclass(frozen=True)
@@ -455,6 +457,16 @@ def invoke(args):
             "error": _msg("ERR_ARG_NOT_LIST_OF", arg="patterns", of="strings"),
         }
 
+    keep = args.get("keep") or "oldest"
+    if keep not in _KEEP:
+        return {
+            "ok": False,
+            "error_class": "invalid_input",
+            "error_code": "arg_invalid",
+            "error": _msg("ERR_ARG_ENUM", arg="keep",
+                          allowed=", ".join(_KEEP)),
+        }
+
     max_depth, error = _nonnegative_int(args, "max_depth", 0)
     if error:
         return error
@@ -618,27 +630,40 @@ def invoke(args):
         except sqlite3.Error:
             pass
 
+    # Which of the identical files stays is a matter of date: a file's date
+    # is its last change (`record_dates`); the original is the oldest and the
+    # copies came after it, or the other way round when the newest is the one
+    # to keep. The name only settles a tie.
+    def _changed(path: Path) -> int:
+        return stamps_by_path[path].mtime_ns
+
+    newest_first = keep == "newest"
     groups: list[tuple[int, str, list[Path]]] = []
     for (size, digest), paths in by_hash.items():
         if len(paths) > 1:
-            groups.append((size, digest, sorted(paths, key=lambda p: str(p).casefold())))
+            groups.append((size, digest, sorted(
+                paths, key=lambda p: (
+                    -_changed(p) if newest_first else _changed(p),
+                    str(p).casefold()))))
     groups.sort(key=lambda group: (-group[0], group[1], str(group[2][0]).casefold()))
 
     relations: list[dict] = []
     duplicate_files_count = 0
     redundant_bytes = 0
     for size, digest, paths in groups:
-        original = paths[0]
+        kept = paths[0]
         group_count = len(paths)
         duplicate_files_count += group_count
         redundant_bytes += size * (group_count - 1)
         for duplicate in paths[1:]:
             relations.append({
                 "path": str(duplicate),
-                "duplicate_of": str(original),
+                "duplicate_of": str(kept),
                 "size": size,
                 "sha256": digest,
                 "group_count": group_count,
+                "mtime": _changed(duplicate) / 1e9,
+                "duplicate_of_mtime": _changed(kept) / 1e9,
             })
 
     redundant_files_count = len(relations)
@@ -683,6 +708,7 @@ def invoke(args):
             "patterns": patterns,
             "recursive": recursive,
             "case_sensitive": case_sensitive,
+            "keep": keep,
             # No timings here: the same files must give the same result
             # however long the machine took (a result that changed with the
             # load made the equivalence proof fail by itself, 12/11/2026).

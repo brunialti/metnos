@@ -2486,6 +2486,8 @@ def _lookup_field(obj, dotted):
 from from_step_projection import (  # noqa: E402
     CONTEXT_ERRORS_KEY as _FROM_STEP_CONTEXT_ERRORS_KEY,
     has_explicit_from_step_alternative as _has_explicit_from_step_alternative,
+    without_restated_rows as _without_restated_rows,
+    contradiction_refusal as _contradiction_refusal,
     project_from_entries as _project_from_entries,
 )
 
@@ -2591,6 +2593,11 @@ def resolve_from_step(args, history, consumer_schema=None):
             "ERR_FROM_STEP_TYPE",
             actual_type=type(fs).__name__, value=repr(fs)))
         return args, errors
+    _refusal = _contradiction_refusal(args)
+    if _refusal is not None:
+        errors.append(_refusal["error"])
+        return args, errors
+    args = _without_restated_rows(args)
     # Un target esplicito dichiarato dal manifest prevale sul piping: espandere
     # anche from_step potrebbe allargare involontariamente un'azione mutante.
     if _has_explicit_from_step_alternative(args, consumer_schema):

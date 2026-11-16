@@ -857,6 +857,21 @@ count). The three primitives together cover almost every list
 manipulation without inventing new verbs.
 </p>
 
+<p>
+Choosing &ldquo;the most recent&rdquo; or &ldquo;the oldest&rdquo; is the job of
+<code>sort_entries</code>, and it works for every object: it sorts by date and
+keeps the first ones (<code>by="date"</code>, <code>desc</code>, <code>top</code>).
+The date of an object follows one rule: its last modification when there is
+one; otherwise its creation; otherwise the date the object carries. Dates are
+compared as instants whatever their form: a number, a date with or without a
+zone, the date of a message. With <code>group_by</code> the choice is made group
+by group (&ldquo;the most recent of each sender&rdquo;). When the objects carry no
+date, or more than one with nothing to tell which is meant, the tool says so
+instead of choosing. The duplicate search follows the same rule: of each group
+of identical files the oldest stays and the others are the copies, or the other
+way round on request (<code>keep</code>); every row reports both dates.
+</p>
+
 <h2>7.4 <code>send_messages</code> &mdash; &laquo;send a message to a family member&raquo;</h2>
 
 <p>

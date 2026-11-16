@@ -729,10 +729,16 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
         # Uno spreadsheet dichiara il proprio schema attraverso `columns`.
         # Se il planner ha preservato la richiesta naturale ma non l'argomento,
         # usa gli stessi campi che guideranno l'extract intermedio.
+        # A sheet whose columns the planner declared with their sources
+        # (`column_specs`) has its schema already: words read from the
+        # sentence must not be laid over it. Planned on 16/11/2026: «a sheet
+        # with two columns (…), create the subfolder …, move there …» gave
+        # six `columns` beside two declared ones, and the sheet refused.
+        from tabular_records import has_explicit_column_sources as _declares
         if _sink_fields or _derived_fields:
             for _sink in _spreadsheet_sinks:
                 _sa = dict(getattr(_sink, "args", None) or {})
-                if not _sa.get("columns"):
+                if not _sa.get("columns") and not _declares(_sa):
                     _sa["columns"] = list(_sink_fields or _derived_fields)
                     _sink.args = _sa
         _need_by_structure = False
@@ -740,7 +746,8 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
             _has_reader = any((s.tool or "") in _CONTENT_READERS for s in steps)
             _has_col_sink = any(
                 _verb(s) in ("create", "write")
-                and (getattr(s, "args", None) or {}).get("columns")
+                and ((getattr(s, "args", None) or {}).get("columns")
+                     or _declares(getattr(s, "args", None) or {}))
                 for s in steps)
             # A site page is never a table and an authenticated one is refused
             # by the sink: the records are extracted even with no declared

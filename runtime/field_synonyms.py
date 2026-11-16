@@ -25,7 +25,14 @@ FIELD_SYNONYMS = {
     "content":    ["body", "text", "description", "summary"],
     "body":       ["content", "text", "description"],
     "text":       ["content", "body"],
-    "date":       ["start", "created_at", "modified_at", "ts"],
+    "date":       ["start", "modified_at", "created_at", "ts", "date_epoch"],
+    # When a record was last changed and when it was made, under the names
+    # producers use. `record_dates` reads a record's date from these groups:
+    # the last change first, then the making, then the date it carries.
+    "modified_at": ["mtime", "updated_at", "modified_time", "updated",
+                    "mtime_epoch", "date_modified_epoch"],
+    "created_at":  ["created_time", "taken_at", "created",
+                    "date_created_epoch"],
     "start":      ["date", "start_time", "begin"],
     "end":        ["end_time", "until", "finish"],
     "basename":   ["name", "filename"],

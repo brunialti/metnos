@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "move_files"
-version     = "0.11.1"
+version     = "0.11.2"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -43,6 +43,7 @@ en = "Integer >=1 for the previous step; the runtime resolves it to the `entries
 [args.properties.entries]
 type        = "array"
 items       = { type = "object" }
+runtime_resolved = true
 
 [args.properties.entries.description]
 it = "Lista risolta dal runtime di file da spostare; ogni elemento deve contenere `path` oppure `src` e può fornire metadati usati da `dst_template`."

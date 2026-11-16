@@ -5,15 +5,15 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "sort_entries"
-version     = "0.1.0"
+version     = "0.2.0"
 author      = "Roberto Brunialti"
 affinity        = ["sort", "ordina", "ordinare", "sort_by", "rank", "classifica", "top", "primi", "first", "ultimi", "last", "biggest", "piu", "grandi", "popolose", "recenti", "vecchi"]
 revertible      = false
 lifecycle       = "active"
 
 [description]
-it = "SCOPO: ordina entries in memoria. PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: ordine persistente; aggregati -> compute_entries; filtri -> filter_entries. OUT: {entries,count,total_input,sorted_by,desc,truncated}."
-en = "SCOPO: sorts entries in memory. PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: persistent order; aggregates -> compute_entries; filters -> filter_entries. OUT: {entries,count,total_input,sorted_by,desc,truncated}."
+it = "SCOPO: ordina entries e tiene i primi N: i più grandi, recenti o vecchi, anche per gruppo. PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: ordine persistente; aggregati -> compute_entries; filtri -> filter_entries. OUT: {entries,count,total_input,sorted_by,desc,grouped_by,truncated}."
+en = "SCOPO: sorts entries and keeps the first N: largest, most recent, oldest, also per group. PATTERN: sort_entries(entries=[...], by='size', desc=true, top=3). NON: persistent order; aggregates -> compute_entries; filters -> filter_entries. OUT: {entries,count,total_input,sorted_by,desc,grouped_by,truncated}."
 
 [code]
 files  = ["sort_entries.py"]
@@ -34,24 +34,31 @@ en = "List of homogeneous dicts to sort. Typically passed via from_step=N (the r
 type        = "string"
 
 [args.properties.by.description]
-it = "Campo su cui ordinare (es. size, mtime, account). Un termine naturale viene associato dal resolver condiviso al campo reale quando univoco."
-en = "Field to sort by (e.g. size, mtime, account). A natural term is mapped by the shared resolver to the real field when unambiguous."
+it = "Campo su cui ordinare (es. size, account). by='date' vale per ogni oggetto: è la sua data di ultima modifica, se c'è, altrimenti di creazione. Un termine naturale viene associato al campo reale quando univoco."
+en = "Field to sort by (e.g. size, account). by='date' works for every object: it is its last-modified date when there is one, otherwise its creation date. A natural term is mapped to the real field when unambiguous."
 
 [args.properties.desc]
 type        = "boolean"
 default     = false
 
 [args.properties.desc.description]
-it = "Se true, ordine discendente (piu' grande/recente prima). Default false (ascendente)."
-en = "If true, descending order (larger/more recent first). Default false (ascending)."
+it = "Se true, ordine discendente: il più grande o il più recente prima. Default false: il più piccolo o il più vecchio prima."
+en = "If true, descending order: the largest or the most recent first. Default false: the smallest or the oldest first."
 
 [args.properties.top]
 type        = "integer"
 minimum     = 0
 
 [args.properties.top.description]
-it = "Se positivo, ritorna solo i primi N elementi dopo il sort. Es. top=3 + desc=true = top-3 più grandi. Ometti o usa 0 per nessun cap."
-en = "If positive, returns only the first N items after sorting. E.g. top=3 + desc=true = the top three largest. Omit it or use 0 for no cap."
+it = "Se positivo, ritorna solo i primi N elementi dopo il sort; con group_by, i primi N di ogni gruppo. Es. top=3 + desc=true = i tre più grandi. Ometti o usa 0 per nessun cap."
+en = "If positive, returns only the first N items after sorting; with group_by, the first N of each group. E.g. top=3 + desc=true = the three largest. Omit it or use 0 for no cap."
+
+[args.properties.group_by]
+type        = "string"
+
+[args.properties.group_by.description]
+it = "Campo che forma i gruppi («per ogni mittente», «per ogni cartella»): tiene i primi top di ogni gruppo, uno solo se top manca. Es. by='date', desc=true, top=1, group_by='from' = la più recente di ogni mittente. Ometti per l'elenco intero."
+en = "Field that forms the groups ('for each sender', 'for each folder'): keeps the first top of each group, only one when top is missing. E.g. by='date', desc=true, top=1, group_by='from' = the most recent of each sender. Omit it for the whole list."
 
 [args.properties.value_type]
 type        = "string"
@@ -59,8 +66,8 @@ enum        = ["auto", "date"]
 default     = "auto"
 
 [args.properties.value_type.description]
-it = "Semantica del valore: auto mantiene il confronto storico; date ordina prima le date ISO valide, poi i valori testuali non interpretabili e infine i mancanti."
-en = "Value semantics: auto preserves historical comparison; date orders valid ISO dates first, then unparsed text and finally missing values."
+it = "Semantica del valore: auto riconosce da solo un campo di date e le confronta come istanti, qualunque sia la loro forma; date lo impone anche se il campo contiene altro testo, che va dopo le date."
+en = "Value semantics: auto recognises a field of dates by itself and compares them as instants, whatever their form; date forces it even when the field holds other text, which goes after the dates."
 
 [output]
 schema_inline = """
@@ -71,6 +78,9 @@ schema_inline = """
   total_input?: int,
   sorted_by?: str,
   requested_by?: str,
+  grouped_by?: str,
+  requested_group_by?: str,
+  group_count?: int,
   value_type?: str,
   unparsed_count?: int,
   desc?: bool,
@@ -117,3 +127,23 @@ expect = { ok = true, metadata_field_eq = { count = 0 } }
 name   = "invalid_entries_is_classified"
 input  = { entries = "not-a-list", by = "size" }
 expect = { ok = false, field_eq = { error_class = "invalid_input", error_code = "entries_not_list" } }
+
+[[tests]]
+name   = "data_come_istante_non_come_testo"
+input  = { entries = [{id = "vecchia", date = "Mon, 02 Nov 2026 10:00:00 +0100"}, {id = "nuova", date = "Fri, 13 Nov 2026 09:00:00 +0100"}, {id = "media", date = "Wed, 11 Nov 2026 09:00:00 +0100"}], by = "date", desc = true, top = 1 }
+expect = { ok = true, entries_field_eq = { 0 = { id = "nuova" } }, metadata_field_eq = { count = 1, value_type = "date" } }
+
+[[tests]]
+name   = "ultima_modifica_prima_della_creazione"
+input  = { entries = [{id = "a", created_at = "2026-01-01T00:00:00Z", updated_at = "2026-11-10T00:00:00Z"}, {id = "b", created_at = "2026-06-01T00:00:00Z", updated_at = "2026-06-02T00:00:00Z"}], by = "date", desc = true, top = 1 }
+expect = { ok = true, entries_field_eq = { 0 = { id = "a" } }, metadata_field_eq = { sorted_by = "updated_at" } }
+
+[[tests]]
+name   = "il_piu_recente_di_ogni_gruppo"
+input  = { entries = [{g = "x", id = "x1", mtime = 1763000000.0}, {g = "y", id = "y1", mtime = 1763500000.0}, {g = "x", id = "x2", mtime = 1763900000.0}], by = "date", desc = true, top = 1, group_by = "g" }
+expect = { ok = true, entries_field_eq = { 0 = { id = "x2" }, 1 = { id = "y1" } }, metadata_field_eq = { count = 2, group_count = 2, grouped_by = "g" } }
+
+[[tests]]
+name   = "data_chiesta_ma_assente"
+input  = { entries = [{name = "a"}, {name = "b"}], by = "date", desc = true, top = 1 }
+expect = { ok = false, field_eq = { error_class = "invalid_input", error_code = "no_record_date" } }
