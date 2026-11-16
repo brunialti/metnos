@@ -298,6 +298,15 @@ def _first_step_error_code(failed_run: Optional[RunResult]) -> str:
     return ""
 
 
+def _is_tools_own_code(code: str) -> bool:
+    """The refusal code was chosen by the tool, not filed by a provider
+    wrapper under the generic code of an error class."""
+    if not code:
+        return False
+    from skill_wrapper import ERROR_CODE_BY_CLASS
+    return code not in ERROR_CODE_BY_CLASS.values()
+
+
 class SimpleTerminator:
     """Default: errore concreto dello step fallito (§2.8), altrimenti template
     fisso per classe errore + record lacuna."""
@@ -316,8 +325,17 @@ class SimpleTerminator:
         # A missing remote capability already has a structured class, so use
         # the existing localized out-of-scope wording instead of exposing the
         # provider traceback (or coupling behavior to its prose).
+        # A tool that refuses with a code of its own worded the refusal
+        # itself, in the language of the instance: those are the words to
+        # give («on this machine only its administrator installs programs»,
+        # turn b9a5bbad, 16/11/2026, was replaced by «needs a physical
+        # action»). A provider wrapper files a failure under the one code of
+        # its class, and its text is the provider's trace.
+        tool_worded = False
         if step_error_class == "capability_missing":
-            step_err = ""
+            tool_worded = bool(step_err) and _is_tools_own_code(step_error_code)
+            if not tool_worded:
+                step_err = ""
         action_key = _ERROR_ACTION_KEYS.get(step_error_code)
         if action_key:
             action = _msg(action_key)
@@ -327,7 +345,7 @@ class SimpleTerminator:
             action = _msg("MSG_CHAT_FB_RETRY")
         # A concrete user-action failure already carries the executor instruction.
         # Recovery out_of_scope must not invent a physical/capability remedy.
-        concrete_user_action = (
+        concrete_user_action = tool_worded or (
             step_error_class in ("needs_user_action", "filesystem_permission")
             and bool(step_err))
         if concrete_user_action:
