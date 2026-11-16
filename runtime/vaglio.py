@@ -235,6 +235,41 @@ def _filesystem_guard_scope(executor_name: str, args: dict, executor):
     return (set() if unbounded_write else read_args - write_args), path_values, writes
 
 
+def _among_peoples_files(path: str, is_system_tree) -> bool:
+    """True when ``path`` is one of the files this installation keeps for
+    its people, though the host puts them under one of its own trees.
+
+    A service account has its home under ``/var``: the work folders of the
+    people (``config.PATH_WORKSPACE``) then sit inside a tree that is the
+    host's by name only (Roberto, 16/11/2026: for two months no writing tool
+    could touch a person's own file by its full path). The path as written
+    and the place it really leads to must each be either inside those
+    folders or outside every host tree: a link that leaves them for a host
+    tree stays refused. The service's own configuration and state are a
+    separate rule, checked before this one.
+    """
+    try:
+        named = os.path.normpath(str(_C.PATH_WORKSPACE))
+        roots = {named, os.path.realpath(named)}
+    except (OSError, ValueError):
+        return False
+
+    def _inside(candidate: str) -> bool:
+        return any(candidate == root or candidate.startswith(root + os.sep)
+                   for root in roots)
+
+    written = os.path.normpath(path)
+    if not os.path.isabs(written):
+        return False
+    try:
+        real = os.path.realpath(written)
+    except (OSError, ValueError):
+        return False
+    if not (_inside(written) or _inside(real)):
+        return False
+    return all(_inside(form) or not is_system_tree(form) for form in (written, real))
+
+
 def check_executor_guard(guard, executor_name: str, args: dict, *, executor=None):
     """Bind catalog authority only to the standard guard; keep legacy callbacks.
 
@@ -292,7 +327,8 @@ def guard_check(executor_name: str, args: dict, context: dict | None = None,
                     candidates.extend(_flatten_str_values(value))
             for candidate in candidates:
                 s = _expand_user(candidate)
-                if is_protected_path(s):
+                if is_protected_path(s) and not _among_peoples_files(
+                        s, is_protected_path):
                     return False, (f"path protetto di sistema: {s!r} "
                                    f"(albero riservato al SO host)")
         except ImportError:

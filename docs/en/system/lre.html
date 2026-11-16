@@ -66,11 +66,12 @@ plan still passes through all admission checks.</p>
  <thead><tr><th>Condition</th><th>Metnos decision</th></tr></thead>
  <tbody>
   <tr><td>The plan contains no action above the threshold.</td><td>Metnos uses the ordinary interactive path. LRE is not involved.</td></tr>
-  <tr><td>The plan contains one independent long action; its executor is active, signed, and deterministic; its arguments, effect, and destination can be frozen.</td><td>Metnos creates the LRE plan during the turn, queues the workload, and returns a receipt. No profile is required.</td></tr>
+  <tr><td>The plan contains one long action that needs nothing from another step; its executor is active, signed, and deterministic; its arguments, effect, and destination can be frozen.</td><td>Metnos creates the LRE plan for that action during the turn, queues the workload, and returns a receipt. No profile is required.</td></tr>
+  <tr><td>The same request asks for more than the long action, such as “find the duplicate files in this folder and put the pairs in a spreadsheet”.</td><td>The long action goes to LRE. When it ends, Metnos <a href="#rest-of-request">carries out the rest of the request</a> on its result and writes one answer in the same conversation.</td></tr>
   <tr><td>The workload has an integrated LRE plan, such as photo indexing.</td><td>Metnos uses that resumable plan, with its steps and model bindings defined before startup. Access checks and resource limits still apply.</td></tr>
   <tr><td>The long action first requires approval.</td><td>Metnos suspends execution and requests approval. After approval, it checks the resumed plan again and, when eligible, hands it to LRE exactly once.</td></tr>
   <tr><td>The instance switch is disabled.</td><td>No new workload enters LRE. Ordinary chat and access to existing workload history continue to work.</td></tr>
-  <tr><td>The workload has no integrated LRE plan and contains dependent actions, unresolved references, a model binding that is not fully frozen, or an ambiguous remote destination.</td><td>Metnos states that the long workload was not started. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
+  <tr><td>The long action needs the result of another step, or a value known only in the conversation such as “this folder”; the request holds several long actions; a step that may change something comes before the long action; or the action has a model binding that is not fully frozen or an ambiguous remote destination.</td><td>Metnos states that nothing was started, names the long action and says which part to ask for first. It neither executes the long part through the interactive path nor promises recovery it cannot guarantee.</td></tr>
   <tr><td>Configuration is invalid or the execution service is unavailable.</td><td>Admission fails with a precise explanation. No unit bypasses the check.</td></tr>
  </tbody>
 </table>
@@ -309,6 +310,27 @@ unit: LRE can govern its attempt but cannot create internal recovery points.
 If a budget is exhausted, the workload exposes a structured state rather than
 pretending that coverage is complete.</p>
 
+<h3 id="rest-of-request">The rest of a request</h3>
+
+<p>A request can join a long action with ordinary steps: find the duplicates
+and list them in a spreadsheet, count the files of a folder and then look for
+identical images. Only the long action becomes an LRE workload. Metnos keeps
+the plan of the turn with the request and, when the workload ends, runs the
+whole plan in the same conversation, with the long action answered by the
+result the workload produced. The steps go through the same checks as in an
+ordinary turn, and the conversation receives one answer for the whole
+request: in the open page, or in your Telegram chat when you are away from
+it.</p>
+
+<ul>
+ <li><strong>Order.</strong> The long action may be followed by any step. It may be preceded only by steps that read, because the whole plan runs after the workload has ended.</li>
+ <li><strong>Deleting and moving.</strong> A workload may end when you are not looking. Before the first deletion or move, Metnos therefore always asks for confirmation, with the number of items, however few they are. With a yes it acts on exactly the result it showed; with a no it does nothing else. A request made in the web chat is confirmed there; one made on Telegram receives the buttons in that chat. The question expires after an hour.</li>
+ <li><strong>Durability.</strong> LRE guarantees the long action. The rest runs once, like an ordinary turn: if the service stops while it is running, nothing is repeated and the conversation is told that the rest was interrupted.</li>
+ <li><strong>When the workload does not end well.</strong> A failed workload says that the rest was not carried out. A workload waiting for your attention keeps the rest due until it is resumed.</li>
+ <li><strong>When a later step fails.</strong> What the long action found is not lost: the answer shows it as that action alone would, then names the step that failed and why. Nothing after that step runs.</li>
+ <li><strong>Other questions.</strong> If a later step needs something else from you, such as a form, the rest stops there and the answer says so.</li>
+</ul>
+
 <h2 id="executors">Local, remote, and intelligent executors</h2>
 
 <p>Each stage declares <em>where</em> and <em>how</em> it may run. A local executor
@@ -410,7 +432,7 @@ can be added without losing traceability or safety.</p>
 <table>
  <thead><tr><th>Current limitation</th><th>Practical effect</th><th>Correct extension path</th></tr></thead>
  <tbody>
-  <tr><td>Automatic compound plans</td><td>The current automatic path queues one independent long action. A plan with several executable steps or unresolved dependencies is not started.</td><td>Compile the whole final plan into LRE's typed graph, with explicit references and checks; do not preserve it as an opaque batch.</td></tr>
+  <tr><td>Requests that join a long action with other steps</td><td>LRE runs one long action per request; the other steps run afterwards as an ordinary turn and are not resumable. A request is not started when it holds several long actions, when the long action needs another step's result, or when a step that may change something comes before it.</td><td>Compile the whole final plan into LRE's typed graph, with explicit references and checks; do not preserve it as an opaque batch.</td></tr>
   <tr><td>Intelligent executors</td><td>The direct path currently excludes language- and vision-model executors without a complete immutable binding.</td><td>Freeze prompt, language, model, call limits, tokens, and cost in the same contract, then use the same general interface.</td></tr>
   <tr><td>Implicit remote destination</td><td>An executor that can run only on a device is not queued until the exact device has been resolved.</td><td>Name the device in the request or add deterministic, verifiable resolution before admission.</td></tr>
   <tr><td>Monolithic executor</td><td>LRE sees one unit and cannot resume halfway through an undeclared internal loop.</td><td>Expose the work as general, identifiable, idempotent units or as a batched reduction; do not add domain-specific cases.</td></tr>

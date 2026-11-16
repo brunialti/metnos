@@ -559,7 +559,7 @@ def _process_completion_callback(sender_id: str, dialog_id: str,
     callback = callback if isinstance(callback, dict) else {}
     gated = callback.get("type") in {
         "gate_dispatch", "managed_dependency_resume", "resume_engine_gate",
-        "resume_executor_gate_tail",
+        "resume_executor_gate_tail", "resume_lre_rest",
     }
     nonce = str(callback.get("nonce") or dialog_id)
     if gated:
@@ -783,6 +783,9 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         return _process_resume_executor_gate_tail(
             on_complete, values, actor=actor, channel=channel,
         )
+
+    if callback_type == "resume_lre_rest":
+        return _process_resume_lre_rest(on_complete, values)
 
     if callback_type == "defer_turn":
         # Fase 7 A.1: consenso al DIFFERIMENTO di un turno su device offline.
@@ -1454,7 +1457,10 @@ def _consegna_esito_tardivo(futuro, *, channel: str | None,
                            path=list(res.path or []),
                            attachments=list(res.attachments or []),
                            gallery_url=res.gallery_url,
-                           n_total_matches=res.n_total_matches)
+                           n_total_matches=res.n_total_matches,
+                           # A late turn that ends with a question keeps its
+                           # form: the page layer attests it for the owner.
+                           inline_dialog_ids=list(res.inline_dialog_ids or []))
         # Qui siamo nel filo del lavoro, non in quello che gira l'attesa. Le
         # code su cui poggia lo stream verso la chat appartengono a
         # quest'ultimo e non si toccano da fuori: metterci dentro qualcosa
@@ -2112,6 +2118,25 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
                         failure={"ok": False,
                                  "error_class": "continuation_failed",
                                  "error_type": type(ex).__name__})
+
+
+def _process_resume_lre_rest(on_complete: dict, values: dict):
+    """The consent asked after a long job: on a yes the steps after the
+    question run on the result the job produced, with what the earlier steps
+    observed; on a no nothing else happens (``lre_answers``)."""
+    try:
+        import lre_answers
+        turn = lre_answers.resume_after_consent(on_complete, values)
+    except (ImportError, LookupError, RuntimeError, TypeError, ValueError) as ex:
+        log.exception("orchestration: resume_lre_rest fallito")
+        return _msg("MSG_ORCH_CONTINUATION_FAILED",
+                    detail=f"{type(ex).__name__}: {ex}")
+    if turn is None:
+        return _msg("MSG_GATE_NO_ACTION")
+    out = _completion_from_turnlog(turn)
+    if not out.text:
+        out.text = _msg("MSG_ORCH_CONTINUATION_DONE")
+    return out
 
 
 def _process_resume_engine_gate(on_complete: dict, values: dict, *,

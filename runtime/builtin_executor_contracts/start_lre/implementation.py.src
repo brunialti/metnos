@@ -22,6 +22,8 @@ from durable_workloads.direct_invocation import (
     DirectInvocationUnsupported,
     build_direct_candidate,
     is_intrinsically_long,
+    references_runtime,
+    references_step,
 )
 from durable_workloads.schema import MAX_PLAN_JSON_BYTES, digest_json
 from durable_workloads.source_authority import SourceAuthority
@@ -231,11 +233,82 @@ def _catalog_by_name(catalog: object) -> dict[str, object]:
     }
 
 
-def _automatic_error(code: str, *, error_class: str) -> dict:
+def _automatic_error(code: str, *, error_class: str, **values) -> dict:
     result = _failure(code, error_class=error_class)
+    if values:
+        result["error"] = _msg(code, **values)
     result["decision"] = "rejected"
     result["final_message_hint"] = result["error"]
     return result
+
+
+def _plan_refusal(code: str = "ERR_LRE_PLAN_NOT_ADMISSIBLE", **values) -> dict:
+    """The long step and the other steps cannot be carried together: nothing
+    is started, and the words say which part to ask for first."""
+    return _automatic_error(code, error_class="plan_not_admissible", **values)
+
+
+def _only_reads(steps, executors) -> bool:
+    """Every executable step declares that, with these arguments, it reads."""
+    from execution_effects import resolve_execution_effect
+
+    for step in steps:
+        tool = str(getattr(step, "tool", "") or "")
+        if tool == "final_answer":
+            continue
+        args = getattr(step, "args", None)
+        if resolve_execution_effect(
+                executors.get(tool), args if isinstance(args, dict) else {},
+        ) != "read_only":
+            return False
+    return True
+
+
+def _admissible_shape(steps, long_steps, executors, *, fillers: bool,
+                      rest_follows: bool):
+    """The one long step this plan may hand over, or the refusal to give.
+
+    A plan is one long step and nothing else, as before. When the caller can
+    run the rest when the job ends (``rest_follows``: a conversation waits for
+    it), the other steps are admitted too, because the whole plan runs then,
+    in order, with the long step answered by the job. That holds on two
+    conditions: the long step needs nothing from another step, and running
+    it first changes nothing for the steps written before it, which is true
+    when it and they only read. A text the plan still has to compose
+    (``fillers``) is part of the rest.
+    """
+    index, step, executor = long_steps[0]
+    name = str(getattr(executor, "name", "") or "")
+    if len(long_steps) != 1:
+        return None, _plan_refusal(
+            "ERR_LRE_PLAN_SEVERAL_LONG",
+            tools=", ".join(dict.fromkeys(
+                str(getattr(item[2], "name", "") or "") for item in long_steps)))
+    args = getattr(step, "args", None)
+    if not isinstance(args, dict):
+        return None, _plan_refusal()
+    if references_step(args):
+        return None, _plan_refusal("ERR_LRE_PLAN_LONG_NEEDS_STEP", tool=name)
+    if references_runtime(args):
+        # A value of the conversation («this folder»), not a literal: frozen
+        # as it is written it would mean nothing to the job.
+        return None, _plan_refusal("ERR_LRE_PLAN_LONG_NEEDS_VALUE", tool=name)
+    others = [item for item in steps
+              if item is not step
+              and str(getattr(item, "tool", "") or "") != "final_answer"]
+    if not others and not fillers:
+        if bool(getattr(step, "if_prev_entries_nonempty", False)):
+            return None, _plan_refusal()
+        return long_steps[0], None
+    if not rest_follows or getattr(executor, "lre_plan", ""):
+        return None, _plan_refusal()
+    if bool(getattr(step, "if_prev_entries_nonempty", False)):
+        return None, _plan_refusal("ERR_LRE_PLAN_LONG_NEEDS_STEP", tool=name)
+    before = steps[:index]
+    if any(str(getattr(item, "tool", "") or "") != "final_answer"
+           for item in before) and not _only_reads((*before, step), executors):
+        return None, _plan_refusal("ERR_LRE_PLAN_STEPS_BEFORE_LONG", tool=name)
+    return long_steps[0], None
 
 
 def _submit_adapted_invocation(adapter, executor, args, target_device, *,
@@ -303,8 +376,13 @@ def submit_automatic_lre(
     turn_id: str,
     source_request_id: str = "",
     target_device: str | None = None,
+    rest_follows: bool = False,
 ) -> dict | None:
-    """Submit one finalized long step, or return ``None`` when none exists."""
+    """Submit one finalized long step, or return ``None`` when none exists.
+
+    ``rest_follows``: the caller keeps the plan and runs its other steps when
+    the job ends (``lre_answers``). Without it a long step is admitted alone.
+    """
 
     steps = tuple(getattr(framework, "steps", ()) or ())
     executors = _catalog_by_name(catalog)
@@ -330,27 +408,14 @@ def submit_automatic_lre(
         return None
 
     try:
-        executable = tuple(
-            step for step in steps
-            if str(getattr(step, "tool", "") or "") != "final_answer"
-        )
-        if (
-            len(long_steps) != 1
-            or len(executable) != 1
-            or bool(getattr(framework, "fillers", {}) or {})
-            or bool(getattr(long_steps[0][1], "if_prev_entries_nonempty", False))
-        ):
-            return _automatic_error(
-                "ERR_LRE_PLAN_NOT_ADMISSIBLE",
-                error_class="plan_not_admissible",
-            )
-        _index, step, executor = long_steps[0]
-        args = getattr(step, "args", None)
-        if not isinstance(args, dict):
-            return _automatic_error(
-                "ERR_LRE_PLAN_NOT_ADMISSIBLE",
-                error_class="plan_not_admissible",
-            )
+        admitted, refusal = _admissible_shape(
+            steps, long_steps, executors,
+            fillers=bool(getattr(framework, "fillers", {}) or {}),
+            rest_follows=rest_follows)
+        if refusal is not None:
+            return refusal
+        _index, step, executor = admitted
+        args = step.args
         if not isinstance(owner_user_id, str) or not owner_user_id:
             return _automatic_error(
                 "ERR_LRE_SUBMISSION_FAILED",

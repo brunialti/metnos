@@ -7570,6 +7570,7 @@ def _run_engine(
     catalog_v2 = _engine_v2_catalog_with_builtins(catalog)
 
     def _admit_long_work(framework):
+        import lre_answers
         admitted = submit_automatic_lre(
             framework,
             catalog=catalog_v2,
@@ -7577,9 +7578,12 @@ def _run_engine(
             turn_id=turn_id,
             source_request_id=source_request_id,
             target_device=_target_name,
+            # A conversation waits: the steps after the long one run when
+            # the job ends, on its result.
+            rest_follows=lre_answers.rest_can_follow(
+                owner_user_id=owner_user_id or "", channel=channel or ""),
         )
         # A job asked in a conversation gives its answer back there.
-        import lre_answers
         lre_answers.remember_request(
             admitted, framework, catalog_by_name=_catalog_by_name,
             owner_user_id=owner_user_id or "", channel=channel or "",

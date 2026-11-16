@@ -7832,7 +7832,9 @@ def _glob_paths_to_find_files(paths) -> Optional[dict]:
             "patterns": sorted(set(bases)), "recursive": False}
 
 
-def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
+def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
+                               threshold: Optional[int] = None,
+                               prompt_for: Optional[Callable] = None):
     """§2.11/§7.9 (bug live 1ba8e2c4, 6/7: recovery ha espanso una dir in 681
     delete remote senza conferma → 195 file persi). Inserisce un `get_approval`
     PRIMA della prima azione DISTRUTTIVA di massa (delete_/move_) con
@@ -7844,12 +7846,18 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
     quelli RICOSTRUITI dalla recovery (chiamato in entrambi i path). La pausa+
     ripresa riusa il gate-resume esistente (on-approve la pipeline si riesegue
     col gate auto-passato). Skip: ripresa post-approvazione, gate già presente,
-    soglia disattivata, nessuna azione di massa o conteggio sotto soglia."""
+    soglia disattivata, nessuna azione di massa o conteggio sotto soglia.
+
+    ``threshold`` is the caller's own rule in place of the configured one: 0
+    asks before any removal or move, whatever the number of items and even
+    when they cannot be counted (the rest of a request resumed after a long
+    job, ``lre_answers``). ``prompt_for(verb, n)`` then words the question,
+    with ``n`` None when the items cannot be counted."""
     try:
         if (runtime_ctx or {}).get("_gate_approved"):
             return framework
-        thr = _mass_mutation_threshold()
-        if thr <= 0:
+        thr = _mass_mutation_threshold() if threshold is None else int(threshold)
+        if threshold is None and thr <= 0:
             return framework
         # Turni SCHEDULATI: azione INTENZIONALE pre-autorizzata da chi l'ha
         # pianificata, e nessun umano può approvare nell'istante → gate SKIP
@@ -7863,7 +7871,9 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
         except Exception:
             pass
         steps = list(getattr(framework, "steps", None) or [])
-        if any((s.tool or "") == "get_approval" for s in steps):
+        asked_at = [i for i, s in enumerate(steps)
+                    if (s.tool or "") == "get_approval"]
+        if asked_at and threshold is None:
             return framework
         from messages import get as _msg_get
         from .types import StepSpec
@@ -7873,6 +7883,8 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
             verb = (s.tool or "").split("_", 1)[0]
             if verb not in _MASS_MUTATION_VERBS:
                 continue
+            if any(position < idx for position in asked_at):
+                return framework  # una domanda la precede già
             a = s.args if isinstance(s.args, dict) else {}
             fs = a.get("from_step")
             prefix = list(steps[:idx])   # step immutati prima dell'azione
@@ -7907,11 +7919,16 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
                     if n_inline is None:
                         v = a.get("entries")
                         n_inline = len(v) if isinstance(v, list) else None
-                    if n_inline is None or n_inline <= thr:
+                    if n_inline is None and threshold is not None:
+                        guard_count = n_display = None  # non contabile: chiedi
+                    elif n_inline is None or n_inline <= thr:
                         continue  # non contabile, o sotto soglia
-                    guard_count, n_display = n_inline, n_inline
+                    else:
+                        guard_count, n_display = n_inline, n_inline
             action = _msg_get(_MASS_ACTION_KEY.get(verb, "MSG_ACTION_DELETE"))
-            if target_device:
+            if prompt_for is not None:
+                prompt = prompt_for(verb, n_display)
+            elif target_device:
                 prompt = _msg_get(
                     "MSG_CONSENT_GATE_MASS_MUTATION",
                     action=action, n=n_display, where=target_device)
@@ -7925,32 +7942,28 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx):
             gate = StepSpec(tool="get_approval", args={
                 "prompt": prompt,
                 "on_approve": {"tool": "final_answer", "args": {}},
-                "guard_count": guard_count,
+                **({} if guard_count is None else {"guard_count": guard_count}),
                 "guard_threshold": thr,
                 "timeout_s": 3600,
                 "channel": rc.get("channel") or "",
                 "actor": rc.get("actor") or "",
             })
-            # RINUMERA i from_step degli step IN CODA (bug latente esposto 7/7
-            # dal guard scope_dirs, che appende find_dirs→delete_dirs(from_step)
-            # DOPO la prima delete): inserire il gate (e l'eventuale find_files
-            # precursore del glob) sposta le posizioni → un consumer a valle che
-            # puntava alla mutazione o a un altro step di coda deve slittare, o
-            # consumerebbe il gate (0 item → azione muta, over/under-deletion).
-            # Shift = passi inseriti prima della coda; i ref al PREFISSO
-            # immutato (<= idx, 1-based) restano. Stessa logica di
-            # _ensure_extract_clause.
-            shift = len(prefix) + 1 - idx  # glob: 2 (find_files+gate); altrimenti 1
-            tail = list(steps[idx + 1:])
-            if shift:
-                for _ts in tail:
-                    _fa = _ts.args if isinstance(_ts.args, dict) else None
-                    _q = _fa.get("from_step") if _fa else None
-                    if isinstance(_q, int) and _q >= idx + 1:
-                        _fa["from_step"] = _q + shift
-            framework.steps = prefix + [gate, mut_step] + tail
+            # Il gate (e l'eventuale find_files precursore del glob) sposta le
+            # posizioni: `insert_steps` rimappa TUTTI i riferimenti a ciò che
+            # segue — from_step, ${stepN...} negli args e nel messaggio finale.
+            # Prima qui si spostavano i soli from_step della coda (bug latente
+            # 7/7), e un messaggio finale «tolti ${step2.ok_count}» finiva a
+            # leggere il gate quando questo passava sotto soglia (classe T3
+            # dell'audit 21/7; visto il 15/11/2026 riprendendo un piano dopo
+            # un lavoro lungo).
+            added = prefix[idx:] + [gate]     # glob: [find_files, gate]
+            insert_steps(framework, idx, added)
+            if mut_step is not s:
+                # Il consumer riscritto legge il find_files appena inserito:
+                # i suoi args sono già nella numerazione finale.
+                framework.steps[idx + len(added)] = mut_step
             log.info("[mass_mutation_gate] get_approval inserito prima di %s "
-                     "(soglia %d, coda rinumerata +%d)", s.tool, thr, shift)
+                     "(soglia %d, coda rinumerata +%d)", s.tool, thr, len(added))
             return framework
         return framework
     except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno

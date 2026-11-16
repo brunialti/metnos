@@ -1282,14 +1282,21 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
     return out
 
 
-def _session_event_data(ev: dict, admin_key: str) -> dict:
+def _session_event_data(ev: dict, admin_key: str, *,
+                        owner_user_id: str = "") -> dict:
     """A session event as the client receives it: a late outcome's files
-    become signed links of their turn, never server paths."""
-    data = {k: v for k, v in ev.items() if k not in ("kind", "attachments")}
+    become signed links of their turn, never server paths, and a question it
+    ends with keeps its form, attested for the owner of the page."""
+    data = {k: v for k, v in ev.items()
+            if k not in ("kind", "attachments", "inline_dialog_ids")}
     if ev.get("attachments") and ev.get("turn_id"):
         from types import SimpleNamespace
         data["attachments"] = _enrich_attachments(SimpleNamespace(
             attachments=ev["attachments"], turn_id=ev["turn_id"]), admin_key)
+    if ev.get("inline_dialog_ids") and isinstance(ev.get("message"), str):
+        data["message"], data["inline_forms"] = _dialog_presentation(
+            ev["message"], admin_key, owner_user_id=owner_user_id,
+            inline_dialog_ids=ev["inline_dialog_ids"])
     return data
 
 
@@ -3601,7 +3608,9 @@ async def session_events(request: web.Request) -> web.StreamResponse:
                 # i comment SSE). Esce solo su disconnect o eccezione write.
                 continue
             kind = ev.get("kind") or "message"
-            data = _session_event_data(ev, app_get(request.app, APP_ADMIN_KEY, ""))
+            data = _session_event_data(
+                ev, app_get(request.app, APP_ADMIN_KEY, ""),
+                owner_user_id=str(current_user_id or ""))
             body = json.dumps(data, ensure_ascii=False, default=str)
             try:
                 await resp.write(f"event: {kind}\ndata: {body}\n\n".encode())

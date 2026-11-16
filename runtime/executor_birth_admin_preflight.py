@@ -246,40 +246,44 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # its timer starts it once and the runner owns subsequent scheduling.
 # 27/9/2026: managed_install joins the existing installer entry. Only the
 # repository entrypoint coverage changes; service commands and privileges do not.
+# 16/11/2026: the readiness unit wants the components Metnos does not own (the
+# local model, the web search, the geocoder) instead of requiring them: a
+# required unit that stops took the whole stack down and nothing started it
+# again. Only that relation changes; commands, users and privileges do not.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:ce24c1ed5a1e1473ad5985cc4e33b607fe462cf2274612cb1dbe489e7b3be12c"
+    "sha256:1f0145d06f0e82e64d4e377ef8b05215a87ec4d60e55d195b96c26d726e14522"
 )
 # Reviewed fixed recipes for optional remote companions. These pins are never
 # computed from a candidate in the administrative process.
 _EXPECTED_REMOTE_SERVICE_SOURCE_IDENTITIES_V1 = {
     ('llm',):
-        'sha256:65f18125a8bf036d2f8c7ec6a4139f7af7a4b3668e35005435dd4530dcb875c3',
+        'sha256:5cdaea40b8af6cbffe62747cc470d439293f91499db636ba1bd3b6638c298e74',
     ('photon',):
-        'sha256:39232390d4ec370ab89b46975ac8f54217c141381447d27241c8cf9045e73b42',
+        'sha256:c6c3a439cbe4b1a95686095acb35528ea3aeb85620412ce51f0ab75012f2831f',
     ('playwright',):
-        'sha256:4eafb91de2f346043bc9c308c152deffda1b128b895594003ed10c41808bd8c4',
+        'sha256:9ec5c8acec297798a1f3e620238de787eca22b0101afd75b4537ad6ce6084de5',
     ('searxng',):
-        'sha256:30dad9e8d76616825ba876d02664a3d852934c29b8f6f7305d0cd3f3b4204687',
+        'sha256:ea78189854b401ac2ada45e1adf654071fc08ff81dada64903dec8c391d1d9af',
     ('llm', 'photon'):
-        'sha256:93a2f9e1fc034e86a644243ced8104b48c25d0f9d0103594ff84482b40881ba1',
+        'sha256:73c5111505fa10c24fe67abb9e62b18265b3f64dda62154c49e6c03b2c6773cb',
     ('llm', 'playwright'):
-        'sha256:250faf33ac1776c170648af44842a9b2577e6964156434b5baafbd0972942762',
+        'sha256:aa507f51629a498463a86ea06f617242c3b6f93828b04b113c66e924d8a71c07',
     ('llm', 'searxng'):
-        'sha256:3151d0b6952f7604323dbe0e70d2381e2da3f91b128708975d7a5546355bc5f7',
+        'sha256:fa6dc01ec04a40ef3e943390102cb8902128c1938913fed6a42b0a000e179532',
     ('photon', 'playwright'):
-        'sha256:40d608b7658d3a49784a00a3706596ff8d3c696346be2771e9ee2476d43bd41a',
+        'sha256:a69539d3792f0852f16db2143bc4390735f75ee344cf4dcfac859d25976cb44b',
     ('photon', 'searxng'):
-        'sha256:a3c0c017f0a2776cb5b1d6a42f541a9a7ead0d1acfe558778629675df19b3df1',
+        'sha256:e37f46f99e98db853f8be15921525216e28f41b03e9cda8013198102d4dcf510',
     ('playwright', 'searxng'):
-        'sha256:305af3207fe1cab8964f91758878369b4e6e113505591a48888a6df8b1c0e8f4',
+        'sha256:68add83b9a6a76abdeaa452b99822f364dfa8102256b105e8f633db7a1e0c3fb',
     ('llm', 'photon', 'playwright'):
-        'sha256:5dd281e8f3f975b0d65f0166b054c76fa90f6ac6ce8c2cbd42cf0f94099797d2',
+        'sha256:ec0ad878ee5c82714b2210e521bb1cbb6f73c72ee8fbfcea73a7d56e1e85ed3c',
     ('llm', 'photon', 'searxng'):
         'sha256:c03c59bc41b5f0f0924f5b6b1f717fc2031f81d5c59bcb1f2e34774f5e9dcf7a',
     ('llm', 'playwright', 'searxng'):
-        'sha256:e063e4a00c04a246b54200389735a0a33500fb7f76716267828f66a92312a365',
+        'sha256:3cf90062a74b195432206005af7497e7028bf510d8719346fae595cd31c925cf',
     ('photon', 'playwright', 'searxng'):
-        'sha256:078a0425c48cb11cf99bde33ab2b4edf9a7e7a5e804cbaf3bacf33a76b52c54d',
+        'sha256:e162b8a5ec343fa1c81f3b58090a2ee240286e94fb24c22849bf58f05ae65f9d',
     ('llm', 'photon', 'playwright', 'searxng'):
         'sha256:6f2ffe579d6db7366698773bc0658c847eef303555217a11e02d2566dfb1a4dc',
 }
@@ -910,7 +914,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7623cd8367a276060c9f12d05947f366d7003bb3e305b42f5d3f8b9003e55cf3"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:e407433fadf15a9c7076396b90e8925f98512c2ba0d3292d04a63d60a076683a"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

@@ -313,7 +313,7 @@ publication.
 
 ## License and credits
 
-[MIT](LICENSE), copyright (c) 2026 the owner.
+[MIT](LICENSE), copyright (c) 2026 Roberto Brunialti.
 
 The name joins two Greek words for mind: *mētis*, the mind that adapts, and *noûs*, the
 mind that reasons.

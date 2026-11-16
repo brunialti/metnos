@@ -373,7 +373,11 @@ def deliver_as_file(turn) -> bool:
     cut declared, which is still better than a wall of text.
     """
     text = str(getattr(turn, "final_message", "") or "")
-    if getattr(turn, "final_kind", "") != "answer" or len(text) <= MAX_CHAT_ANSWER_CHARS:
+    # A turn that ends in an error can carry a wall of text too (16/11/2026:
+    # what a long job had found, 300,000 characters, given back when a later
+    # step failed). A question keeps its form and is never moved.
+    kind = getattr(turn, "final_kind", "")
+    if (kind != "answer" and kind != "error") or len(text) <= MAX_CHAT_ANSWER_CHARS:
         return False
     from messages import get as message
 

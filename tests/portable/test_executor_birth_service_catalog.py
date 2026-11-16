@@ -1113,3 +1113,30 @@ def test_paired_devices_and_the_home_network_can_reach_metnos() -> None:
     assert http_args[http_args.index("--host") + 1] == "0.0.0.0"
     sidecar_args = by_id["service-playwright"].target_args
     assert sidecar_args[sidecar_args.index("--host") + 1] == "127.0.0.1"
+
+
+def test_no_unit_depends_for_its_life_on_a_component_it_does_not_own() -> None:
+    """A unit that requires, binds to or is part of another stops when that
+    one stops, and nothing starts it again when it returns. The components
+    Metnos uses but does not own (the local model, the web search, the
+    geocoder, the host's own targets) may be restarted by anyone: they are
+    wanted and ordered, never a condition of life (15/11/2026: another
+    project restarted the shared model and the whole stack stayed off for
+    sixteen hours)."""
+    source = catalog.SERVICE_SOURCE_V1
+    foreign = {entry.entry_id for entry in source
+               if entry.class_name == "external_dependency"}
+    assert {"service-llm", "service-searxng", "service-photon"} <= foreign
+    for entry in source:
+        for directive in entry.unit_recipe or ():
+            if directive.section == "Unit" and directive.name in {
+                    "Requires", "Requisite", "BindsTo", "PartOf"}:
+                tied = [value for value in directive.values
+                        if value.startswith("@unit:") and value[6:-1] in foreign]
+                assert tied == [], (entry.entry_id, directive.name, tied)
+    # Started with the stack and ordered before its readiness check, as before.
+    ready = next(entry for entry in source if entry.entry_id == "service-stack-ready")
+    relations = {directive.name: set(directive.values) for directive in ready.unit_recipe
+                 if directive.section == "Unit"}
+    wanted = {"@unit:service-llm@", "@unit:service-searxng@", "@unit:service-photon@"}
+    assert wanted <= relations["Wants"] and wanted <= relations["After"]

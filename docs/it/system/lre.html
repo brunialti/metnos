@@ -69,11 +69,12 @@ Un eventuale piano LRE esplicito mantiene tutti i controlli di ammissione.</p>
  <thead><tr><th>Condizione</th><th>Decisione di Metnos</th></tr></thead>
  <tbody>
   <tr><td>Il piano non contiene azioni sopra la soglia.</td><td>Metnos usa il percorso interattivo ordinario. LRE non viene coinvolto.</td></tr>
-  <tr><td>Il piano contiene una sola azione lunga indipendente; l'executor è attivo, firmato e deterministico; argomenti, effetto e destinazione possono essere congelati.</td><td>Metnos crea il piano LRE durante il turno, accoda il lavoro e restituisce una ricevuta. Non serve alcun profilo.</td></tr>
+  <tr><td>Il piano contiene una sola azione lunga che non ha bisogno di nulla da un altro passaggio; l'executor è attivo, firmato e deterministico; argomenti, effetto e destinazione possono essere congelati.</td><td>Metnos crea il piano LRE di quell'azione durante il turno, accoda il lavoro e restituisce una ricevuta. Non serve alcun profilo.</td></tr>
+  <tr><td>La stessa richiesta chiede altro oltre all'azione lunga, per esempio «trova i file duplicati in questa cartella e metti le coppie in un foglio».</td><td>L'azione lunga va a LRE. Quando finisce, Metnos <a href="#resto-della-richiesta">porta a termine il resto della richiesta</a> sul suo risultato e scrive un'unica risposta nella stessa conversazione.</td></tr>
   <tr><td>Il lavoro ha un piano LRE già integrato, come l'indicizzazione delle foto.</td><td>Metnos usa quel piano riprendibile, con passaggi e modelli definiti prima dell'avvio. Anche in questo caso devono essere rispettati i controlli di accesso e i limiti delle risorse.</td></tr>
   <tr><td>Prima dell'azione lunga è richiesta una conferma.</td><td>Metnos sospende l'esecuzione e richiede la conferma. Dopo l'approvazione ricontrolla il piano e, se ammissibile, lo affida una sola volta a LRE.</td></tr>
   <tr><td>L'interruttore dell'istanza è disattivato.</td><td>Nessun nuovo lavoro entra in LRE. La chat ordinaria e la consultazione dei lavori esistenti continuano a funzionare.</td></tr>
-  <tr><td>Il lavoro non ha un piano LRE integrato e contiene più azioni dipendenti, riferimenti ancora da risolvere, un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che il lavoro lungo non è partito. Non esegue la parte lunga nel percorso interattivo e non promette una ripresa che non potrebbe garantire.</td></tr>
+  <tr><td>L'azione lunga ha bisogno del risultato di un altro passaggio, oppure di un valore noto solo nella conversazione come «questa cartella»; la richiesta contiene più azioni lunghe; prima dell'azione lunga c'è un passaggio che può modificare qualcosa; oppure l'azione ha un modello non completamente congelato o una destinazione remota ambigua.</td><td>Metnos dichiara che non è partito nulla, nomina l'azione lunga e dice quale parte chiedere per prima. Non esegue la parte lunga nel percorso interattivo e non promette una ripresa che non potrebbe garantire.</td></tr>
   <tr><td>La configurazione non è valida o il servizio di esecuzione non è disponibile.</td><td>L'ammissione fallisce con una spiegazione precisa. Nessuna unità aggira il controllo.</td></tr>
  </tbody>
 </table>
@@ -322,6 +323,27 @@ il tentativo, ma non può creare punti di ripresa interni. Se un limite si
 esaurisce, il lavoro espone uno stato strutturato invece di fingere una
 copertura completa.</p>
 
+<h3 id="resto-della-richiesta">Il resto di una richiesta</h3>
+
+<p>Una richiesta può unire un'azione lunga a passaggi ordinari: trovare i
+duplicati ed elencarli in un foglio, contare i file di una cartella e poi
+cercare le immagini identiche. Solo l'azione lunga diventa un lavoro LRE.
+Metnos conserva il piano del turno insieme alla richiesta e, quando il lavoro
+finisce, esegue l'intero piano nella stessa conversazione, usando come esito
+dell'azione lunga il risultato prodotto dal lavoro. I passaggi attraversano
+gli stessi controlli di un turno ordinario e la conversazione riceve un'unica
+risposta per tutta la richiesta: nella pagina aperta, oppure nella tua chat
+Telegram quando non sei alla pagina.</p>
+
+<ul>
+ <li><strong>Ordine.</strong> Dopo l'azione lunga può esserci qualunque passaggio. Prima possono esserci solo passaggi che leggono, perché l'intero piano viene eseguito dopo la fine del lavoro.</li>
+ <li><strong>Cancellare e spostare.</strong> Un lavoro può finire quando non stai guardando. Per questo, prima della prima cancellazione o del primo spostamento, Metnos chiede sempre conferma indicando il numero di elementi, anche se sono pochi. Con un sì agisce esattamente sul risultato che ha mostrato; con un no non fa altro. Una richiesta fatta nella chat web si conferma lì; una fatta su Telegram riceve i pulsanti in quella chat. La domanda scade dopo un'ora.</li>
+ <li><strong>Durata nel tempo.</strong> LRE garantisce l'azione lunga. Il resto viene eseguito una sola volta, come un turno ordinario: se il servizio si ferma mentre è in corso, nulla viene ripetuto e la conversazione viene avvisata che il resto si è interrotto.</li>
+ <li><strong>Se il lavoro non finisce bene.</strong> Un lavoro non riuscito dichiara che il resto non è stato eseguito. Un lavoro in attesa del tuo intervento mantiene il resto in sospeso finché non viene ripreso.</li>
+ <li><strong>Se un passaggio successivo non riesce.</strong> Ciò che l'azione lunga ha trovato non va perso: la risposta lo mostra come farebbe quell'azione da sola, poi nomina il passaggio non riuscito e il motivo. Nulla di ciò che segue quel passaggio viene eseguito.</li>
+ <li><strong>Altre domande.</strong> Se un passaggio successivo ha bisogno di altro da te, per esempio di un modulo, il resto si ferma lì e la risposta lo dichiara.</li>
+</ul>
+
 <h2 id="executor">Executor locali, remoti e intelligenti</h2>
 
 <p>Ogni fase dichiara <em>dove</em> e <em>come</em> può essere eseguita. Un
@@ -429,7 +451,7 @@ essere aggiunto senza perdere tracciabilità o sicurezza.</p>
 <table>
  <thead><tr><th>Limite attuale</th><th>Effetto pratico</th><th>Estensione corretta</th></tr></thead>
  <tbody>
-  <tr><td>Piani automatici composti</td><td>L'attuale percorso automatico accoda una sola azione lunga indipendente. Se il piano contiene più passaggi eseguibili o dipendenze ancora da risolvere, il lavoro non parte.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come batch opaco.</td></tr>
+  <tr><td>Richieste che uniscono un'azione lunga ad altri passaggi</td><td>LRE esegue una sola azione lunga per richiesta; gli altri passaggi girano dopo, come un turno ordinario, e non sono riprendibili. La richiesta non parte se contiene più azioni lunghe, se l'azione lunga ha bisogno del risultato di un altro passaggio o se prima di essa c'è un passaggio che può modificare qualcosa.</td><td>Compilare l'intero piano definitivo nel grafo tipizzato di LRE, con riferimenti e controlli espliciti; non conservarlo come batch opaco.</td></tr>
   <tr><td>Executor intelligenti</td><td>Il percorso diretto esclude per ora gli executor che usano modelli linguistici o di visione senza un legame completo e immutabile.</td><td>Congelare prompt, lingua, modello, limiti di chiamata, token e costo nello stesso contratto; poi usare la medesima interfaccia generale.</td></tr>
   <tr><td>Destinazione remota implicita</td><td>Un executor utilizzabile soltanto su un dispositivo non viene accodato finché il dispositivo esatto non è stato risolto.</td><td>Indicare il dispositivo nella richiesta oppure aggiungere una risoluzione deterministica e verificabile prima dell'ammissione.</td></tr>
   <tr><td>Executor monolitico</td><td>LRE vede una sola unità e non può riprendere a metà di un ciclo interno non dichiarato.</td><td>Esporre l'attività come unità generali, identificabili e idempotenti, oppure come riduzione a lotti; non aggiungere casi speciali per dominio.</td></tr>

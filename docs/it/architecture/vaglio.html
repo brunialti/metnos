@@ -97,7 +97,9 @@ dispositivi a blocchi.</td></tr>
 <tr><td><strong>Modifiche agli alberi di sistema</strong></td><td>Scritture,
 spostamenti, creazioni e cancellazioni sotto le directory protette del sistema
 operativo ospite, come <code>/etc</code> e <code>/usr</code> su Linux. Le letture
-non sono bloccate da questa regola.</td></tr>
+non sono bloccate da questa regola. Le cartelle di lavoro delle persone non sono
+un albero di sistema, dovunque l'installazione le tenga; un collegamento che da
+l&igrave; porta dentro un albero di sistema resta bloccato.</td></tr>
 <tr><td><strong>Comandi shell quasi irreversibili</strong></td><td>Pattern chiusi
 come la formattazione di un filesystem, la scrittura diretta su un dispositivo,
 la cancellazione ricorsiva della radice e una fork bomb.</td></tr>

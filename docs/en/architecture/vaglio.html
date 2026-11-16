@@ -96,7 +96,9 @@ devices.</td></tr>
 <tr><td><strong>Changes to system trees</strong></td><td>Writes, moves,
 creations, and deletions under directories protected by the host operating system,
 such as <code>/etc</code> and <code>/usr</code> on Linux. This rule does not block
-reads.</td></tr>
+reads. The work folders of the people are not a system tree, wherever the
+installation keeps them; a link that leads from there into a system tree stays
+blocked.</td></tr>
 <tr><td><strong>Nearly irreversible shell commands</strong></td><td>A closed set
 of patterns, including formatting a filesystem, writing directly to a device,
 recursively deleting the root, and a fork bomb.</td></tr>

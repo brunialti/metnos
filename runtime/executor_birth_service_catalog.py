@@ -581,9 +581,16 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             environment=_TARGET_DATA_ENVIRONMENT_V1,
         ),
         relations=(
+            _unit_relation("Requires", "service-http", "timer-i18n-translator"),
+            # The components Metnos uses but does not own (the local model,
+            # the web search, the geocoder) are started with the stack and
+            # ordered before this check, never required: a required unit that
+            # stops takes this one down with it, then the target bound to it
+            # and every unit that is part of the target, and nothing brings
+            # them back when the component returns (15/11/2026: another
+            # project restarted the shared model, Metnos stayed off 16 hours).
             _unit_relation(
-                "Requires", "service-http", "timer-i18n-translator",
-                "service-llm", "service-searxng", "service-photon",
+                "Wants", "service-llm", "service-searxng", "service-photon",
             ),
             _unit_relation(
                 "After", "external-network-online", "service-http",

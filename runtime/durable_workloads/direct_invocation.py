@@ -29,6 +29,8 @@ _PLACEHOLDER_RE = re.compile(
     r"(?:\$\{[^{}]+\}|\{\{[^{}]+\}\}|^\s*from_step\s*[:=]\s*\d+\s*$)"
 )
 _PIPE_ARGUMENTS = frozenset({"from_step", "from_steps"})
+_STEP_REFERENCE_RE = re.compile(
+    r"(?:\$\{\s*step\d|\{\{\s*step\d|^\s*from_step\s*[:=]\s*\d+\s*$)")
 _JSON_TYPES = frozenset({
     "array", "boolean", "integer", "number", "object", "string",
 })
@@ -264,6 +266,32 @@ def _contains_placeholder(value: object) -> bool:
     return False
 
 
+def references_runtime(finalized_args: object) -> bool:
+    """True when the arguments need a value only the interactive turn has:
+    the result of another step, a filler or a runtime placeholder."""
+    if not isinstance(finalized_args, Mapping):
+        return False
+    return (bool(set(finalized_args) & _PIPE_ARGUMENTS)
+            or any(_contains_placeholder(value)
+                   for value in finalized_args.values()))
+
+
+def references_step(finalized_args: object) -> bool:
+    """True when the arguments read the result of another step of the plan."""
+
+    def reads(value: object) -> bool:
+        if isinstance(value, str):
+            return _STEP_REFERENCE_RE.search(value) is not None
+        if isinstance(value, list):
+            return any(reads(item) for item in value)
+        if isinstance(value, Mapping):
+            return any(reads(item) for item in value.values())
+        return False
+
+    return isinstance(finalized_args, Mapping) and (
+        bool(set(finalized_args) & _PIPE_ARGUMENTS) or reads(finalized_args))
+
+
 def _literal_args(
     executor: object,
     finalized_args: Mapping[str, Any],
@@ -276,17 +304,13 @@ def _literal_args(
     names = set(finalized_args)
     if names - set(properties) or set(required) - names:
         raise DirectInvocationUnsupported("finalized arguments do not match the schema")
-    if names & _PIPE_ARGUMENTS:
+    if references_runtime(finalized_args):
         raise DirectInvocationUnsupported(
             "finalized arguments contain a runtime reference"
         )
     literals: dict[str, dict[str, Any]] = {}
     for name in sorted(names, key=str.encode):
         value = finalized_args[name]
-        if _contains_placeholder(value):
-            raise DirectInvocationUnsupported(
-                "finalized arguments contain a runtime reference"
-            )
         try:
             copied = json.loads(canonical_json(value, max_bytes=MAX_PLAN_JSON_BYTES))
         except Exception as exc:
@@ -482,4 +506,6 @@ __all__ = [
     "build_direct_candidate",
     "direct_runtime_registration",
     "is_intrinsically_long",
+    "references_runtime",
+    "references_step",
 ]
