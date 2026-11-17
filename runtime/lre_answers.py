@@ -340,6 +340,13 @@ def _write_turn(entry: dict, *, text: str, kind: str, result: dict | None,
     from agent_runtime import StepLog, TurnLog, _apply_device_tag
 
     steps = []
+    if result is not None:
+        try:
+            args = json.loads(entry["args_json"] or "{}")
+        except ValueError:
+            args = {}
+        steps.append(StepLog(step_num=1, chosen_tool=entry["tool"],
+                             resolved_args=args, result=dict(result)))
     if run is not None:
         for observed in run.steps:
             steps.append(StepLog(
@@ -349,13 +356,6 @@ def _write_turn(entry: dict, *, text: str, kind: str, result: dict | None,
                         if isinstance(observed.result, dict) else {}),
                 exec_ms=observed.latency_ms,
                 execution_effect=getattr(observed, "execution_effect", None)))
-    elif result is not None:
-        try:
-            args = json.loads(entry["args_json"] or "{}")
-        except ValueError:
-            args = {}
-        steps.append(StepLog(step_num=1, chosen_tool=entry["tool"],
-                             resolved_args=args, result=dict(result)))
     now = time.time()
     last = steps[-1].result if steps and isinstance(steps[-1].result, dict) else {}
     turn = TurnLog(
@@ -585,6 +585,7 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
         if not (consent and _consent_waits(entry, run, turn_id=turn_id)):
             _withdraw_question(entry, run)
             kind, text = "error", message("MSG_LRE_REST_NEEDS_YOU")
+    unreplayed = None
     if kind == "error":
         # What the job found is never lost because a later step failed: it
         # is given as that step alone would be, shown as its tool declares,
@@ -596,6 +597,9 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
             # A step written before the long one failed, so the plan never
             # reached it: the job still ran, and what it found is here.
             found = result
+            # The file writer needs those records as well as the message;
+            # the failed continuation has no step holding them yet.
+            unreplayed = result
         failed = next((step for step in reversed(run.steps) if not step.ok), None)
         if not text and failed is not None:
             text = "«%s»: %s" % (failed.tool, failed.result.get("error")
@@ -604,7 +608,7 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
             text = "\n\n".join(part for part in (
                 _answer_text({**entry, "final_template": "${step1.@table}"}, found),
                 message("MSG_LRE_REST_FAILED"), text) if part)
-    return _write_turn(entry, text=text, kind=kind, result=None, lost=lost,
+    return _write_turn(entry, text=text, kind=kind, result=unreplayed, lost=lost,
                        run=run, turn_id=turn_id, parent=parent, started=started)
 
 

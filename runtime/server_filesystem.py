@@ -29,6 +29,45 @@ def manifest_for(executor):
             "args": getattr(executor, "args_schema", {})}
 
 
+def filesystem_read_extras(executor, args):
+    """Prepare exact read binds without changing the child's logical paths.
+
+    A static read root can already expose the named symlink. Binding onto
+    that link fails when its target is absent from the namespace; bind the
+    exact target instead. Dynamic-only roots retain their logical bind and
+    cache identity. No parent or intermediate external link is added.
+    """
+    import sandbox
+    from capabilities import effective_capabilities
+
+    selected = sandbox.filesystem_extras(executor, args)
+    effective = effective_capabilities(
+        getattr(executor, "capabilities", None) or [],
+        getattr(executor, "args_schema", None) or {}, args)
+    static = []
+    for capability in effective:
+        if capability.get("name") != "fs:read":
+            continue
+        for root in sandbox._expand_hints_to_paths(capability.get("hint", [])):
+            if ".." not in root.parts and root.exists():
+                static.append(root)
+    prepared = []
+    for path in selected:
+        # A lexical containment check cannot decide traversal across a link.
+        # Keep these spellings on the existing preparation path.
+        if ".." not in path.parts and any(path.is_relative_to(root) for root in static):
+            try:
+                physical = path.resolve(strict=True)
+                if physical != path:
+                    if sandbox.inside_private_root(physical):
+                        continue
+                    path = physical
+            except (OSError, RuntimeError, ValueError):
+                pass
+        prepared.append(path)
+    return prepared
+
+
 # What a search asks the closed list operation, and nothing else: an argument
 # outside this set is a kind of search the operation cannot do.
 _SEARCH_ARGS = frozenset({"pattern", "patterns", "case_sensitive", "recursive", "max_results",
@@ -1080,8 +1119,14 @@ def outside_tool_scope(manifest, args, observation):
     if (not isinstance(observation, dict) or observation.get("ok") is not False
             or observation.get("error_code") != "ERR_PATH_NOT_FOUND" or not isinstance(args, dict)):
         return None
+    import device_paths
+    import person_files
+    # A name without a root belongs to this invocation's person, including
+    # links to mounted archives. Never recover it from the tool's diagnostic.
+    resolved = device_paths.rooted(
+        args, lambda value: person_files.absolute(value, person_files.for_args(args)))
     values = []
-    for key, value in args.items():
+    for key, value in resolved.items():
         if not key.startswith("_"):
             values.extend(value if isinstance(value, list) else [value])
     for value in values:

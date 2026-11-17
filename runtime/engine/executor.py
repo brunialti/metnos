@@ -252,11 +252,25 @@ def _generic_columns(rows: list, max_cols: int, wanted: list | None) -> list:
     return cols[:max_cols]
 
 
+def _table_text(lines: list[str], shown: int, total: int,
+                rendered: dict | None = None) -> str:
+    """Keep the table's extent and counts with its source result. A file
+    can then replace this whole presentation without interpreting its words."""
+    if total > shown:
+        lines.append(_msg("MSG_RENDER_MORE_HIDDEN", more=total - shown))
+    text = "\n".join(lines)
+    if rendered is not None:
+        rendered.update(shown=shown, total=total, lines=len(lines),
+                        sha256=hashlib.sha256(text.encode("utf-8")).hexdigest())
+    return text
+
+
 def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
                    max_cols: int = _TABLE_MAX_COLS,
                    max_chars: int = _TABLE_MAX_CHARS,
                    presentation: dict | None = None,
-                   columns: list | None = None) -> str:
+                   columns: list | None = None,
+                   rendered: dict | None = None) -> str:
     """Rende una lista di entries come TABELLA markdown deterministica (§7.9,
     zero LLM). Colonne = quelle dichiarate dal manifest, altrimenti l'ordine
     di lettura di `_generic_columns` (cap `max_cols`); righe fino al primo fra
@@ -265,7 +279,7 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
     esattamente quelle colonne: stringa vuota se i record non le hanno."""
     contract = (presentation or {}).get("list") if isinstance(presentation, dict) else None
     if isinstance(contract, dict) and contract.get("columns"):
-        return _contract_entries_table(entries, contract, columns)
+        return _contract_entries_table(entries, contract, columns, rendered=rendered)
 
     max_rows, max_chars = _table_budget(max_rows, max_chars)
     rows = [e for e in entries if isinstance(e, dict)]
@@ -314,11 +328,7 @@ def _entries_table(entries: list, *, max_rows: int = _TABLE_MAX_ROWS,
         lines.append(row)
         rendered_chars += len(row) + 1
         shown += 1
-    out = "\n".join(lines)
-    more = len(rows) - shown
-    if more > 0:
-        out += "\n" + _msg("MSG_RENDER_MORE_HIDDEN", more=more)
-    return out
+    return _table_text(lines, shown, len(rows), rendered)
 
 
 def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
@@ -368,7 +378,8 @@ def _read_content(result: dict, *, max_chars: int = _TABLE_MAX_CHARS) -> str:
 
 
 def _contract_entries_table(entries: list, contract: dict,
-                            wanted: list | None = None) -> str:
+                            wanted: list | None = None, *,
+                            rendered: dict | None = None) -> str:
     """Render a manifest-declared list projection with bounded dimensions.
 
     A declared column with no value in any row is not shown; ``wanted`` asks
@@ -425,9 +436,7 @@ def _contract_entries_table(entries: list, contract: dict,
         lines.append(line)
         used += len(line) + 1
         shown += 1
-    if len(entries) > shown:
-        lines.append(_msg("MSG_RENDER_MORE_HIDDEN", more=len(entries) - shown))
-    return "\n".join(lines)
+    return _table_text(lines, shown, len(entries), rendered)
 
 
 def _entries_bullet_lines(entries: list, *, fields: tuple,
@@ -1637,10 +1646,14 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
             if not (isinstance(entries, list) and entries):
                 entries = result.get("results")
             if isinstance(entries, list) and entries:
-                return _entries_table(
+                rendered = {}
+                table = _entries_table(
                     entries,
                     presentation=result.get("_presentation_contract"),
-                ) + _note
+                    rendered=rendered,
+                )
+                result["_rendered_table"] = rendered
+                return table + _note
             zero = _deterministic_zero_result([step])
             if zero:
                 return zero + _note

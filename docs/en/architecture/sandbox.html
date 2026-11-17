@@ -161,7 +161,12 @@ as <code>projects/demo</code>, therefore always means that folder, for every
 tool, and never the directory the service runs from. When the profile does not
 show the workspace, the executor finds an empty one at the same address: the
 path does not exist, with the same meaning for everyone. Grants bound to
-arguments are computed on the same base.</p>
+arguments are computed on the same base.
+When the tool reports a missing path, the service checks the person's
+path argument, including a relative name, against the authenticated
+account's workspace. An existing place outside the tool's view produces
+<code>ERR_FS_TOOL_SCOPE</code>; a genuinely missing place keeps the original
+error. Device results are not checked against the server's filesystem.</p>
 
 <p>What the profile does not mount is read-only: the root of the profile is
 made read-only after every mount, so a write outside the granted places fails
@@ -172,6 +177,19 @@ does not open the log file, and reads the message catalogue and the lexicon
 read-only.</p>
 
 <h2>3.2 Capability-derived resources</h2>
+
+<p><code>find_dirs</code> declares <code>arg:base_path</code>: on the server
+it also sees the named folder read-only, resolved in the person's workspace,
+including links to mounted archives. It retains the fixed scopes
+<code>~/**</code>, <code>/opt/**</code> and <code>/tmp/**</code>, which the Linux
+client also needs. Path guards and account permissions still apply; this
+declaration grants no write access.</p>
+
+<p>When a declared read input is a link already visible in a fixed read scope,
+the caller mounts its destination read-only, without remounting the link or
+changing arguments or cache keys. It adds no parent folders. Chains with
+additional intermediate links outside visible scopes are not resolved by
+this step.</p>
 
 <table>
 <tr><th>Declaration</th><th>Effect on the profile</th></tr>

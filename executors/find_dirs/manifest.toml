@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_dirs"
-version     = "0.2.0"
+version     = "0.2.1"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -30,7 +30,7 @@ en = "SCOPO: find directories and compute aggregate metadata with a parallel rec
 
 [code]
 files  = ["find_dirs.py"]
-digest = "sha256:dfa1c1528507a524f510b936d788b2fe354ee104c0bdfc82ca99900bb8e68460"
+digest = "sha256:e7efb31b2fb31f1442d101826088b87508ee7935ad8c03a60c1b6d023d5ed1bc"
 
 [args]
 type     = "object"
@@ -140,7 +140,7 @@ schema_inline = """
 
 [[capabilities]]
 name = "fs:read"
-hint = ["~/**", "/opt/**", "/tmp/**"]
+hint = ["~/**", "/opt/**", "/tmp/**", "arg:base_path"]
 
 [[capabilities]]
 name = "provider:access"

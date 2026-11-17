@@ -14,6 +14,7 @@ download and Telegram receives a document.
 """
 from __future__ import annotations
 
+import hashlib
 import os
 import time
 import uuid
@@ -188,18 +189,43 @@ def prune(now: float | None = None) -> int:
 
 # ---- every result, not only the rows a chat shows -------------------------------
 
-def _records(turn):
+def _rendered_table(step, lines: list[str], span: tuple[int, int]) -> dict | None:
+    """Recognize a renderer-owned block, including its count notice, by
+    extent and fingerprint; never by the localized words of that notice."""
+    result = getattr(step, "result", None)
+    rendered = result.get("_rendered_table") if isinstance(result, dict) else None
+    if not isinstance(rendered, dict):
+        return None
+    first, end = span
+    count = rendered.get("lines")
+    if (type(count) is not int or count < end - first
+            or first + count > len(lines) or rendered.get("shown") != end - first - 2):
+        return None
+    block = "\n".join(lines[first:first + count])
+    if hashlib.sha256(block.encode("utf-8")).hexdigest() != rendered.get("sha256"):
+        return None
+    return rendered
+
+
+def _records(turn, lines: list[str], span: tuple[int, int]):
     """The records of the last step that produced a list, with the tool that
     produced them and the step, or None. They are what the answer's table was
     drawn from: the chat shows a bounded number of rows, the tool returned
     them all."""
+    fallback = None
     for step in reversed(getattr(turn, "steps", None) or []):
         result = getattr(step, "result", None)
         entries = result.get("entries") if isinstance(result, dict) else None
+        if not (isinstance(entries, list) and entries) and isinstance(result, dict):
+            entries = result.get("results")
         if (isinstance(entries, list) and entries
                 and all(isinstance(entry, dict) for entry in entries)):
-            return entries, str(getattr(step, "chosen_tool", "") or ""), step
-    return None
+            found = entries, str(getattr(step, "chosen_tool", "") or ""), step
+            if _rendered_table(step, lines, span) is not None:
+                return found
+            if fallback is None:
+                fallback = found
+    return fallback
 
 
 def _beyond_the_cap(turn, step, tool: str, have: int):
@@ -307,10 +333,13 @@ def _as_sheet(text: str, span: tuple[int, int], token: str, texts: dict, turn=No
     header, rows = _cells(lines[first]), [_cells(line) for line in lines[first + 2:end]]
     # The file holds every record the tool returned, not only the rows the
     # message had room for.
-    found = _records(turn) if turn is not None else None
+    found = _records(turn, lines, span) if turn is not None else None
     total, widened = len(rows), None
     if found is not None:
         entries, tool, step = found
+        rendered = _rendered_table(step, lines, span)
+        if rendered is not None:
+            total = rendered["total"]
         try:
             widened = _beyond_the_cap(turn, step, tool, len(entries))
         except Exception as exc:  # noqa: BLE001 - what the tool returned the first time is still there
@@ -339,6 +368,10 @@ def _as_sheet(text: str, span: tuple[int, int], token: str, texts: dict, turn=No
                 lines = text.split("\n")
                 span = largest_table(text)
                 first, end = span if span is not None else (first, end)
+        if rendered is not None and len(rows) >= max(total, len(entries)):
+            # Only a complete file replaces the whole renderer-owned block.
+            # A failed reconstruction or a file cap keeps its cut visible.
+            end = first + rendered["lines"]
     before, after = "\n".join(lines[:first]).strip(), "\n".join(lines[end:]).strip()
     notes = [line for block in (before, after) for line in block.split("\n") if line.strip()]
     name = f"{texts['stem']}-{token}.xlsx"

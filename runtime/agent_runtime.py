@@ -3762,7 +3762,7 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     _extra_ro.extend(_sandbox.skill_code_extras(_skill_names))
     # Dynamic filesystem inputs remain exact and capability-derived: only
     # signed ``fs:read`` hints such as ``arg:reference_images`` can add them.
-    _extra_ro.extend(_sandbox.filesystem_extras(executor, args))
+    _extra_ro.extend(_files.filesystem_read_extras(executor, args))
     _extra_rw.extend(_sandbox.filesystem_write_extras(executor, args))
     # Reversible destructive executors write content-addressed backup blobs to
     # one runtime-managed directory.  Mount only this turn's leaf, derived
@@ -4054,7 +4054,8 @@ def _invoke_executor_impl_optional_context(
         # «Not found» said of a place the tool's sandbox does not show is not
         # a fact about the place: the answer says what is true instead.
         import server_filesystem as _files
-        _truthful = _files.outside_tool_scope(_files.manifest_for(executor), args, observation)
+        _truthful = _files.outside_tool_scope(
+            _files.manifest_for(executor), {**args, "_actor": kwargs.get("actor") or "host"}, observation)
         if _truthful is not None:
             observation = _truthful
     if execution_context is None and getattr(executor, "prerequisites", ()):
