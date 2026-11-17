@@ -249,21 +249,6 @@ for _fp in _FAST_PATTERNS:
         break
 
 
-def _undo_failure(observation: dict, lang: str) -> str:
-    """Return the first concrete reason a reversal did not complete."""
-    for detail in observation.get("details") or []:
-        if detail.get("status") == "undone":
-            continue
-        stages = detail.get("stages") or []
-        for text in [detail.get("reverse_error"), detail.get("reason"),
-                     *((stage.get("result") or {}).get("error") for stage in stages)]:
-            if isinstance(text, str) and text.strip():
-                reason = (_i18n.get_for_language(text, lang)
-                          if re.fullmatch(r"ERR_[A-Z0-9_]+", text) else text)
-                return _i18n.get_for_language("MSG_UNDO_FAILED", lang, reason=reason)
-    return ""
-
-
 def _render_template(message_key: str, observation: dict, default_tz: str,
                      lang: str) -> str:
     """Rendering deterministico delle variabili dal result di get_now.
@@ -424,13 +409,13 @@ def try_fast_path(query: str, lang: str = "it",
         args["timezone"] = default_timezone
 
     def _render(observation: dict) -> str:
+        if fp.executor == "undo_last_turn" and observation.get("details"):
+            # What came back and what stayed, with why (§2.8): a partial
+            # undo never reads as done, a failed one never as "nothing to
+            # undo", and every operation of the request is counted.
+            import undo_words
+            return undo_words.describe(observation, lang)
         if not observation.get("ok"):
-            # A failed reversal states its own reason (§2.8): it never reads
-            # as "nothing to undo".
-            if fp.executor == "undo_last_turn":
-                failure = _undo_failure(observation, lang)
-                if failure:
-                    return failure
             # get_location ok=False: posizione non condivisa / non disponibile.
             if fp.executor == "get_location":
                 return _i18n.get_for_language(
@@ -440,16 +425,9 @@ def try_fast_path(query: str, lang: str = "it",
                 "ERR_FAST_EXECUTOR", lang, executor=fp.executor,
                 error=observation.get("error", "unknown"),
             )
-        # undo_last_turn ok=True: render dai details + undone_count.
+        # undo_last_turn ok=True without details: nothing was reversible.
         if fp.executor == "undo_last_turn":
-            undone = observation.get("undone_count") or 0
-            if undone == 0:
-                return _i18n.get_for_language("MSG_FAST_NOTHING_UNDO", lang)
-            details = observation.get("details") or []
-            d0 = details[0] if details else {}
-            return _i18n.get_for_language(
-                "MSG_UNDO_DONE", lang, count=d0.get("ok_count", undone),
-            )
+            return _i18n.get_for_language("MSG_FAST_NOTHING_UNDO", lang)
         if fp.executor == "get_location":
             loc = observation.get("location") or {}
             lat = loc.get("lat")

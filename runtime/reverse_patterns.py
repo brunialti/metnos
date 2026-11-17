@@ -98,11 +98,15 @@ def _swap_src_dst_filesystem(pairs):
         dst_back = Path(p["src"])
         if str(src_now) == str(dst_back):
             continue
+        # The codes are those of the closed operation, so the answer says
+        # why a file stayed in the same words on either path.
         if not src_now.exists():
-            failed.append({"index": i, "error": f"dst no longer exists: {src_now}"})
+            failed.append({"index": i, "path": str(src_now), "error_code": "ERR_FS_SOURCE_MISSING",
+                           "error": f"dst no longer exists: {src_now}"})
             continue
         if dst_back.exists():
-            failed.append({"index": i, "error": f"src position already occupied: {dst_back}"})
+            failed.append({"index": i, "path": str(dst_back), "error_code": "ERR_FS_DEST_EXISTS",
+                           "error": f"src position already occupied: {dst_back}"})
             continue
         try:
             dst_back.parent.mkdir(parents=True, exist_ok=True)
@@ -212,11 +216,13 @@ def _swap_src_dst_imap(pairs):
 # ---- Pattern: delete_created_dirs ----------------------------------------
 # Rimuove le directory tracciate in `results.dirs_created` se ancora vuote.
 # Es. seconda fase di undo per move_files (rimuove dir create dal forward).
+# A folder that is no longer empty stays and is reported, so the undo says it
+# did not leave things as they were (17/11/2026: it was kept in silence).
 
 def _delete_created_dirs(plan, results):
     dirs = (results or {}).get("dirs_created") or []
     sorted_dirs = sorted(dirs, key=lambda p: p.count("/"), reverse=True)
-    removed, kept = [], []
+    out, failed = [], []
     for d_str in sorted_dirs:
         d = Path(d_str)
         if not d.exists() or not d.is_dir():
@@ -224,12 +230,20 @@ def _delete_created_dirs(plan, results):
         try:
             if not any(d.iterdir()):
                 d.rmdir()
-                removed.append(d_str)
+                out.append({"path": d_str, "removed": True, "kind": "dir"})
             else:
-                kept.append(d_str)
-        except OSError:
-            kept.append(d_str)
-    return {"ok": True, "removed": removed, "kept": kept}
+                failed.append({"path": d_str, "kind": "dir",
+                               "error_code": "ERR_FS_FOLDER_NOT_EMPTY",
+                               "error": "directory not empty"})
+        except OSError as e:
+            failed.append({"path": d_str, "kind": "dir", "error": str(e)})
+    return {
+        "ok": len(failed) == 0,
+        "ok_count": len(out),
+        "fail_count": len(failed),
+        "results": out,
+        "failed": failed,
+    }
 
 
 # ---- Pattern: delete_created_paths ---------------------------------------
@@ -256,6 +270,18 @@ def _changed_since(path, sha256) -> bool:
     return digest.hexdigest() != sha256
 
 
+def _same_folder(path: Path, identity) -> bool:
+    """The folder is still the one the creation made (when it said which)."""
+    if not (isinstance(identity, list) and len(identity) == 2
+            and all(type(value) is int for value in identity)):
+        return True
+    try:
+        info = path.lstat()
+    except OSError:
+        return False
+    return [info.st_dev, info.st_ino] == identity
+
+
 def _delete_created_paths(plan, results):
     entries = (results or {}).get("results") or []
     parent_dirs = (results or {}).get("dirs_created") or []
@@ -270,6 +296,9 @@ def _delete_created_paths(plan, results):
             changed.append({"path": str(p), "error": "ERR_FS_SOURCE_CHANGED", "kind": "file"})
         elif p.is_file() or p.is_symlink():
             files.append(p)
+        elif p.is_dir() and not _same_folder(p, entry.get("_identity")):
+            # Another folder now has the name: it is not the request's.
+            changed.append({"path": str(p), "error": "ERR_FS_SOURCE_CHANGED", "kind": "dir"})
         elif p.is_dir():
             dirs.append(p)
         elif not p.exists():
@@ -301,6 +330,7 @@ def _delete_created_paths(plan, results):
                 out.append({"path": str(d), "removed": True, "kind": "dir"})
             else:
                 failed.append({"path": str(d), "error": "directory not empty",
+                               "error_code": "ERR_FS_FOLDER_NOT_EMPTY",
                                "kind": "dir"})
         except OSError as e:
             failed.append({"path": str(d), "error": str(e), "kind": "dir"})

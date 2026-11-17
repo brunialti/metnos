@@ -1768,6 +1768,14 @@ def create_dirs(args: dict) -> dict:
             entry = {"path": target, "created": created}
             if info:
                 entry["mode_octal"] = info
+            if created:
+                # The undo removes only this very folder (kept out of the
+                # person's tables by the leading `_`).
+                try:
+                    made = os.stat(target, follow_symlinks=False)
+                    entry["_identity"] = [made.st_dev, made.st_ino]
+                except OSError:
+                    pass
             results.append(entry)
         else:
             failed.append({"index": i, "path": target,

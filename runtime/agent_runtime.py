@@ -3182,10 +3182,14 @@ def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
             _undo_contract.get("outcome") or ""
         ) if isinstance(_undo_contract, dict) else ""
         from frozen_plan_consent import redact_args
+        from undo import request_of
+        # A continuation turn declared the request it belongs to: one «undo»
+        # reverses the whole request, not only this turn.
         UndoLog().append_pending(
             _op, turn_id or "", executor.name, redact_args(executor, args), plan={},
             actor=actor or "host", channel=channel or "", device=device,
-            outcome_contract=_outcome_contract)
+            outcome_contract=_outcome_contract,
+            request_turn_id=request_of(turn_id or ""))
         return _op
     except Exception as _ue:
         log.warning("[undo] append_pending fallita (fail-open): %r", _ue)
@@ -4037,6 +4041,15 @@ def _invoke_executor_impl_optional_context(
         if admitted is not None:
             return admitted
     observation = _invoke_executor_impl(executor, args, **kwargs)
+    if isinstance(observation, dict) and observation.get("details") and any(
+            (cap.get("name") if isinstance(cap, dict) else str(cap)) == "system:undo"
+            for cap in getattr(executor, "capabilities", None) or ()):
+        # The undo broker's own sentence names one operation and says
+        # «restored» of a partial undo too: the answer says what came back
+        # and what stayed, for every operation of the request (§2.8).
+        import undo_words
+        observation = {**observation,
+                       "final_message_hint": undo_words.describe(observation)}
     if kwargs.get("target_device") is None:
         # «Not found» said of a place the tool's sandbox does not show is not
         # a fact about the place: the answer says what is true instead.
@@ -8217,10 +8230,15 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
              credential_meta=None,
              credentials_prepared=False,
              redacted_fields=0,
+             request_turn_id="",
              verbose=False):
     """
     Se k=None (default v1.1), usa adaptive K fra k_min e k_max.
     Se k=int, usa K fisso (legacy/debug).
+
+    `request_turn_id` (17/11/2026): the turn of the request this turn
+    continues (a turn resumed after a consent or a form of the chat). Its
+    effects are undone together with the request's (`undo.continue_request`).
 
     `reference_images` (5/5/2026, ADR 0092): lista di path di foto allegate
     al turno (Telegram caption + photo, HTTP drag&drop). Se non vuoto, viene
@@ -8384,6 +8402,9 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
 
     turn_id = uuid.uuid4().hex[:16]
     log.turn_id = turn_id
+    if request_turn_id:
+        from undo import continue_request
+        continue_request(turn_id, request_turn_id)
     if not source_request_id:
         source_request_id = _opaque_source_request_id(
             f"turn:{turn_id}",

@@ -8033,6 +8033,18 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
         return framework
 
 
+def _request_turn(runtime_ctx) -> str:
+    """The turn of the request a paused turn belongs to.
+
+    Its question carries it, so that what runs after the answer is undone
+    together with what ran before (`undo.continue_request`), also when the
+    answer comes after a restart."""
+    import undo
+
+    turn_id = str((runtime_ctx or {}).get("turn_id") or "")
+    return undo.request_of(turn_id) or turn_id
+
+
 def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                                   framework: Framework | None = None) -> None:
     """gate-resume (20/6/2026): se un gate get_approval ha messo in PAUSA la
@@ -8113,6 +8125,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                             (runtime_ctx or {}).get("conversation_id") or ""),
                         "source_request_id": (
                             (runtime_ctx or {}).get("source_request_id") or ""),
+                        "request_turn_id": _request_turn(runtime_ctx),
                     }
                     if self_gate:
                         callback = {
@@ -8173,6 +8186,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                                 getattr(paused_input, "step_idx", 0)
                                 or len(prior_steps)),
                             "conversation_id": rc.get("conversation_id") or "",
+                            "request_turn_id": _request_turn(rc),
                         }
                         _dp.save_pending(sender, did_input, state)
                         log.info("[input_resume] dialog %s → planner continuation",
@@ -8237,6 +8251,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                 "original_query": rc.get("user_query_raw") or query,
                 "conversation_id": rc.get("conversation_id") or "",
                 "turn_id": rc.get("turn_id") or "",
+                "request_turn_id": _request_turn(rc),
                 "source_request_id": rc.get("source_request_id") or "",
             }
             _dp.save_pending(sender, did, st)
@@ -8277,6 +8292,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                 "original_query": rc.get("user_query_raw") or query,
                 "conversation_id": rc.get("conversation_id") or "",
                 "turn_id": rc.get("turn_id") or "",
+                "request_turn_id": _request_turn(rc),
                 "source_request_id": rc.get("source_request_id") or "",
             }
             _dp.save_pending(sender, did, st)
@@ -8294,6 +8310,8 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             "original_query": rc.get("user_query_raw") or query,
             "conversation_id": rc.get("conversation_id") or "",
             "source_request_id": rc.get("source_request_id") or "",
+            # The turn run again after the yes belongs to this request.
+            "request_turn_id": _request_turn(rc),
             "gate_approve_value": oc.get("approve_value", "approve"),
             "gate_on_reject": oc.get("on_reject"),
         }

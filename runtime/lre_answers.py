@@ -566,8 +566,13 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
     """The answer of the whole request, as a turn linked to what asked."""
     from messages import get as message
 
+    import undo
+
     started = time.time()
     turn_id = uuid.uuid4().hex[:16]
+    # Every effect of the rest, before or after a consent, is part of the
+    # request: one «undo» reverses them together with the request's own.
+    undo.continue_request(turn_id, entry["turn_id"])
     run = _rest_of_request(entry, result, replay=replay, approved=approved,
                            turn_id=turn_id)
     kind, text = run.final_kind or "answer", str(run.final_text or "")

@@ -5,9 +5,17 @@ Per ogni invocazione di executor con `revertible=true` il runtime scrive:
   done     dopo successo        {type, op_id, ts, results}
   undone   dopo undo eseguito   {type, op_id, ts, reverse_results}
 
-`undo_last_turn` cerca i `done` non `undone` del turno piu' recente e
+`undo_last_turn` cerca i `done` non `undone` della richiesta piu' recente e
 chiama in ordine inverso `reverse(plan, results)` esposta dal modulo
 dell'executor.
+
+The unit of an undo is the REQUEST (17/11/2026): the turn where the person
+asked and every turn that continues it (the rest of a long job before and
+after a consent, a turn resumed after a yes in the chat). The code that
+starts a continuation declares which request it continues
+(`continue_request`); the writer of the pending record reads it
+(`request_of`) and records it as `request_turn_id`. A request of one turn
+writes no such field and is undone exactly as before.
 
 Crash safety: pending senza done ne' undone => orfano (op crashata in
 volo); listato da `find_crashed`. Nessun auto-rollback.
@@ -16,7 +24,9 @@ volo); listato da `find_crashed`. Nessun auto-rollback.
 import fcntl
 import json
 import os
+import threading
 import time
+from collections import OrderedDict
 from pathlib import Path
 from typing import Iterator
 
@@ -26,6 +36,49 @@ DEFAULT_LOG = _C.PATH_USER_DATA / "undo.jsonl"
 
 PER_EXECUTION_OUTCOME = "per_execution"
 UNDO_OUTCOMES = frozenset({"reversible", "no_effect", "irreversible"})
+
+
+# The request each continuation turn of this process belongs to. Written by
+# the code that mints the continuation's turn id, read by the writer of the
+# pending records, which already has that turn id: no thread or context has to
+# carry it. Bounded: a continuation runs within minutes of being declared.
+_REQUEST_OF: "OrderedDict[str, str]" = OrderedDict()
+_REQUEST_OF_LOCK = threading.Lock()
+_REQUEST_OF_MAX = 4096
+
+
+def continue_request(turn_id: str, request_turn_id: str) -> str:
+    """Declare that the turn ``turn_id`` continues the request made in the
+    turn ``request_turn_id``; return the turn of the request itself.
+
+    A continuation of a continuation belongs to the first request: when
+    ``request_turn_id`` is itself a declared continuation, its request is
+    used. Every effect recorded under ``turn_id`` from now on is undone
+    together with the request's own effects.
+    """
+    turn_id, request_turn_id = str(turn_id or ""), str(request_turn_id or "")
+    if not turn_id or not request_turn_id or turn_id == request_turn_id:
+        return request_turn_id or turn_id
+    with _REQUEST_OF_LOCK:
+        root = _REQUEST_OF.get(request_turn_id) or request_turn_id
+        _REQUEST_OF[turn_id] = root
+        _REQUEST_OF.move_to_end(turn_id)
+        while len(_REQUEST_OF) > _REQUEST_OF_MAX:
+            _REQUEST_OF.popitem(last=False)
+    return root
+
+
+def request_of(turn_id: str) -> str:
+    """The turn of the request ``turn_id`` continues, or "" for a turn that
+    is a request of its own."""
+    with _REQUEST_OF_LOCK:
+        return _REQUEST_OF.get(str(turn_id or ""), "")
+
+
+def _request_unit(pending: dict) -> str:
+    """The request an operation belongs to: its declared request, otherwise
+    its own turn."""
+    return str(pending.get("request_turn_id") or pending.get("turn_id") or "")
 
 
 # A tool that stops to ask the person (data, a consent) has done nothing yet.
@@ -83,9 +136,12 @@ class UndoLog:
 
     def append_pending(self, op_id: str, turn_id: str, executor: str, args: dict,
                        plan: dict, actor: str = "host", channel: str = "",
-                       device: str = "", outcome_contract: str = "") -> None:
+                       device: str = "", outcome_contract: str = "",
+                       request_turn_id: str = "") -> None:
         # `device`: id del device remoto quando l'op ha girato LI' (C7 CP4) —
         # l'undo deve ribaltare sullo STESSO host, mai sul server (§2.9).
+        # `request_turn_id`: the turn of the request a continuation turn
+        # belongs to; absent for a turn that is a request of its own.
         self._append({
             "type": "pending",
             "device": device,
@@ -99,6 +155,8 @@ class UndoLog:
             "plan": plan,
             **({"outcome_contract": outcome_contract}
                if outcome_contract else {}),
+            **({"request_turn_id": request_turn_id}
+               if request_turn_id and request_turn_id != turn_id else {}),
         })
 
     def append_done(self, op_id: str, results: dict) -> None:
@@ -186,7 +244,12 @@ class UndoLog:
         return ops
 
     def latest_turn_done(self, actor: str | None = None) -> list[dict]:
-        """Record `done` non `undone` del turno piu' recente con almeno un done.
+        """Record `done` non `undone` della richiesta piu' recente.
+
+        The most recently completed operation names the request; every
+        reversible operation of that request is returned, whichever of its
+        turns ran it (the request's own turn or a continuation, see
+        `continue_request`). A request of one turn is its turn, as before.
 
         Ritorna i pending arricchiti con `results` (campo del done corrispondente),
         in ordine cronologico (dal primo all'ultimo eseguito).
@@ -219,15 +282,15 @@ class UndoLog:
             return []
         completed_ops.sort(key=lambda item: item[1]["ts"])
         latest_pending = completed_ops[-1][0]
-        latest_turn_id = latest_pending.get("turn_id") or ""
+        latest_request = _request_unit(latest_pending)
         # Legacy/corrupt records without a turn id are not one giant turn.
         # Treat only the latest operation as the boundary: grouping every
         # empty id would mix unrelated historical effects and could undo far
-        # more than the person requested.  New dialog continuations preserve
-        # their originating id in orchestration.
+        # more than the person requested.  Continuations of a request carry
+        # the request's turn (`request_turn_id`), so they share its boundary.
         def _same_boundary(pending: dict) -> bool:
-            if latest_turn_id:
-                return pending.get("turn_id") == latest_turn_id
+            if latest_request:
+                return _request_unit(pending) == latest_request
             return pending.get("op_id") == latest_pending.get("op_id")
 
         same_turn = [

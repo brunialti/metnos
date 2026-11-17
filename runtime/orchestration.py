@@ -262,6 +262,15 @@ def invoke_get_inputs_internal(*,
         # value wins for deliberate cross-turn orchestration.
         if origin_turn_id:
             callback.setdefault("turn_id", origin_turn_id)
+        # The request the resuming turn continues, if any, as the runtime
+        # knows it (never as a tool's payload says): kept with the question so
+        # that a resume after a restart still joins the request's undo.
+        import undo
+        _request = undo.request_of(str(callback.get("turn_id") or ""))
+        if _request:
+            callback["request_turn_id"] = _request
+        else:
+            callback.pop("request_turn_id", None)
     state = {
         "dialog_id": dialog_id,
         "title": title,
@@ -692,6 +701,13 @@ def _dispatch_completion(sender_id: str, dialog_id: str,
         on_complete = dict(on_complete)
         on_complete["turn_id"] = (on_complete.get("turn_id")
                                   or state.get("origin_turn_id") or "")
+    # A callback that runs under the turn that asked keeps that turn in the
+    # request it continues, also after a restart emptied the process's own
+    # memory of it: what the answer runs is undone with the whole request.
+    if on_complete.get("turn_id") and on_complete.get("request_turn_id"):
+        import undo
+        undo.continue_request(str(on_complete["turn_id"]),
+                              str(on_complete["request_turn_id"]))
 
     values = state.get("values_collected") or {}
 
@@ -1811,8 +1827,8 @@ def _gate_tail_callback(gate: dict, parent_callback: dict,
         "gate_on_reject": gate.get("on_reject"),
     }
     for key in ("tail_steps", "tail_final_message", "original_query",
-                "conversation_id", "turn_id", "source_request_id",
-                "target_device"):
+                "conversation_id", "turn_id", "request_turn_id",
+                "source_request_id", "target_device"):
         callback[key] = parent_callback.get(key) or (
             [] if key == "tail_steps" else "")
     callback.update(overrides)
@@ -1905,7 +1921,14 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
         return _shape_result_for_chat(rejected)
 
     import uuid
+    import undo
     continuation_id = uuid.uuid4().hex[:16]
+    # What the approved branch and the tail change belongs to the request
+    # that asked: one «undo» reverses it together with what ran before the
+    # question. A nested question carries the same request on.
+    request_turn_id = undo.continue_request(
+        continuation_id, str(on_complete.get("request_turn_id")
+                             or on_complete.get("turn_id") or ""))
     branch_result = _invoke_gate_branch_result(
         on_complete.get("gate_on_approve"), actor=actor, channel=channel,
         owner_user_id=str(on_complete.get("owner_user_id") or ""),
@@ -1986,6 +2009,7 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
                 "original_query": on_complete.get("original_query") or "",
                 "conversation_id": on_complete.get("conversation_id") or "",
                 "turn_id": continuation_id,
+                "request_turn_id": request_turn_id,
                 "source_request_id": on_complete.get("source_request_id") or "",
                 "target_device": device or "",
             })
@@ -1996,6 +2020,7 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
             # same tail; the runtime still creates and verifies its form.
             carried = _gate_tail_callback(
                 nested_callback, on_complete, turn_id=continuation_id,
+                request_turn_id=request_turn_id,
                 target_device=device or "")
             if carried is not None:
                 payload["on_complete"] = carried
@@ -2019,7 +2044,8 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
         if not raw_tail:
             return complete(_shape_result_for_chat(branch_result))
         if not _carry_executor_tail_to_nested_gate(
-                branch_result, dict(on_complete, turn_id=continuation_id),
+                branch_result, dict(on_complete, turn_id=continuation_id,
+                                    request_turn_id=request_turn_id),
                 actor=actor, channel=channel):
             return complete(_msg(
                 "MSG_ORCH_CONTINUATION_FAILED",
@@ -2172,6 +2198,7 @@ def _process_resume_engine_gate(on_complete: dict, values: dict, *,
             source_request_id=str(
                 on_complete.get("source_request_id") or ""),
             pre_approved_gate=True,
+            request_turn_id=str(on_complete.get("request_turn_id") or ""),
         )
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("orchestration: resume_engine_gate fallito")
@@ -2312,6 +2339,7 @@ def _process_resume_executor_values_tail(on_complete: dict, values: dict, *,
         "original_query": on_complete.get("original_query") or "",
         "conversation_id": on_complete.get("conversation_id") or "",
         "turn_id": on_complete.get("turn_id") or "",
+        "request_turn_id": on_complete.get("request_turn_id") or "",
         "source_request_id": on_complete.get("source_request_id") or "",
     }
     return _process_resume_executor_gate_tail(
@@ -2682,6 +2710,7 @@ def _process_resume_planner_with_dialog_values(
             conversation_id=conversation_id,
             owner_user_id=str(on_complete.get("owner_user_id") or ""),
             resume_with_scratchpad=prior_steps,
+            request_turn_id=str(on_complete.get("request_turn_id") or ""),
         )
     except (RuntimeError, TypeError, ImportError) as ex:
         log.exception("orchestration: resume_planner_with_dialog_values fallito")
