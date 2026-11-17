@@ -632,6 +632,14 @@ def project_from_entries(args: dict, entries: list,
     # field named "value" must not route the payload to positional "values".
     vector_arg = (None if explicit_record_sources
                   else consumer_match_arg(consumer_schema, entries))
+    # What a manifest lists as the arguments the rows of a step may fill is
+    # the authority; the plural-of-a-field convention only chooses among
+    # them. Without this the rows handed to a tool that builds one path per
+    # row arrived as a bare list of their own paths (create_dirs, 16/11/2026).
+    declared = (consumer_schema.get("from_step_alternatives")
+                if isinstance(consumer_schema, dict) else None)
+    if vector_arg and isinstance(declared, list) and vector_arg not in declared:
+        vector_arg = None
     used_vector_arg = None
     if vector_arg and vector_arg not in out:
         spec = properties.get(vector_arg) or {}

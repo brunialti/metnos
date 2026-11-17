@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import base64
 import datetime
+import errno
 import fnmatch
 import hashlib
 import html
@@ -71,6 +72,13 @@ from path_alias import (  # noqa: E402
     home_dir_suggestions as _home_dir_suggestions,
     normalize_input_path as _normalize_input_path,
 )
+
+
+def _write_refused(exc: OSError) -> bool:
+    """The system refused a write at this place: no permission, or a place
+    shown read-only. In the sandbox what no bind reaches is read-only, so a
+    place outside the tool's scope answers "read-only file system"."""
+    return isinstance(exc, PermissionError) or exc.errno == errno.EROFS
 
 # Alias bilingue IT↔EN per i path utente standard (XDG user-dirs). Quando
 # l'utente IT scrive "Immagini" su un sistema con LANG=en_US la cartella
@@ -630,6 +638,13 @@ def _serialize_content(c):
     return str(c)
 
 
+def _write_denied(abs_path: str) -> dict:
+    return {"path": abs_path, "ok": False,
+            "error_code": "ERR_PERMISSION_DENIED",
+            "error": _msg("ERR_PERMISSION_DENIED", path=abs_path),
+            "detail": f"path outside allowed scope: {abs_path}"}
+
+
 def _write_one(path, content, encoding, mode):
     """Scrive UN file. Ritorna (ok, entry_o_errordict, created_parents).
     Estratto dal write() scalare per riuso nella forma vettoriale."""
@@ -683,6 +698,8 @@ def _write_one(path, content, encoding, mode):
             os.makedirs(parent, exist_ok=True)
             created_parents = list(reversed(chain))
         except OSError as e:
+            if _write_refused(e):
+                return False, _write_denied(abs_path), []
             return False, {"path": abs_path, "ok": False,
                            "error_code": "ERR_PARENT_MKDIR_FAIL",
                            "error": _msg("ERR_PARENT_MKDIR_FAIL",
@@ -709,12 +726,6 @@ def _write_one(path, content, encoding, mode):
             if prev_blob_path:
                 entry["prev_blob_path"] = prev_blob_path
             return True, entry, created_parents
-    except PermissionError:
-        restore_file_from_undo_backup(abs_path, prev_blob_path)
-        return False, {"path": abs_path, "ok": False,
-                       "error_code": "ERR_PERMISSION_DENIED",
-                       "error": _msg("ERR_PERMISSION_DENIED", path=abs_path),
-                       "detail": f"path outside allowed scope: {abs_path}"}, []
     except IsADirectoryError:
         restore_file_from_undo_backup(abs_path, prev_blob_path)
         return False, {"path": abs_path, "ok": False,
@@ -723,6 +734,8 @@ def _write_one(path, content, encoding, mode):
                                      actual="directory", path=str(abs_path))}, []
     except OSError as e:
         restore_file_from_undo_backup(abs_path, prev_blob_path)
+        if _write_refused(e):
+            return False, _write_denied(abs_path), []
         return False, {"path": abs_path, "ok": False,
                        "error_code": "ERR_OP_FAILED",
                        "error": _msg("ERR_OP_FAILED", reason=f"os error: {e}")}, []
@@ -1020,6 +1033,30 @@ def find(args: dict) -> dict:
 # --- move ------------------------------------------------------------------
 
 
+def _inside_partition(entry, src_path) -> dict:
+    """Where a file sits inside the partition its row names.
+
+    A row produced folder by folder carries `partition`, the folder it was
+    found under. `{rel_path}` and `{rel_dir}` are the file and its directory
+    relative to that folder, so a destination can keep the sub-folders the
+    file came from: two files with the same name in different sub-folders do
+    not land on each other. Computed on the real paths (a partition is often
+    reached through a link). Absent when the row names no partition or the
+    file is not under it: a template that needs them then fails for that
+    row, said as any missing field is."""
+    partition = entry.get("partition")
+    if not isinstance(partition, str) or not partition.strip():
+        return {}
+    try:
+        root = Path(os.path.expanduser(partition)).resolve()
+        relative = Path(src_path).resolve().relative_to(root)
+    except (OSError, ValueError):
+        return {}
+    directory = relative.parent.as_posix()
+    return {"rel_path": relative.as_posix(),
+            "rel_dir": "" if directory == "." else directory}
+
+
 def _entry_fields(entry, src_path):
     name = entry.get("name") or src_path.name
     if "." in name and not name.startswith("."):
@@ -1051,9 +1088,11 @@ def _entry_fields(entry, src_path):
     # sovrascrivibili (vincono sempre).
     extra = {k: v for k, v in entry.items()
              if isinstance(v, str) and k not in (
-                 "path", "name", "stem", "ext", "parent", "place")}
+                 "path", "name", "stem", "ext", "parent", "place",
+                 "rel_path", "rel_dir")}
     return {
         **extra,
+        **_inside_partition(entry, src_path),
         "path": str(src_path),
         "name": name,
         "stem": stem,
@@ -1095,9 +1134,9 @@ def _move_one(src_path, dst_path, overwrite, parents, copy=False):
         ancestors.reverse()
         try:
             dst_path.parent.mkdir(parents=True, exist_ok=True)
-        except PermissionError as e:
-            return False, f"permission denied creating dst parent (possibly outside allowed scope): {e}", []
         except OSError as e:
+            if _write_refused(e):
+                return False, f"permission denied creating dst parent (possibly outside allowed scope): {e}", []
             return False, f"os error creating dst parent: {e}", []
         dirs_created = ancestors
     try:
@@ -1105,9 +1144,9 @@ def _move_one(src_path, dst_path, overwrite, parents, copy=False):
             shutil.copy2(str(src_path), str(dst_path))
         else:
             shutil.move(str(src_path), str(dst_path))
-    except PermissionError as e:
-        return False, f"permission denied (possibly outside allowed scope): {e}", []
     except OSError as e:
+        if _write_refused(e):
+            return False, f"permission denied (possibly outside allowed scope): {e}", []
         return False, f"os error: {e}", []
     return True, None, dirs_created
 
@@ -1138,6 +1177,42 @@ def _move_error_code(error: str | None) -> str:
     return "ERR_OP_FAILED"
 
 
+# Why one file was not moved, in the person's words and without its path
+# (the row carries the paths): rows that failed for the same reason read the
+# same, so they can be counted.
+_MOVE_CAUSE_KEYS = {
+    "ERR_DST_EXISTS": "MSG_MOVE_CAUSE_NAME_TAKEN",
+    "ERR_PATH_NOT_FOUND": "MSG_MOVE_CAUSE_GONE",
+    "ERR_REFUSE_MOVE": "MSG_MOVE_CAUSE_SAME_PLACE",
+    "ERR_PERMISSION_DENIED": "MSG_MOVE_CAUSE_PERMISSION",
+}
+_MOVE_CAUSES_SHOWN = 3
+
+
+def _move_cause(error_code: str, detail: str | None) -> str:
+    key = _MOVE_CAUSE_KEYS.get(error_code)
+    return _msg(key) if key else _msg("ERR_OP_FAILED", reason=str(detail or ""))
+
+
+def _not_moved_text(done: int, failed: list, *, copied: bool) -> str:
+    """How many were not moved and why, the commonest reasons first."""
+    counts: dict[str, int] = {}
+    for row in failed:
+        text = str(row.get("error") or "").strip().rstrip(".") if isinstance(row, dict) else ""
+        text = text or _msg("ERR_OP_FAILED", reason="").strip().rstrip(".: ")
+        counts[text] = counts.get(text, 0) + 1
+    ranked = sorted(counts.items(), key=lambda item: -item[1])
+    shown, rest = ranked[:_MOVE_CAUSES_SHOWN], ranked[_MOVE_CAUSES_SHOWN:]
+    if len(ranked) == 1:
+        reasons = shown[0][0]
+    else:
+        reasons = "; ".join(f"{text} ({count})" for text, count in shown)
+        if rest:
+            reasons += f"; {_msg('MSG_MOVE_CAUSE_OTHERS')} ({sum(count for _text, count in rest)})"
+    return _msg("MSG_MOVE_NOT_COPIED" if copied else "MSG_MOVE_NOT_MOVED",
+                n=len(failed), total=done + len(failed), reasons=reasons)
+
+
 def _move_failure(error_code: str, error: str) -> dict:
     return {
         "ok": False,
@@ -1162,7 +1237,7 @@ def _move_alias_failure(payload: dict, *, prefix: str) -> dict:
     return out
 
 
-def _move_result(results: list, failed: list, **extra) -> dict:
+def _move_result(results: list, failed: list, *, copied: bool = False, **extra) -> dict:
     out = vector_result(results, failed, entry_key="results")
     out.update(extra)
     if failed:
@@ -1172,8 +1247,7 @@ def _move_result(results: list, failed: list, **extra) -> dict:
             "error_class": _MOVE_ERROR_CLASSES.get(
                 error_code, "operation_failed"),
             "error_code": error_code,
-            "error": primary.get("error") or _msg(
-                "ERR_OP_FAILED", reason="move failed"),
+            "error": _not_moved_text(len(results), failed, copied=copied),
         })
     return out
 
@@ -1313,12 +1387,13 @@ def move(args: dict) -> dict:
                 "src": str(src_path),
                 "dst": str(dst_path),
                 "error_code": _move_error_code(err),
-                "error": err,
+                "error": _move_cause(_move_error_code(err), err),
             })
 
     dirs_created_list = sorted(all_dirs_created, key=lambda p: p.count("/"), reverse=True)
 
-    return _move_result(results, failed, dirs_created=dirs_created_list)
+    return _move_result(results, failed, copied=copy_mode,
+                        dirs_created=dirs_created_list)
 
 
 def reverse_move(plan, results):
@@ -1363,7 +1438,7 @@ def reverse_move(plan, results):
                 "src": str(src_now),
                 "dst": str(dst_back),
                 "error_code": _move_error_code(err),
-                "error": err,
+                "error": _move_cause(_move_error_code(err), err),
             })
 
     dirs_removed = []
@@ -1590,9 +1665,9 @@ def _create_one(path_arg, parents, exist_ok, mode):
         return False, str(target), f"path already exists and is not a directory: {target}", False
     except FileNotFoundError as e:
         return False, str(target), f"missing parent (use parents=true to auto-create): {e}", False
-    except PermissionError as e:
-        return False, str(target), f"permission denied (possibly outside allowed scope): {e}", False
     except OSError as e:
+        if _write_refused(e):
+            return False, str(target), f"permission denied (possibly outside allowed scope): {e}", False
         return False, str(target), f"os error: {e}", False
     created = (not pre_existed)
     try:
@@ -1602,12 +1677,65 @@ def _create_one(path_arg, parents, exist_ok, mode):
         return True, str(target), None, created
 
 
+def _paths_from_rows(entries, template):
+    """The distinct paths a template takes on the rows, in first-seen order.
+
+    Returns (paths, None) or (None, the failure to report). A row on which a
+    field of the template is missing or empty is a failure, never a folder
+    created at a place the plan did not mean."""
+    if not isinstance(template, str) or not template.strip():
+        return None, {"index": 0, "path": None, "error_code": "ERR_ARG_INVALID",
+                      "error": _msg("ERR_ARG_NOT_NONEMPTY_STRING", arg="path_template")}
+    if not isinstance(entries, list):
+        return None, {"index": 0, "path": None, "error_code": "ERR_ARG_INVALID",
+                      "error": _msg("ERR_ARG_NOT_LIST", arg="entries")}
+    import string
+
+    try:
+        wanted = [name for _text, name, _spec, _conv
+                  in string.Formatter().parse(template) if name]
+    except ValueError:
+        return None, {"index": 0, "path": None, "error_code": "ERR_TEMPLATE_FAIL",
+                      "error": _msg("ERR_ROW_PATH_TEMPLATE", template=template)}
+    paths: dict[str, None] = {}
+    for index, entry in enumerate(entries):
+        fields = {key: value for key, value in entry.items()
+                  if isinstance(value, str)} if isinstance(entry, dict) else {}
+        missing = [name for name in wanted if not fields.get(name)]
+        if missing:
+            return None, {
+                "index": index, "path": None, "error_code": "ERR_TEMPLATE_FAIL",
+                "error": _msg("ERR_ROW_PATH_FIELD", row=index + 1,
+                              fields=", ".join(missing))}
+        try:
+            paths.setdefault(template.format(**fields))
+        except (ValueError, IndexError, KeyError):
+            return None, {
+                "index": index, "path": None, "error_code": "ERR_TEMPLATE_FAIL",
+                "error": _msg("ERR_ROW_PATH_TEMPLATE", template=template)}
+    return list(paths), None
+
+
 def create_dirs(args: dict) -> dict:
     """Crea directory (vettoriale). Args: paths, parents, exist_ok, mode."""
     paths = args.get("paths")
     parents = args.get("parents", True)
     exist_ok = args.get("exist_ok", True)
     mode = args.get("mode")
+
+    template = args.get("path_template")
+    if paths is None and template is None and args.get("entries") is not None:
+        # Rows without a template name what exists, not what to create.
+        return _dir_vector_result([], [{
+            "index": 0, "path": None, "error_code": "ERR_ARG_MISSING",
+            "error": _msg("ERR_ARG_MISSING", arg="path_template")}])
+    if paths is None and template is not None:
+        # One folder for each different value the template takes on the rows:
+        # «a folder inside the folder of each row» without the plan having to
+        # spell the folders out.
+        paths, problem = _paths_from_rows(args.get("entries"), template)
+        if problem is not None:
+            return _dir_vector_result([], [problem])
 
     if paths is None or not isinstance(paths, list):
         return _dir_vector_result([], [{
@@ -1725,9 +1853,9 @@ def _remove_one(path_arg, force):
             shutil.rmtree(target)
         else:
             target.rmdir()
-    except PermissionError as e:
-        return False, str(target), f"permission denied (possibly outside allowed scope): {e}"
     except OSError as e:
+        if _write_refused(e):
+            return False, str(target), f"permission denied (possibly outside allowed scope): {e}"
         return False, str(target), f"os error: {e}"
     return True, str(target), receipt
 

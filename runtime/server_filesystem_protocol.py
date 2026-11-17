@@ -272,8 +272,9 @@ def validate_request(request):
     """Validate the closed request envelope before calling a helper handler."""
     if not isinstance(request, dict):
         raise _error()
-    if request.get("action") == "known_folders":
-        # The owner's named folders: no account, path or callback involved.
+    if request.get("action") in ("known_folders", "operations"):
+        # The owner's named folders, or the closed operations this host was
+        # built with: no account, path or callback involved.
         if set(request) != {"action"}:
             raise _error()
         return
@@ -321,7 +322,8 @@ def validate_request(request):
     elif action == "undo":
         if (set(request) != {"action", "owner", "pattern", "results"}
                 or not isinstance(request["pattern"], str)
-                or request["pattern"] not in {"swap_src_dst", "delete_created_paths", "restore_blob_backup"}
+                or request["pattern"] not in {"swap_src_dst", "delete_created_paths", "restore_blob_backup",
+                                              "delete_created_dirs"}
                 or not isinstance(request["results"], dict)):
             raise _error()
         context = request["results"].get("_filesystem")
@@ -356,7 +358,7 @@ def _check_message(message):
 def _callback_allowed(request, kind, action=None):
     if kind == "checkpoint" and request["action"] != "transfer":
         return False
-    if request["action"] in {"probe", "known_folders"}:
+    if request["action"] in {"probe", "known_folders", "operations"}:
         return False
     if request["action"] in {"open_source", "size"}:
         return kind == "check" and action == "read"

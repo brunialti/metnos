@@ -27,6 +27,8 @@ ERROR_CODES = frozenset({
     "ERR_FS_SIZE_LIMIT", "ERR_FS_DEST_EXISTS", "ERR_FS_HASH_MISMATCH", "ERR_FS_SOURCE_CHANGED",
     "ERR_FS_BINARY_ENCODING_REQUIRED", "ERR_FS_BROKER_UNSUPPORTED", "ERR_FS_IO",
     "ERR_FS_ACCESS_UNAVAILABLE", "ERR_FS_HOST_UNAVAILABLE",
+    "ERR_FS_NOT_A_FOLDER", "ERR_FS_PARENT_MISSING", "ERR_FS_FOLDER_NOT_EMPTY", "ERR_FS_HOST_OUTDATED",
+    "ERR_FS_SOURCE_MISSING",
 })
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS filesystem_grants (
@@ -340,6 +342,41 @@ def search_contract(manifest: dict, args: dict | None = None) -> str | None:
                              or (args.get("repo") and "client" not in args)):
         return None
     return value["root"]
+
+
+SERVER_TABLE = "filesystem_server"
+# Closed operations that only the server serves. A device's native broker
+# parses `[filesystem]` and refuses an operation it does not know, and with it
+# the whole manifest: a tool the PC also runs declares these in a table of
+# their own, which the server alone reads.
+SERVER_OPERATIONS = frozenset({"mkdir", "move"})
+
+
+def server_contract(manifest: dict, args: dict | None = None) -> str | None:
+    """The server-only closed operation declared in `[filesystem_server]`, or None."""
+    value = manifest.get(SERVER_TABLE)
+    if value is None or value == {}:
+        return None
+    if (not isinstance(value, dict) or set(value) != {"protocol", "operation"}
+            or value.get("protocol") != CAPABILITY or value.get("operation") not in SERVER_OPERATIONS):
+        raise PermissionError("ERR_FS_CONTRACT_INVALID")
+    caps = {v.get("name") for v in manifest.get("capabilities", []) if isinstance(v, dict)}
+    # It needs the right of a write. Next to a shared contract only when that
+    # one applies under a condition: where it applies, it wins.
+    shared = manifest.get("filesystem")
+    if ("fs:write" not in caps or manifest.get(SEARCH_TABLE)
+            or shared and not (isinstance(shared, dict) and shared.get("when"))):
+        raise PermissionError("ERR_FS_CONTRACT_INVALID")
+    if args is not None and (args.get("client", "local") != "local"
+                             or (args.get("repo") and "client" not in args)):
+        return None
+    return value["operation"]
+
+
+def served_operation(manifest: dict, args: dict | None = None) -> str | None:
+    """The closed operation the server serves for this call: the contract a
+    device shares (`[filesystem]`), else a server-only one."""
+    return contract(manifest, args) or server_contract(manifest, args)
 
 
 def manifest_shows(manifest: dict, args: dict | None, path: str, action: str = "read") -> bool:

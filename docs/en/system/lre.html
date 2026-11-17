@@ -344,6 +344,21 @@ it.</p>
  <li><strong>Other questions.</strong> If a later step needs something else from you, such as a form, the rest stops there and the answer says so.</li>
 </ul>
 
+<h3 id="folder-by-folder">The same work, folder by folder</h3>
+
+<p>A long action can be asked for several folders together: for every
+subfolder of a folder, or for a few named folders. It becomes one LRE job with
+one unit per folder. Each unit is the ordinary action on that folder alone,
+with its own checks and its own time limit.</p>
+
+<ul>
+ <li><strong>Separate results.</strong> Every row of the result says which folder it belongs to, and the answer reports for each folder how many results it gave and how it ended. When the action is meaningful only inside one folder, as a duplicate search is, the answer says that nothing was searched across different folders.</li>
+ <li><strong>Following steps.</strong> Moving, creating folders or filling a sheet after the long action works row by row: each file stays inside the folder it was found in and, when it is moved to one of its subfolders, keeps the subfolders it came from. The confirmation before moving or deleting is a single one and says how many items are in each folder.</li>
+ <li><strong>If one folder fails.</strong> The others go on. The answer names the folder and the reason, and states that the totals are a minimum.</li>
+ <li><strong>Resuming.</strong> Folders already completed are not repeated after an interruption.</li>
+ <li><strong>Limits.</strong> Folders cannot be one inside another and a request takes 256 at most: otherwise the job does not start and the answer says why. Files that sit directly in the parent folder, outside every subfolder, are not included. Units run one after the other.</li>
+</ul>
+
 <h2 id="executors">Local, remote, and intelligent executors</h2>
 
 <p>Each stage declares <em>where</em> and <em>how</em> it may run. A local executor

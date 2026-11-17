@@ -23,6 +23,8 @@ import server_filesystem_protocol as protocol
 CONFIG = Path('/etc/metnos/filesystem-host.json')
 _FIELDS = {'version', 'owner_uid', 'owner_gid', 'service_uid', 'socket', 'state_dir'}
 _GRANT_FIELDS = {'path', 'kind', 'can_read', 'can_write', 'recursive', 'can_overwrite', 'path_style'}
+# The lists of items an operation's arguments name: an undo needs none of them.
+_ITEM_LISTS = frozenset({'paths', 'entries', 'files', 'contents'})
 
 
 def configuration(path=CONFIG):
@@ -205,13 +207,32 @@ def _single_args(operation, args, spec):
     if operation == 'copy':
         return {**args, 'entries': [{'path': spec['src'], 'destination': spec['dst']}], 'dst_template': '{destination}',
                 'source_location': 'server', 'destination_location': 'server'}
+    if operation == 'move':
+        return {**args, 'entries': [spec], 'dst_template': '{dst}'}
     return {**args, 'paths': [spec]}
+
+
+def _knows(binding, operation, deadline):
+    """Refuse at once an operation the running host was not built with.
+
+    The host is restarted from the new release only after the cutover; until
+    then, or when that refresh failed, the service can be newer than it. A host
+    older than the bare `operations` request does not know it either."""
+    try:
+        reply = _exchange(binding, {'action': 'operations'}, None, timeout_s=min(2, _remaining(deadline)))
+    except permissions.PermissionError as exc:
+        if str(exc) != 'ERR_FS_AUTHORITY_INVALID':
+            raise
+        reply = {}
+    known = reply.get('operations') if isinstance(reply, dict) else None
+    if not isinstance(known, list) or operation not in known:
+        raise permissions.PermissionError('ERR_FS_HOST_OUTDATED')
 
 
 def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
     import server_filesystem as server
     deadline = time.monotonic() + min(timeout_s, 30)
-    operation = permissions.contract(manifest, args)
+    operation = permissions.served_operation(manifest, args)
     requested = server.requests(operation, args)
     if all(_workspace(path) for path, _ in requested):
         return None
@@ -224,20 +245,42 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
     if operation == 'list':
         broker.check(requested[0][0], 'read', directory=True)
         return _exchange(binding, envelope, authority, timeout_s=_remaining(deadline))
-    specs = (server.write_specs(args) if operation == 'write' else
-             server.copy_specs(args) if operation == 'copy' else server.paths(args))
-    if len(specs) > 100:
-        raise permissions.PermissionError('ERR_FS_SIZE_LIMIT')
+    specs = server.capped(server.write_specs(args) if operation == 'write' else
+                          server.copy_specs(args) if operation == 'copy' else
+                          server.dir_paths(args) if operation == 'mkdir' else
+                          server.move_rows(args) if operation == 'move' else server.paths(args))
     results, failed = [], []
+    # An operation older hosts already serve needs no question; a newer one is
+    # asked about once, at the first path that goes to the host.
+    host_answer = None if operation in permissions.SERVER_OPERATIONS else 'ok'
     for index, spec in enumerate(specs):
         source_fd = None
+        sent = False
         try:
+            if operation == 'move' and 'refused' in spec:
+                failed.append(server.move_failure(index, spec, None))
+                continue
             item_args = _single_args(operation, args, spec)
             # Check every path before opening it under either Linux identity.
             for path, action in server.requests(operation, item_args):
                 broker.check(path, action)
-            target = spec['dst'] if operation == 'copy' else spec['path'] if operation == 'write' else spec
-            native = _workspace(target)
+            if operation == 'move':
+                # Both ends with one identity: a move never spans the two.
+                ends = {_workspace(spec['src']), _workspace(spec['dst'])}
+                if len(ends) != 1:
+                    raise permissions.PermissionError('ERR_FS_BROKER_UNSUPPORTED')
+                native = ends.pop()
+            else:
+                target = spec['dst'] if operation == 'copy' else spec['path'] if operation == 'write' else spec
+                native = _workspace(target)
+            if not native and host_answer is None:
+                try:
+                    _knows(binding, operation, deadline)
+                    host_answer = 'ok'
+                except permissions.PermissionError as exc:
+                    host_answer = str(exc)
+            if not native and host_answer != 'ok':
+                raise permissions.PermissionError(host_answer)
             message = {**envelope, 'args': item_args}
             if operation == 'copy' and _workspace(spec['src']) != native:
                 if native:
@@ -252,18 +295,31 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                 entry = (broker.copy(spec, source_fd=source_fd) if operation == 'copy'
                          else getattr(broker, operation)(spec))
             else:
-                reply = _exchange(binding, message, authority, timeout_s=_remaining(deadline), source_fd=source_fd)
+                remaining = _remaining(deadline)
+                sent = True
+                reply = _exchange(binding, message, authority, timeout_s=remaining, source_fd=source_fd)
                 entries = reply.get('entries' if operation == 'read' else 'results', [])
                 if not reply.get('ok') or len(entries) != 1:
                     code = reply.get('error_code', 'ERR_FS_IO')
+                    # A move names two causes in the tool's own codes; the
+                    # words are always this service's, never the host's.
+                    code = {tool: closed for closed, tool in server._MOVE_CAUSES.items()}.get(code, code)
                     raise permissions.PermissionError(code if code in permissions.ERROR_CODES else 'ERR_FS_IO')
                 entry = entries[0]
-            if operation in {'copy', 'write', 'delete'}:
+            if operation in {'copy', 'write', 'delete', 'mkdir', 'move'}:
                 entry['_filesystem_backend'] = 'native' if native else 'host'
             results.append(entry)
         except (OSError, ValueError, TypeError, LookupError) as exc:
-            error = server.error_result(exc)
-            failed.append({'index': index, 'error': error['error'], 'error_code': error['error_code']})
+            if operation == 'move':
+                failed.append(server.move_failure(index, spec, exc))
+            else:
+                error = server.error_result(exc)
+                failed.append({'index': index, 'error': error['error'], 'error_code': error['error_code'],
+                               **({'path': spec} if operation == 'mkdir' else {})})
+            if sent:
+                # The host had the item when this side stopped waiting: what
+                # it did is not known here (`_unsure`, never said undone).
+                failed[-1]['_unsure'] = True
         finally:
             if source_fd is not None:
                 os.close(source_fd)
@@ -287,13 +343,27 @@ def undo(pattern, results, *, actor=None, db_path=None, timeout_s=30):
     authority = server.LocalAuthority(owner, context['manifest'], context['args'], db_path=db_path)
     done, failed = [], []
     binding = None
-    for index, entry in enumerate(results.get('results') or []):
+    entries = results.get('results') or []
+    plan = server.undo_plan(permissions.served_operation(context['manifest'], context['args']), pattern, results)
+    if plan is not None:
+        # One item at a time, each with the backend that made it: a folder
+        # (deepest first across the whole call: a parent made for one entry
+        # may hold another's) or a moved file going back.
+        entries = [entry if folder is None else
+                   {**entry, '_dirs_created': [folder], '_dirs_created_ids': [identity]}
+                   for _index, entry, folder, identity in plan]
+    for index, entry in enumerate(entries):
         try:
             backend = entry.get('_filesystem_backend', context['backend'])
             if backend not in {'native', 'host'}:
                 raise permissions.PermissionError('ERR_FS_AUTHORITY_INVALID')
             item = {**results, 'results': [entry], '_filesystem': {**context, 'backend': backend}}
             if backend == 'host':
+                # One item crosses: the call's other rows (a call served in
+                # groups may hold more than one request carries) stay here.
+                item = {'results': [entry], '_filesystem': {
+                    **context, 'backend': backend,
+                    'args': {key: value for key, value in context['args'].items() if key not in _ITEM_LISTS}}}
                 if binding is None:
                     binding = configuration()
                 if binding is None:
@@ -319,6 +389,8 @@ def handle(request, authority, source_fd=None):
         return {'ok': True}
     if request['action'] == 'known_folders':
         return {'ok': True, 'known_folders': device_paths.local_known_folders(_owner_home())}
+    if request['action'] == 'operations':
+        return {'ok': True, 'operations': sorted(permissions.OPERATIONS | permissions.SERVER_OPERATIONS)}
     if request['action'] == 'size':
         path = request['path']
         authority.check(path, 'read')

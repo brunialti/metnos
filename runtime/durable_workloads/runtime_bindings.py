@@ -43,6 +43,7 @@ from .worker import DurableWorker
 _CORE_RUNNER_BINDINGS = (
     (RunnerKind.INTERNAL, "artifact_store_publish"),
     (RunnerKind.INTERNAL, "committed_entries"),
+    (RunnerKind.INTERNAL, "literal_entries"),
     (RunnerKind.INTERNAL, "schema_and_coverage_validator"),
     (RunnerKind.INTERNAL, "sealed_inventory"),
 )

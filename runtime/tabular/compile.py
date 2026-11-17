@@ -433,8 +433,12 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
                 # from the writer's counts/limits. A complete child operation
                 # can never cancel an incomplete upstream collection.
                 runtime_evidence = "producer" in item
-                detail = ("" if runtime_evidence else item
-                          if any(key != "partial_reason" for key in item) else item["partial_reason"])
+                # The producer's own words for why it is partial are the
+                # detail; without them, the facts it declared.
+                reason = item.get("partial_reason")
+                detail = ("" if runtime_evidence
+                          else reason if isinstance(reason, str) and reason.strip()
+                          else item)
                 notice = {"code": "WARN_TABLE_PARTIAL_SOURCE", "sheet": name,
                           "detail": _text(detail)}
                 if runtime_evidence:

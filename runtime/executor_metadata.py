@@ -234,6 +234,10 @@ def execution_policy(manifest: dict | None = None) -> dict:
     frozen = _frozen_policy(data)
     if frozen is not None:
         policy["frozen_plan"] = frozen
+    from partitioned_runs import normalized_partition
+    partition = normalized_partition(data)
+    if partition is not None:
+        policy["partition"] = partition
 
     # Defence in depth: even if validation was bypassed, an incomplete opt-in
     # degrades to serial rather than acquiring parallel execution authority.

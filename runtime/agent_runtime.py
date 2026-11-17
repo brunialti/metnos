@@ -3363,7 +3363,8 @@ def finalize_local_executor_args(executor, args: dict) -> dict:
     # grant on the real path. Any other executor runs in a sandbox that never
     # shows that folder: anchored, it reported an existing folder as missing
     # (turn ff8c2bb2, 11/11/2026).
-    if not (getattr(executor, "filesystem", None) or getattr(executor, "filesystem_search", None)):
+    if not (getattr(executor, "filesystem", None) or getattr(executor, "filesystem_search", None)
+            or getattr(executor, "filesystem_server", None)):
         return final
     # For the closed filesystem operations every path leaves here absolute:
     # the person's working folder for a bare drive root and for a path without
@@ -4059,9 +4060,14 @@ def _observed_call(executor, args, invoke):
     """Run one call and let the owner of the generated tools see how it ended:
     one that fails by its own code is withdrawn at once (ADR 0239, rule 4)."""
     import generated_rewrite
+    import partitioned_runs
     import provider_reads
 
-    result = provider_reads.run(executor, args, invoke)
+    # A tool that declares a partition and is given a list of them is called
+    # once per partition, each an ordinary call; any other call passes through.
+    result = partitioned_runs.run(
+        executor, args,
+        lambda arguments: provider_reads.run(executor, arguments, invoke))
     generated_rewrite.observe(executor, args, result)
     return result
 
@@ -4764,8 +4770,15 @@ class TurnLog:
         dichiara 'Hai 0 mail' mentre in realtà N account NON sono stati controllati
         (bug 1/6). Include anche `partial_reason` esplicito dei processor."""
         notices, seen = [], set()
+        import partitioned_runs as _partitions
         for s in self.steps:
             res = s.result if isinstance(s.result, dict) else {}
+            if _partitions.is_partitioned(res):
+                # Said once, folder by folder with its cause, after every
+                # rewrite of the final (`partitioned_runs.notice`): here the
+                # runtime's own words («not found» as the cause of a folder)
+                # would be judged as claims of the plan's prose.
+                continue
             # An explicit semantic partial result remains visible even when
             # the step is a processor or the final action creates a file.
             reason = res.get("partial_reason")
@@ -5866,6 +5879,17 @@ class TurnLog:
                         self.final_message = msg("MSG_DEGENERATE_FINAL_ITEMS", n=_n)
                     else:
                         self.final_message = msg("MSG_FINAL_FALLBACK_GENERIC")
+        # A step served partition by partition says so, with one line for each
+        # partition: what was found there and how it ended. Added after every
+        # rewrite of the final: those judge the plan's own prose (a runtime
+        # line «done» is not a claim that a file was made) and assign it anew.
+        if self.final_kind == "answer":
+            import partitioned_runs as _partitions
+            for _s in self.steps:
+                _pn = _partitions.notice(_s.result)
+                if _pn and "<missing:" not in _pn and _pn not in (self.final_message or ""):
+                    self.final_message = ((self.final_message or "").rstrip()
+                                          + "\n\n" + _pn).strip()
         # A.2 (fase 7): avvisi fuori-turno pendenti per QUESTO destinatario
         # (es. op remota completata DOPO il timeout del suo turno) — anteposti
         # DOPO tutte le riscritture del final (honesty/degenerate/false-success
@@ -7580,6 +7604,25 @@ def _run_engine(
     # mancanti → Validator falsa `tool_unknown` (§11, fix wiring B).
     catalog_v2 = _engine_v2_catalog_with_builtins(catalog)
 
+    def _partition_children(policy):
+        # «Every child of» a parent is listed by the catalog's own tool, where
+        # the files are and under the guard a step naming that parent meets.
+        import partitioned_runs
+
+        def _call(tool, arguments):
+            allowed, reason = guard_check(
+                tool, arguments, executor=_catalog_by_name.get(tool))
+            if not allowed:
+                return {"ok": False, "error": reason or ""}
+            return invoke_tool_by_name(
+                tool, arguments, catalog=catalog_v2, actor=actor,
+                channel=channel, owner_user_id=owner_user_id,
+                target_device=_target_name, turn_id=turn_id,
+                source_request_id=source_request_id,
+                request_text=user_query_raw or query)
+
+        return partitioned_runs.children_lister(policy, _call)
+
     def _admit_long_work(framework):
         import lre_answers
         admitted = submit_automatic_lre(
@@ -7593,6 +7636,7 @@ def _run_engine(
             # the job ends, on its result.
             rest_follows=lre_answers.rest_can_follow(
                 owner_user_id=owner_user_id or "", channel=channel or ""),
+            list_children=_partition_children,
         )
         # A job asked in a conversation gives its answer back there.
         lre_answers.remember_request(

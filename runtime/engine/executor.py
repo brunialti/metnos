@@ -1151,6 +1151,37 @@ def _resolve_dotted_with_synonyms(obj, path: str):
     return _resolve_dotted_with_synonyms_base(obj, path, _resolve_dotted)
 
 
+def _handed_rows(result: dict) -> Optional[int]:
+    """How many rows a step hands to the next one; None when it returns none."""
+    return next((len(result[key]) for key in ("entries", "results", "items")
+                 if isinstance(result.get(key), list)), None)
+
+
+def _cut_text(result: dict) -> str:
+    """What a question must say when the rows it is about to act upon were
+    cut by a ceiling: how many more there are, and in which folders."""
+    if not isinstance(result, dict) or result.get("truncated") is not True:
+        return ""
+    from messages import get as message
+
+    rows = _handed_rows(result)
+    total = result.get("available_total")
+    more = (total - rows if isinstance(total, int) and not isinstance(total, bool)
+            and isinstance(rows, int) and total > rows else None)
+    text = (message("MSG_CONSENT_GATE_CUT", n=more) if more is not None
+            else message("MSG_CONSENT_GATE_CUT_ANY"))
+    parts = [part for part in result.get("partitions") or ()
+             if isinstance(part, dict) and part.get("partition")] \
+        if isinstance(result.get("partitions"), list) else []
+    cut = [str(part["partition"]) for part in parts if part.get("truncated") is True]
+    if cut:
+        from partitioned_runs import labels
+        names = labels([str(part["partition"]) for part in parts])
+        text += " " + message("MSG_CONSENT_GATE_CUT_FOLDERS",
+                              labels=", ".join(names[name] for name in cut))
+    return text
+
+
 def _resolve_stepref_with_fallback(result: dict, path: str):
     """Universal §7.9: prova path diretto + synonym, poi fallback su
     entries projection.
@@ -1178,6 +1209,25 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
                 return len(v)
         lst = _find_list_of_dicts(result)
         return len(lst) if lst else 0
+    if path == "@rows":
+        # The rows this step hands to the next one: what a step that reads it
+        # will act upon. `@count` says how many there are in all, which is
+        # more when a ceiling cut the list (review of 16/11/2026: the question
+        # before a move said 9 and 6 were moved).
+        rows = _handed_rows(result)
+        return rows if rows is not None else _resolve_stepref_with_fallback(result, "@count")
+    if path == "@cut":
+        # One sentence when a ceiling cut the rows of this step; empty otherwise.
+        return _cut_text(result)
+    if path == "@by_partition":
+        # How many rows belong to each partition, for a prompt that must say
+        # where something is about to happen. Empty when the rows carry none.
+        from partitioned_runs import counts_text
+        for k in ("entries", "results", "items"):
+            v = result.get(k)
+            if isinstance(v, list) and v:
+                return counts_text(v)
+        return counts_text(_find_list_of_dicts(result))
     if path == "@brief":
         # Riassunto BREVE per-item della lista prodotta (id + titolo), per i
         # prompt che devono dire COSA si sta per fare (es. consent-gate: «#53

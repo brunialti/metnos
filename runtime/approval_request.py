@@ -11,7 +11,7 @@ from __future__ import annotations
 
 from messages import get as _msg
 
-MAX_PROMPT_LEN = 200  # same bound as the get_approval executor
+MAX_PROMPT_LEN = 200  # one sentence about one site; get_approval has its own bound
 APPROVE = "approve"
 
 

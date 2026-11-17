@@ -357,6 +357,21 @@ Telegram quando non sei alla pagina.</p>
  <li><strong>Altre domande.</strong> Se un passaggio successivo ha bisogno di altro da te, per esempio di un modulo, il resto si ferma lì e la risposta lo dichiara.</li>
 </ul>
 
+<h3 id="per-ogni-cartella">Lo stesso lavoro, cartella per cartella</h3>
+
+<p>Un'azione lunga può essere chiesta per più cartelle insieme: per ogni
+sottocartella di una cartella, oppure per alcune cartelle nominate. Diventa un
+solo lavoro LRE con un'unità per cartella. Ogni unità è l'azione ordinaria su
+quella sola cartella, con i suoi controlli e il suo tempo massimo.</p>
+
+<ul>
+ <li><strong>Risultati separati.</strong> Ogni riga del risultato dice a quale cartella appartiene, e la risposta riporta per ogni cartella quanti risultati ha dato e com'è finita. Quando l'azione vale solo dentro una cartella, come la ricerca dei duplicati, la risposta dice che fra cartelle diverse non si è cercato.</li>
+ <li><strong>Passaggi successivi.</strong> Spostare, creare cartelle o compilare un foglio dopo l'azione lunga lavora riga per riga: ogni file resta dentro la cartella in cui è stato trovato e, quando viene spostato in una sua sottocartella, conserva le sottocartelle di provenienza. La conferma prima di spostare o cancellare è una sola e indica quanti elementi ci sono in ogni cartella.</li>
+ <li><strong>Se una cartella non riesce.</strong> Le altre proseguono. La risposta nomina la cartella e il motivo, e dichiara che i totali sono un minimo.</li>
+ <li><strong>Ripresa.</strong> Le cartelle già concluse non vengono ripetute dopo un'interruzione.</li>
+ <li><strong>Limiti.</strong> Le cartelle non possono stare una dentro l'altra e in una richiesta sono al massimo 256: altrimenti il lavoro non parte e la risposta dice perché. I file che stanno direttamente nella cartella madre, fuori da ogni sottocartella, non sono compresi. Le unità vengono eseguite una dopo l'altra.</li>
+</ul>
+
 <h2 id="executor">Executor locali, remoti e intelligenti</h2>
 
 <p>Ogni fase dichiara <em>dove</em> e <em>come</em> può essere eseguita. Un

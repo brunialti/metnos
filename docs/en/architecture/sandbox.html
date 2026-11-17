@@ -163,6 +163,14 @@ show the workspace, the executor finds an empty one at the same address: the
 path does not exist, with the same meaning for everyone. Grants bound to
 arguments are computed on the same base.</p>
 
+<p>What the profile does not mount is read-only: the root of the profile is
+made read-only after every mount, so a write outside the granted places fails
+with the operating system's error and the tool reports it as permission
+denied. Only read-write mounts and the private <code>/tmp</code> stay
+writable. Inside the profile a tool does not create the service's folders,
+does not open the log file, and reads the message catalogue and the lexicon
+read-only.</p>
+
 <h2>3.2 Capability-derived resources</h2>
 
 <table>

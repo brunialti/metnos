@@ -59,6 +59,12 @@ def setup_logging(level: str | None = None,
         root.addHandler(sh)
     # File handler con rotation (10MB, 5 backup).
     target = log_file or _C.LOG_FILE
+    if _C.in_executor_sandbox() and log_file is None:
+        # A tool in its sandbox logs to stderr only: the service's log file
+        # is not bound there, and a file on the sandbox root was lost.
+        root.propagate = False
+        _initialized = True
+        return root
     try:
         target.parent.mkdir(parents=True, exist_ok=True)
         fh = logging.handlers.RotatingFileHandler(

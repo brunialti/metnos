@@ -15,7 +15,7 @@ en = "SCOPO: starts a registered LRE plan for integrations that know its profile
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:82a7660b4fe42679ee61d90f52cbb28cf4f027755f09e6b951f66debe5fc2d93"
+digest = "sha256:31657103e231d4fecba0eb9e11516d24a5297758027073e1f4e2409f3e677cdb"
 
 [args]
 type = "object"

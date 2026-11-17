@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "get_approval"
-version     = "0.2.0"
+version     = "0.2.1"
 platforms   = ["linux"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -20,7 +20,7 @@ en = "SCOPO: human consent (Approve/Reject), then runs the executor. PATTERN: ge
 
 [code]
 files  = ["get_approval.py"]
-digest = "sha256:5e5b194deb844f1f3f9e17f9fa9497f798fef7e71e2c7d09903335c8edde7418"
+digest = "sha256:063f7eae2c20763a10a5ffdcd7b6cd873df67fb6d0daaf54b36d6e745d4427a9"
 
 [args]
 type     = "object"
@@ -30,8 +30,8 @@ required = ["prompt", "on_approve"]
 type = "string"
 
 [args.properties.prompt.description]
-it = "Domanda di consenso mostrata all'utente. 1 frase, max 200 char. Es. \"Approvi la pubblicazione della risposta alla issue #47?\"."
-en = "Consent question shown to the user. 1 sentence, max 200 chars. E.g. \"Do you approve publishing the reply to issue #47?\"."
+it = "Domanda di consenso mostrata all'utente: breve, una o due frasi; oltre 600 caratteri viene tagliata. Es. \"Approvi la pubblicazione della risposta alla issue #47?\"."
+en = "Consent question shown to the user: short, one or two sentences; beyond 600 characters it is cut. E.g. \"Do you approve publishing the reply to issue #47?\"."
 
 [args.properties.on_approve]
 type = "object"

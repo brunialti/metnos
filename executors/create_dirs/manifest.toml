@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "create_dirs"
-version     = "0.5.0"
+version     = "0.7.0"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = [
@@ -17,8 +17,8 @@ revertible      = true
 reverse_pattern = "delete_created_paths"
 
 [description]
-it = "SCOPO: crea directory (batch, anche vuote). PATTERN: create_dirs(paths=[\"/tmp/d\"]). NON: cancellare (-> delete_dirs); cercare (-> find_dirs); elencare (-> list_dirs). OUT: results=[{created}], best-effort."
-en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=[\"/tmp/d\"]). NON: delete (-> delete_dirs); search (-> find_dirs); list (-> list_dirs). OUT: results=[{created}], best-effort."
+it = "SCOPO: crea directory (batch, anche vuote). PATTERN: create_dirs(paths=[\"/tmp/d\"]); una per riga di uno step: create_dirs(from_step=1, path_template=\"{partition}/d\"). NON: cancellare (-> delete_dirs); cercare (-> find_dirs). OUT: results=[{created}], best-effort."
+en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=[\"/tmp/d\"]); one per row of a step: create_dirs(from_step=1, path_template=\"{partition}/d\"). NON: delete (-> delete_dirs); search (-> find_dirs). OUT: results=[{created}], best-effort."
 
 [code]
 files  = ["create_dirs.py"]
@@ -26,7 +26,35 @@ digest = "sha256:6fa454133f8eeea87fd9448cf0dff421c6809175970263980be30b1748049b8
 
 [args]
 type     = "object"
-required = ["paths"]
+required = []
+requires_one_of = [["paths", "from_step", "entries"]]
+# Le righe di uno step arrivano intere in `entries`, per `path_template`:
+# i loro `path` sono file o cartelle esistenti, non le cartelle da creare.
+from_step_alternatives = ["entries"]
+
+[args.properties.from_step]
+type        = "integer"
+minimum     = 1
+
+[args.properties.from_step.description]
+it = "Intero >=1 dello step precedente; il runtime ne passa le righe in `entries`. Si usa con `path_template`, es. `from_step=1`."
+en = "Integer >=1 for the previous step; the runtime passes its rows in `entries`. Used with `path_template`, e.g. `from_step=1`."
+
+[args.properties.entries]
+type        = "array"
+items       = { type = "object" }
+runtime_resolved = true
+
+[args.properties.entries.description]
+it = "Righe risolte dal runtime; ogni riga fornisce i campi di testo usati da `path_template`."
+en = "Runtime-resolved rows; each row provides the text fields used by `path_template`."
+
+[args.properties.path_template]
+type        = "string"
+
+[args.properties.path_template.description]
+it = "Modello del percorso da creare per ogni riga, con i campi di testo della riga tra graffe, es. `{partition}/da_controllare`. Crea una cartella per ogni valore diverso. Default: nessuno."
+en = "Template of the path to create for each row, with the row's text fields in braces, e.g. `{partition}/to_check`. Creates one folder for each different value. Default: none."
 
 [args.properties.paths]
 type        = "array"
@@ -104,6 +132,13 @@ expect   = { ok = true, ok_count_eq = 2, fail_count_eq = 0 }
 teardown = "rm -rf /tmp/metnos_test_create_dirs"
 
 [[tests]]
+name     = "una_cartella_per_valore_del_modello"
+setup    = "rm -rf /tmp/metnos_test_create_dirs && mkdir -p /tmp/metnos_test_create_dirs/a /tmp/metnos_test_create_dirs/b"
+input    = { entries = [{partition = "/tmp/metnos_test_create_dirs/a"}, {partition = "/tmp/metnos_test_create_dirs/a"}, {partition = "/tmp/metnos_test_create_dirs/b"}], path_template = "{partition}/nuova" }
+expect   = { ok = true, ok_count_eq = 2, fail_count_eq = 0 }
+teardown = "rm -rf /tmp/metnos_test_create_dirs"
+
+[[tests]]
 name     = "lista_di_uno"
 setup    = "rm -rf /tmp/metnos_test_create_dirs"
 input    = { paths = ["/tmp/metnos_test_create_dirs/solo"] }
@@ -146,3 +181,11 @@ expect = { ok = false, error_contains = "must be a list" }
 scope    = "any"
 device_ok = true
 min_sandbox = "appcontainer"
+
+# A folder outside this tool's own scope (the person's working folder, a
+# folder granted to the account) is created on the server by the closed
+# operation, with the right a write needs. Read by the server only: a device
+# runs the tool.
+[filesystem_server]
+protocol  = "filesystem_broker_v1"
+operation = "mkdir"

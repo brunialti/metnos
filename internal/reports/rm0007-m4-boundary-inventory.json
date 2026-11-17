@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:759411ddf3a63bdb934f744f464901b03f3ddad896663081468630890aafcfcd",
+  "source_census": "sha256:5cac54892f6d774b3a6ea411f19b0d691d9b811d6365f059ca7ee7838f73b1ab",
   "scan_roots": [
     "runtime",
     "install",
@@ -4375,6 +4375,16 @@
         "live_artifact_read"
       ],
       "destination": "verified live catalog, immutable store, or live artifact boundary only",
+      "phase": "M4"
+    },
+    {
+      "path": "runtime/lre_answers.py",
+      "scope": "_partition_policy",
+      "role": "live_reader",
+      "capabilities": [
+        "live_artifact_read"
+      ],
+      "destination": "verified live catalog, read for the partition a tool declares, to join the per-partition results of a finished long job; no invocation, authoring or publication",
       "phase": "M4"
     },
     {

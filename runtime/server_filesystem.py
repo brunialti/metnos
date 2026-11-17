@@ -8,9 +8,11 @@ from __future__ import annotations
 
 import base64
 from contextlib import contextmanager
+import errno
 import fnmatch
 import json
 import os
+import stat
 import time
 
 import filesystem_io as io
@@ -22,6 +24,7 @@ MAX_READ = 256 * 1024
 def manifest_for(executor):
     return {"filesystem": getattr(executor, "filesystem", None),
             permissions.SEARCH_TABLE: getattr(executor, permissions.SEARCH_TABLE, None),
+            permissions.SERVER_TABLE: getattr(executor, permissions.SERVER_TABLE, None),
             "capabilities": getattr(executor, "capabilities", []),
             "args": getattr(executor, "args_schema", {})}
 
@@ -126,20 +129,156 @@ def write_specs(args):
     return specs
 
 
-def paths(args):
+# Items one call of a closed operation carries (ADR 0237, first protocol).
+MAX_ITEMS = 100
+
+
+class TooMany(permissions.PermissionError):
+    """More items than one call carries: refused before any effect, and said
+    with the numbers."""
+
+    def __init__(self, count):
+        super().__init__("ERR_FS_SIZE_LIMIT")
+        self.count = count
+
+
+def capped(items):
+    if len(items) > MAX_ITEMS:
+        raise TooMany(len(items))
+    return items
+
+
+def paths(args, *, cap=True):
     result = args.get("paths")
     if result is None:
         result = [e.get("path") for e in args["entries"]] if isinstance(args.get("entries"), list) else [args.get("path")]
-    if not isinstance(result, list) or len(result) > 100:
+    if not isinstance(result, list):
         raise permissions.PermissionError("ERR_FS_SIZE_LIMIT")
-    return [permissions.normalize_path(p, "posix") for p in result]
+    return [permissions.normalize_path(p, "posix") for p in (capped(result) if cap else result)]
 
 
 def copy_specs(args):
     from device_filesystem import copy_entries
     if args.get("source_location", "server") != "server" or args.get("destination_location", "server") != "server":
         raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+    if isinstance(args.get("entries"), list):
+        capped(args["entries"])
     return copy_entries({**args, "source_location": "server", "destination_location": "server"}, "posix")
+
+
+def dir_paths(args):
+    """The folders a creation names. Rows of a step name places that exist,
+    never folders to create: without `paths` there is nothing for the closed
+    operation (see `settled`). The cap is the closed operation's own: inside
+    the tool's scope the tool keeps serving any number."""
+    if args.get("paths") is None:
+        return []
+    return paths(args, cap=False)
+
+
+_SETTLED_MOVE = "{dst}"
+
+
+def place(owner, value):
+    """Where a path the person gave really is, by the rule the tools follow:
+    `~` is the service's home, a path without a root is in the person's folder
+    (ADR 0242), and a link on the way, a name in that folder that is a link
+    to a mounted archive included, becomes the real place. Rights are then
+    checked on that real place, and the closed operations still refuse every
+    link they meet."""
+    from pathlib import Path
+    import person_files
+    value = os.path.expanduser(value)
+    if not value.startswith("/"):
+        value = person_files.absolute(value, person_files.root(owner))
+    return str(Path(value).resolve())
+
+
+def move_rows(args):
+    """The rows of a settled move (see `settled`): ``{src, dst}`` to move, or
+    ``{src, refused, error}`` that the tool would refuse and nothing executes;
+    None when the arguments are not in that form."""
+    entries = args.get("entries")
+    if args.get("dst_template") != _SETTLED_MOVE or not isinstance(entries, list):
+        return None
+    rows = []
+    for entry in entries:
+        if not isinstance(entry, dict) or not isinstance(entry.get("src", ""), str):
+            return None
+        if "refused" in entry:
+            if not isinstance(entry.get("refused"), str) or not isinstance(entry.get("error"), str):
+                return None
+            rows.append({key: entry[key] for key in ("src", "refused", "error") if key in entry})
+        elif isinstance(entry.get("src"), str) and isinstance(entry.get("dst"), str):
+            rows.append({"src": permissions.normalize_path(entry["src"], "posix"),
+                         "dst": permissions.normalize_path(entry["dst"], "posix")})
+        else:
+            return None
+    return rows
+
+
+def _settled_moves(owner, args):
+    """Every row's final source and destination, by the tool's own rule
+    (`local._entry_fields`, links resolved as the tool resolves them), once,
+    here: the host then receives places, never a template. A row the tool
+    would refuse keeps the tool's refusal and is never executed."""
+    entries, template = args.get("entries"), args.get("dst_template")
+    if not isinstance(entries, list) or not isinstance(template, str) or not template:
+        return args
+    if template == _SETTLED_MOVE and all(isinstance(entry, dict) and set(entry) <= {"src", "dst", "refused", "error"}
+                                         for entry in entries):
+        return args
+    from pathlib import Path
+    from backends.files import local
+    from messages import get as _msg
+
+    rows = []
+    for index, entry in enumerate(entries):
+        source = entry.get("path") or entry.get("src") if isinstance(entry, dict) else None
+        if not isinstance(source, str) or not source.strip():
+            rows.append({"refused": "ERR_ARG_MISSING", "error": _msg("ERR_ARG_MISSING", arg=f"entries[{index}].path")})
+            continue
+        src = Path(place(owner, source))
+        if entry.get("kind") == "dir":
+            rows.append({"src": str(src), "refused": "ERR_REFUSE_MOVE", "error": _msg("MSG_MOVE_CAUSE_FOLDER")})
+            continue
+        if args.get("allow_system") is not True and local.is_system_file(src.name):
+            rows.append({"src": str(src), "refused": "ERR_REFUSE_MOVE", "error": _msg("MSG_MOVE_CAUSE_SYSTEM_FILE")})
+            continue
+        try:
+            destination = template.format(**local._entry_fields(entry, src))
+        except (KeyError, IndexError, ValueError, AttributeError) as exc:
+            rows.append({"src": str(src), "refused": "ERR_TEMPLATE_FAIL",
+                         "error": _msg("ERR_TEMPLATE_FAIL", stage="placeholder", reason=str(exc))})
+            continue
+        rows.append({"src": str(src), "dst": place(owner, destination)})
+    rest = {key: value for key, value in args.items() if key not in {"entries", "dst_template", "from_step"}}
+    return {**rest, "entries": rows, "dst_template": _SETTLED_MOVE}
+
+
+def settled(owner, operation, args):
+    """What the closed operation receives: the final list of folders to create,
+    computed once here. Rows of a step with a `path_template` give it by the
+    tool's own rule; every path is placed as a move places it (`place`). A
+    template that does not fit the rows leaves the arguments as they are: the
+    tool then says what is wrong and creates nothing."""
+    if operation == "move":
+        return _settled_moves(owner, args)
+    if operation != "mkdir":
+        return args
+    given = args.get("paths")
+    if given is None and args.get("path_template") is not None:
+        from backends.files.local import _paths_from_rows
+        given, problem = _paths_from_rows(args.get("entries"), args.get("path_template"))
+        if problem is not None:
+            return args
+    if not isinstance(given, list):
+        return args
+    final = [place(owner, path) if path.strip() else path for path in given if isinstance(path, str)]
+    if len(final) != len(given):
+        return args
+    rest = {key: value for key, value in args.items() if key not in {"entries", "path_template", "from_step"}}
+    return {**rest, "paths": final}
 
 
 def requests(operation, args):
@@ -153,19 +292,62 @@ def requests(operation, args):
         return [(p, "write") for p in paths(args)]
     if operation == "copy":
         return [(e[k], action) for e in copy_specs(args) for k, action in (("src", "read"), ("dst", "write"))]
+    if operation == "mkdir":
+        return [(p, "write") for p in dir_paths(args)]
+    if operation == "move":
+        # Removing the source and making the destination are writes: what a
+        # delete and a write already need, nothing more.
+        return [(row[end], "write") for row in move_rows(args) or [] if "dst" in row for end in ("src", "dst")]
     raise permissions.PermissionError("ERR_FS_CONTRACT_INVALID")
 
 
+def _in_workspace(path):
+    import config as C
+    root = str(C.PATH_WORKSPACE).rstrip("/")
+    return path == root or path.startswith(root + "/")
+
+
+def sandbox_shows(manifest, args, path, action):
+    """Whether the tool's own sandbox shows ``path`` for ``action``: a static
+    signed hint covers it, or a signed ``arg:<name>`` hint binds the exact
+    place that argument names (`sandbox._filesystem_argument_extras`)."""
+    if permissions.manifest_shows(manifest, args, path, action):
+        return True
+    from capabilities import effective_capabilities
+    for capability in effective_capabilities(manifest.get("capabilities", []), manifest.get("args", {}), args or {}):
+        if capability.get("name") != "fs:" + action:
+            continue
+        for hint in capability.get("hint", []) or []:
+            if not isinstance(hint, str) or not hint.startswith("arg:"):
+                continue
+            value = (args or {}).get(hint[4:])
+            for named in value if isinstance(value, list) else [value]:
+                if not isinstance(named, str) or not named.startswith(("/", "~")):
+                    continue
+                named = os.path.normpath(os.path.expanduser(named))
+                if path == named or path.startswith(named.rstrip("/") + "/"):
+                    return True
+    return False
+
+
 def needs_extension(owner, manifest, args):
-    operation = permissions.contract(manifest, args)
+    operation = permissions.served_operation(manifest, args)
     if operation is None:
         return False
-    requested = requests(operation, args)
+    requested = requests(operation, settled(owner, operation, args))
     if any(not permissions.server_default_permits(owner, manifest, args, path, action)
            for path, action in requested):
         return True
     grants = permissions.list_grants(owner, "server", active_only=True) if owner else []
-    return any(permissions.permits(grants, path, action, directory=operation == "list")
+    if any(permissions.permits(grants, path, action, directory=operation == "list")
+           for path, action in requested):
+        return True
+    # The person's own folder (ADR 0242) is theirs without a grant, but a
+    # tool's sandbox shows only its own signed scope: there the closed
+    # operation does the work, as the service itself (the host keeps every
+    # workspace path native). Outside the workspace it would act as the
+    # installation owner, which only an explicit grant decides.
+    return any(_in_workspace(path) and not sandbox_shows(manifest, args, path, action)
                for path, action in requested)
 
 
@@ -199,6 +381,33 @@ class LocalAuthority:
             conn.close()
 
 
+def _settle(directory):
+    """Make a name change durable. Once a source name is gone the move has
+    happened: a failed sync must never be taken for a move not done (the
+    copy would then be removed as if the source were still there)."""
+    try:
+        os.fsync(directory)
+    except OSError:
+        pass
+
+
+def _folder(parent, name):
+    """The folder ``name`` in ``parent``, opened without following a link, or
+    None when nothing is there. A file or a link in its place is refused."""
+    try:
+        return os.open(name, os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC, dir_fd=parent)
+    except FileNotFoundError:
+        return None
+    except OSError as exc:
+        if exc.errno not in (errno.ENOTDIR, errno.ELOOP):
+            raise
+        try:
+            link = stat.S_ISLNK(os.stat(name, dir_fd=parent, follow_symlinks=False).st_mode)
+        except OSError:
+            link = exc.errno == errno.ELOOP
+        raise permissions.PermissionError("ERR_FS_LINK_REFUSED" if link else "ERR_FS_NOT_A_FOLDER") from exc
+
+
 class Broker:
     def __init__(self, owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, authority=None):
         if not owner:
@@ -207,8 +416,11 @@ class Broker:
         self.deadline = time.monotonic() + timeout_s
         self.authority = authority if authority is not None else LocalAuthority(owner, manifest, args, db_path=db_path)
 
-    def check(self, path, action, **kwargs):
-        if time.monotonic() > self.deadline:
+    def check(self, path, action, *, late=False, **kwargs):
+        """The account's current right on ``path``, within the call's time.
+        ``late`` is for putting back what a stopped item had made: it keeps
+        every right and boundary, only not the clock."""
+        if not late and time.monotonic() > self.deadline:
             raise permissions.PermissionError("ERR_FS_INVOCATION_INVALID")
         io.reserved(path)
         self.authority.check(path, action, **kwargs)
@@ -442,6 +654,271 @@ class Broker:
             finally:
                 os.close(fd)
 
+    def mkdir(self, path):
+        """Create one folder and, unless `parents` is false, its missing parents.
+
+        The path is walked from the root one component at a time, each opened
+        relative to its parent's descriptor without following a link. A missing
+        component is created only after the account's write right on that very
+        component is checked again inside the mutation lock: nothing is made
+        outside what the account may write. An existing folder is success
+        without a creation; a component that is a file or a link is refused.
+        """
+        path = permissions.normalize_path(path, "posix")
+        parents, exist_ok, mode = (self.args.get("parents", True), self.args.get("exist_ok", True),
+                                   self.args.get("mode"))
+        if (type(parents) is not bool or type(exist_ok) is not bool
+                or mode is not None and (type(mode) is not int or not 0 <= mode <= 0o777)):
+            raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        self.check(path, "write")
+        created, identities = self._make_folders(path, parents=parents, mode=mode)
+        if not created and not exist_ok:
+            raise permissions.PermissionError("ERR_FS_DEST_EXISTS")
+        # Fields with `_` stay out of the person's tables: they serve the undo.
+        return {"path": path, "created": path in created, "dirs_created": created,
+                "_dirs_created_ids": identities}
+
+    def _make_folders(self, path, *, parents=True, mode=None):
+        """The missing folders of ``path``, made one at a time from the root;
+        returns the folders made and their identities."""
+        parts = path[1:].split("/") if path != "/" else []
+        created, identities = [], []
+        fd = os.open("/", os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW | os.O_CLOEXEC)
+        try:
+            return self._walk_folders(fd, parts, created, identities, parents=parents, mode=mode)
+        except BaseException:
+            # A walk stopped half way (time, a component refused) leaves
+            # nothing of its own behind.
+            self._unmake(created, identities)
+            raise
+        finally:
+            os.close(fd)
+
+    def _unmake(self, folders, identities):
+        for folder, identity in reversed(list(zip(folders, identities))):
+            try:
+                self.rmdir(folder, identity, late=True)
+            except (OSError, ValueError):
+                break
+
+    def _walk_folders(self, fd, parts, created, identities, *, parents, mode):
+        fd = os.dup(fd)
+        try:
+            for index, name in enumerate(parts):
+                current = "/" + "/".join(parts[:index + 1])
+                child = _folder(fd, name)
+                if child is None:
+                    if index < len(parts) - 1 and not parents:
+                        raise permissions.PermissionError("ERR_FS_PARENT_MISSING")
+                    try:
+                        with self.authority.mutation():
+                            self.check(current, "write")
+                            os.mkdir(name, 0o777 if mode is None else mode, dir_fd=fd)
+                    except FileExistsError:
+                        made = False                  # someone else's: never recorded as ours
+                    else:
+                        made = True
+                    child = _folder(fd, name)
+                    if child is None:
+                        raise permissions.PermissionError("ERR_FS_IO")
+                    if made:
+                        info = os.fstat(child)
+                        created.append(current)
+                        identities.append([info.st_dev, info.st_ino])
+                        _settle(fd)
+                os.close(fd)
+                fd = child
+        finally:
+            os.close(fd)
+        return created, identities
+
+    def move(self, spec):
+        """Move one file. The destination is named and checked first: one that
+        exists is refused before anything is touched. Missing folders are made
+        inside what the account may write. Then the same file gets its new name
+        on the same filesystem (a link, then the old name removed), or it is
+        copied, the copy verified, and only then the source removed: never a
+        removal without a confirmed copy. Times and mode bits travel with it."""
+        import hashlib
+        src = permissions.normalize_path(spec["src"], "posix")
+        dst = permissions.normalize_path(spec["dst"], "posix")
+        parents = self.args.get("parents", True)
+        if (self.args.get("overwrite") is True or self.args.get("allow_dirs") is True
+                or type(parents) is not bool):
+            raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        if src == dst:
+            raise permissions.PermissionError("ERR_FS_DEST_EXISTS")
+        self.check(src, "write")
+        self.check(dst, "write")
+        try:
+            with io.parent(src) as (sparent, sname):
+                source = io.open_file(sparent, sname)
+        except FileNotFoundError as exc:
+            raise permissions.PermissionError("ERR_FS_SOURCE_MISSING") from exc
+        made, made_ids = [], []
+        try:
+            info = io.regular(source)
+            before = io.identity(info)
+            expected = spec.get("expected_identity")
+            if expected is not None and list(before) != list(expected):
+                raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+            if self._present(dst):
+                raise permissions.PermissionError("ERR_FS_DEST_EXISTS")
+            if parents:
+                made, made_ids = self._make_folders(os.path.dirname(dst))
+            elif not self._present(os.path.dirname(dst)):
+                raise permissions.PermissionError("ERR_FS_PARENT_MISSING")
+            with io.parent(src) as (sparent, sname), io.parent(dst) as (dparent, dname):
+                moved_identity = before          # a new name for the same file
+                if not self._relink(src, dst, sparent, sname, dparent, dname, info, before):
+                    def produce(out):
+                        digest, size = hashlib.sha256(), 0
+                        os.lseek(source, 0, os.SEEK_SET)
+                        while chunk := os.read(source, io.CHUNK_SIZE):
+                            self.check(src, "write")
+                            self.check(dst, "write")
+                            io.write_all(out, chunk)
+                            size += len(chunk)
+                            digest.update(chunk)
+                        if io.identity(io.regular(source)) != before:
+                            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                        try:
+                            os.fchmod(out, stat.S_IMODE(info.st_mode))
+                        except OSError:
+                            pass              # a share that fixes the mode keeps its own
+                        os.utime(out, ns=(info.st_atime_ns, info.st_mtime_ns))
+                        return size, digest.hexdigest()
+
+                    def final_check():
+                        self.check(src, "write")
+                        if io.identity(io.regular(source)) != before:
+                            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+
+                    # The verified copy is committed only where nothing is.
+                    self.replace(dst, produce, overwrite=False, final_check=final_check)
+                    own = moved_identity = self._identity_at(dparent, dname)
+                    try:
+                        if own[3] != info.st_size:
+                            raise permissions.PermissionError("ERR_FS_HASH_MISMATCH")
+                        self._unlink_same(src, sparent, sname, before)
+                    except BaseException:
+                        # The source stays: the copy made for it goes, if it is still ours.
+                        try:
+                            self._unlink_same(dst, dparent, dname, own, late=True)
+                        except (OSError, ValueError):
+                            pass
+                        raise
+        except BaseException:
+            self._unmake(made, made_ids)
+            raise
+        finally:
+            os.close(source)
+        # The tool's row is {src, dst}; what the undo needs is kept out of
+        # the person's tables (`_`).
+        return {"src": src, "dst": dst, "_identity": list(moved_identity),
+                "_dirs_created": made, "_dirs_created_ids": made_ids}
+
+    def move_back(self, row):
+        """The undo of a move: the file goes back where it was, only while it
+        is still the file the move left there, under the current rights."""
+        identity = row.get("_identity")
+        if (not isinstance(identity, list) or len(identity) != 4
+                or any(type(value) is not int for value in identity)):
+            raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
+        back = self.move({"src": row["dst"], "dst": row["src"], "expected_identity": identity})
+        return {"src": back["src"], "dst": back["dst"], "restored": True}
+
+    def _present(self, path):
+        try:
+            with io.parent(path) as (parent, name):
+                os.stat(name, dir_fd=parent, follow_symlinks=False)
+                return True
+        except FileNotFoundError:
+            return False
+
+    def _identity_at(self, parent, name):
+        fd = io.open_file(parent, name)
+        try:
+            return io.identity(io.regular(fd))
+        finally:
+            os.close(fd)
+
+    def _unlink_same(self, path, parent, name, identity, *, late=False):
+        """Remove ``name`` only while it is still the file ``identity`` names,
+        under the account's current right."""
+        with self.authority.mutation():
+            self.check(path, "write", late=late)
+            if self._identity_at(parent, name) != tuple(identity):
+                raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+            os.unlink(name, dir_fd=parent)
+        _settle(parent)
+
+    def _relink(self, src, dst, sparent, sname, dparent, dname, info, before):
+        """The same file under its new name, on one filesystem: a link that
+        fails where any name already is, then the old name removed. False when
+        the filesystem cannot link across these folders (the copy then runs)."""
+        with self.authority.mutation():
+            self.check(src, "write")
+            self.check(dst, "write")
+            if self._identity_at(sparent, sname) != before:
+                raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+            try:
+                os.link(sname, dname, src_dir_fd=sparent, dst_dir_fd=dparent, follow_symlinks=False)
+            except FileExistsError as exc:
+                raise permissions.PermissionError("ERR_FS_DEST_EXISTS") from exc
+            except OSError as exc:
+                if exc.errno in (errno.EXDEV, errno.EPERM, errno.EOPNOTSUPP, errno.ENOTSUP,
+                                 errno.EMLINK, errno.ENOSYS, errno.EACCES):
+                    return False
+                raise
+            try:
+                linked = os.stat(dname, dir_fd=dparent, follow_symlinks=False)
+                if (linked.st_dev, linked.st_ino) != (info.st_dev, info.st_ino):
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                os.unlink(sname, dir_fd=sparent)
+            except BaseException:
+                os.unlink(dname, dir_fd=dparent)
+                raise
+        _settle(dparent)
+        _settle(sparent)
+        return True
+
+    def rmdir(self, path, identity, *, late=False):
+        """Remove a folder a creation made, only while it is that same folder
+        and still empty; None when it is already gone."""
+        self.check(path, "write", late=late)
+
+        def same(parent, name):
+            fd = _folder(parent, name)
+            if fd is None:
+                return False
+            try:
+                info = os.fstat(fd)
+                if [info.st_dev, info.st_ino] != list(identity):
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                return True
+            finally:
+                os.close(fd)
+
+        try:
+            with io.parent(path) as (parent, name):
+                if not same(parent, name):
+                    return None
+                with self.authority.mutation():
+                    self.check(path, "write", late=late)
+                    if not same(parent, name):
+                        return None
+                    try:
+                        os.rmdir(name, dir_fd=parent)
+                    except OSError as exc:
+                        if exc.errno in (errno.ENOTEMPTY, errno.EEXIST):
+                            raise permissions.PermissionError("ERR_FS_FOLDER_NOT_EMPTY") from exc
+                        raise
+                    os.fsync(parent)
+        except FileNotFoundError:
+            return None                       # a parent is gone, and the folder with it
+        return {"path": path, "removed": True}
+
     def _scan(self, current, recursive):
         """The entries of one folder the account may read, as the closed list
         operation reports them."""
@@ -638,32 +1115,162 @@ def outside_tool_scope(manifest, args, observation):
 def error_result(error):
     from messages import get as _msg
     code = str(error) if isinstance(error, permissions.PermissionError) else "ERR_FS_IO"
+    text = (_msg("ERR_FS_TOO_MANY", count=error.count, cap=MAX_ITEMS) if isinstance(error, TooMany)
+            else _msg(code))
     return {"ok": False, "ok_count": 0, "fail_count": 1, "results": [], "failed": [],
-            "error_code": code, "error": _msg(code), "error_class": "filesystem_permission"}
+            "error_code": code, "error": text, "error_class": "filesystem_permission"}
+
+
+# A move that could not be done for a file says why in the tool's own words
+# (`local._move_cause`) for the causes the tool itself names.
+_MOVE_CAUSES = {"ERR_FS_SOURCE_MISSING": "ERR_PATH_NOT_FOUND", "ERR_FS_DEST_EXISTS": "ERR_DST_EXISTS"}
+
+
+def move_failure(index, row, error):
+    """One row of a move not done, in the shape the tool gives it."""
+    from backends.files import local
+    if "refused" in row:
+        code, text = row["refused"], row["error"]
+    else:
+        failure = error_result(error)
+        code = _MOVE_CAUSES.get(failure["error_code"], failure["error_code"])
+        text = local._move_cause(code, None) if code != failure["error_code"] else failure["error"]
+    return {"index": index, **{key: row[key] for key in ("src", "dst") if key in row},
+            "error_code": code, "error": text}
 
 
 def batch_result(owner, manifest, args, turn_id, operation, results, failed):
+    if operation == "move":
+        from backends.files import local
+        folders = sorted({folder for entry in results for folder in entry.get("_dirs_created") or []},
+                         key=lambda folder: folder.count("/"), reverse=True)
+        value = local._move_result(results, failed, dirs_created=folders)
+        value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
+        return value
     value = {"ok": not failed, "ok_count": len(results), "fail_count": len(failed),
-             "entries" if operation == "read" else "results": results, "failed": failed, "dirs_created": []}
+             "entries" if operation == "read" else "results": results, "failed": failed,
+             "dirs_created": [folder for entry in results for folder in entry.get("dirs_created") or []]
+             if operation == "mkdir" else []}
     if failed:
         value.update({"error": failed[0]["error"], "error_code": failed[0]["error_code"], "error_class": "filesystem_permission"})
     if operation == "read" and args.get("parse") == "auto":
         import document_parse
         value.update(document_parse.summarize(results, deduplicate=bool(args.get("deduplicate_content"))))
-    if operation in {"copy", "write", "delete"}:
+    if operation in {"copy", "write", "delete", "mkdir"}:
         value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
     return value
 
 
-def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, authority=None, source_fd=None):
+# One group of a server-only operation has at most this long, as one call to
+# the host has (`server_filesystem_host.execute`); the whole call has the
+# executor's own timeout. A group is not started with less than a second left.
+GROUP_SECONDS = 30
+_GROUP_FLOOR = 1.0
+# Codes of an item stopped by the clock: nothing of it was done.
+_TIME_CODES = frozenset({"ERR_FS_INVOCATION_INVALID", "ERR_FS_REQUEST_EXPIRED"})
+
+
+def _in_groups(owner, manifest, args, turn_id, operation, *, timeout_s, db_path):
+    """The items of a server-only operation in consecutive groups of at most
+    MAX_ITEMS, each served exactly as one call is (same checks, same exchange
+    per item), until the call's own time ends. An item the time did not reach
+    is said, in the tool's own failure shape, never dropped and never undone;
+    the result then says how many were done of how many (§2.7, §2.11)."""
+    from messages import get as _msg
+    key = "paths" if operation == "mkdir" else "entries"
+    items = args.get(key)
+    if not isinstance(items, list):
+        raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+    until = time.monotonic() + timeout_s
+    results, failed, reached, stopped = [], [], 0, 0
+    backends = set()
+    for start in range(0, len(items), MAX_ITEMS):
+        left = until - time.monotonic()
+        if left < _GROUP_FLOOR:
+            break
+        group = items[start:start + MAX_ITEMS]
+        budget = min(GROUP_SECONDS, left)
+        group_until = time.monotonic() + budget
+        answer = execute(owner, manifest, {**args, key: group}, turn_id, timeout_s=budget,
+                         db_path=db_path, whole=False)
+        backend = (answer.get("_filesystem") or {}).get("backend") or "native"
+        for entry in answer.get("results") or []:
+            entry.setdefault("_filesystem_backend", backend)
+            backends.add(entry["_filesystem_backend"])
+            results.append(entry)
+        rows = answer.get("failed") or []
+        if not rows and not answer.get("ok", True):
+            # The whole group was refused before any item: each item says why.
+            code = answer.get("error_code")
+            error = permissions.PermissionError(code if code in permissions.ERROR_CODES else "ERR_FS_IO")
+            rows = [_failure(operation, index, item, error) for index, item in enumerate(group)]
+        out_of_time = time.monotonic() >= group_until
+        for row in rows:
+            row = {**row, "index": row["index"] + start}
+            if out_of_time and row.get("error_code") in _TIME_CODES:
+                if row.get("_unsure"):
+                    # The host had it when the time ended: say so, never «left as it was».
+                    row.update(error_code="ERR_FS_REQUEST_EXPIRED", error=_msg("MSG_FS_CAUSE_TIME_UNSURE"))
+                else:
+                    row.update(error_code="ERR_FS_REQUEST_EXPIRED", error=_msg("MSG_FS_CAUSE_TIME"))
+                    stopped += 1
+            failed.append(row)
+        reached = start + len(group)
+    for index in range(reached, len(items)):
+        refused = operation == "move" and "refused" in items[index]
+        failed.append(_failure(operation, index, items[index], None, timed_out=not refused))
+        stopped += 0 if refused else 1
+    value = batch_result(owner, manifest, args, turn_id, operation, results, failed)
+    if backends:
+        value["_filesystem"]["backend"] = backends.pop() if len(backends) == 1 else "mixed"
+    if stopped:
+        # Time is a ceiling of the call, not a limit the person can widen:
+        # asking again does what is left.
+        value.update({"truncated": True, "truncated_what": "file" if operation == "move" else "folder",
+                      "used": len(results), "available_total": len(items), "cap_field": "timeout_s",
+                      "cap_value": timeout_s, "cap_expandable": False, "partial": bool(results),
+                      "partial_reason": _msg("MSG_FS_TIME_PARTIAL", done=len(results), total=len(items),
+                                             left=stopped)})
+    return value
+
+
+def _failure(operation, index, item, error, *, timed_out=False):
+    """One item not done, in the tool's own failure shape."""
+    from messages import get as _msg
+    if timed_out:
+        row = {"error_code": "ERR_FS_REQUEST_EXPIRED", "error": _msg("MSG_FS_CAUSE_TIME")}
+        if operation == "move":
+            return {"index": index, **{key: item[key] for key in ("src", "dst") if key in item}, **row}
+        return {"index": index, "path": item, **row}
+    if operation == "move":
+        return move_failure(index, item, error)
+    failure = error_result(error)
+    return {"index": index, "error": failure["error"], "error_code": failure["error_code"], "path": item}
+
+
+def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, authority=None, source_fd=None,
+            whole=True):
     try:
-        operation = permissions.contract(manifest, args)
+        operation = permissions.served_operation(manifest, args)
+        if operation is None:
+            raise permissions.PermissionError("ERR_FS_CONTRACT_INVALID")
         if not owner:
             raise permissions.PermissionError("ERR_FS_PERMISSION_REQUIRED")
         if source_fd is not None and authority is None:
             raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
         if source_fd is not None and operation != "copy":
             raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
+        if authority is None:
+            args = settled(owner, operation, args)
+        if (operation == "mkdir" and not isinstance(args.get("paths"), list)
+                or operation == "move" and move_rows(args) is None):
+            raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        if operation == "move":
+            # What the closed move does not do is refused before any effect.
+            if args.get("overwrite") is True or args.get("allow_dirs") is True:
+                raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+        if authority is None and whole and operation in permissions.SERVER_OPERATIONS:
+            return _in_groups(owner, manifest, args, turn_id, operation, timeout_s=timeout_s, db_path=db_path)
         if authority is None:
             import server_filesystem_host as host
             delegated = host.execute(owner, manifest, args, turn_id, timeout_s=timeout_s, db_path=db_path)
@@ -672,22 +1279,60 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, autho
         broker = Broker(owner, manifest, args, turn_id, timeout_s=timeout_s, db_path=db_path, authority=authority)
         if operation == "list":
             return broker.list(permissions.normalize_path(args.get("path"), "posix"))
-        specs = write_specs(args) if operation == "write" else copy_specs(args) if operation == "copy" else paths(args)
-        if len(specs) > 100:
-            raise permissions.PermissionError("ERR_FS_SIZE_LIMIT")
+        specs = capped(write_specs(args) if operation == "write" else copy_specs(args) if operation == "copy"
+                       else dir_paths(args) if operation == "mkdir" else move_rows(args) if operation == "move"
+                       else paths(args))
         if source_fd is not None and (operation != "copy" or len(specs) != 1):
             raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
         results, failed = [], []
         for index, spec in enumerate(specs):
             try:
+                if operation == "move" and "refused" in spec:
+                    failed.append(move_failure(index, spec, None))
+                    continue
                 results.append(broker.copy(spec, source_fd=source_fd) if source_fd is not None
                                else getattr(broker, operation)(spec))
             except (OSError, ValueError, TypeError, LookupError) as exc:
+                if operation == "move":
+                    failed.append(move_failure(index, spec, exc))
+                    continue
                 failure = error_result(exc)
-                failed.append({"index": index, "error": failure["error"], "error_code": failure["error_code"]})
+                failed.append({"index": index, "error": failure["error"], "error_code": failure["error_code"],
+                               **({"path": spec} if operation == "mkdir" else {})})
         return batch_result(owner, manifest, args, turn_id, operation, results, failed)
     except (OSError, ValueError, TypeError, LookupError) as exc:
         return error_result(exc)
+
+
+def created_folders(results):
+    """Every folder a creation recorded, as (entry index, entry, path,
+    identity), deepest first: a parent goes after what it contained."""
+    found = []
+    for index, entry in enumerate(results.get("results") or []):
+        folders = entry.get("_dirs_created", entry.get("dirs_created")) or []
+        identities = entry.get("_dirs_created_ids") or []
+        if (not isinstance(folders, list) or not isinstance(identities, list) or len(folders) != len(identities)
+                or any(not isinstance(item, list) or len(item) != 2 or any(type(v) is not int for v in item)
+                       for item in identities)):
+            raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
+        found.extend((index, entry, permissions.normalize_path(folder, "posix"), identity)
+                     for folder, identity in zip(folders, identities))
+    return sorted(found, key=lambda item: item[2].count("/"), reverse=True)
+
+
+def undo_plan(operation, pattern, results):
+    """What the undo of a server-only operation does, as (entry index, entry,
+    folder, identity): a folder to remove (deepest first, only folders the call
+    made) or, with no folder, a moved file to put back. None for the other
+    operations, which keep their own undo."""
+    if operation not in permissions.SERVER_OPERATIONS:
+        return None
+    if pattern == "delete_created_dirs" or operation == "mkdir" and pattern == "delete_created_paths":
+        return created_folders(results)
+    if operation == "move" and pattern == "swap_src_dst":
+        # The last file moved goes back first.
+        return [(index, entry, None, None) for index, entry in reversed(list(enumerate(results.get("results") or [])))]
+    return []
 
 
 def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, trusted_owner=None, timeout_s=30):
@@ -716,6 +1361,22 @@ def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, tr
     broker = Broker(owner, context["manifest"], context["args"], context["turn_id"], db_path=db_path,
                     authority=authority, timeout_s=timeout_s)
     done, failed = [], []
+    try:
+        plan = undo_plan(permissions.served_operation(context["manifest"], context["args"]), pattern, results)
+    except (OSError, ValueError, TypeError, LookupError) as exc:
+        return error_result(exc)
+    if plan is not None:
+        for index, entry, folder, identity in plan:
+            try:
+                if folder is None:
+                    done.append(broker.move_back(entry))
+                    continue
+                removed = broker.rmdir(folder, identity)
+                if removed is not None:
+                    done.append(removed)
+            except (OSError, ValueError, TypeError, LookupError) as exc:
+                failed.append({"index": index, "path": folder or entry.get("dst"), **error_result(exc)})
+        return {"ok": not failed, "ok_count": len(done), "fail_count": len(failed), "results": done, "failed": failed}
     for index, entry in enumerate(results.get("results") or []):
         path = entry.get("dst") or entry.get("path")
         if not path or entry.get("skipped"):

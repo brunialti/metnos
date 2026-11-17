@@ -32,6 +32,8 @@ def _command():
     command += ['--dir', '/parser']
     for name in ('document_parse_worker.py', 'document_parse.py', 'pdf_extract.py'):
         command += ['--ro-bind', str(source / name), '/parser/' + name]
+    # Last filesystem operation: nothing outside the private /tmp is writable.
+    command += ['--remount-ro', '/']
     return command + ['--chdir', '/tmp', '--', sys.executable, '-E', '-s', '-B',
                       '/parser/document_parse_worker.py', '--worker']
 

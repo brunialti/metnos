@@ -180,15 +180,17 @@ def _open() -> sqlite3.Connection:
                 and local_path == wanted_path):
             return local_conn
 
-        try:
-            opened = _open_rw()
-        except sqlite3.OperationalError:
-            # DB montato READ-ONLY (sandbox bwrap: §7.13 — l'executor legge i
-            # messaggi ma non può scrivere schema/migration, già fatti dal
-            # server). Apri immutable read-only: niente -wal/-shm, lock-free.
-            opened = sqlite3.connect(
-                f"file:{DB_PATH}?mode=ro&immutable=1",
-                uri=True, check_same_thread=False)
+        if _C.in_executor_sandbox():
+            opened = _open_in_sandbox()
+        else:
+            try:
+                opened = _open_rw()
+            except sqlite3.OperationalError:
+                # DB montato READ-ONLY (§7.13): schema e migration sono già
+                # fatti dal server. Immutable read-only: niente -wal/-shm.
+                opened = sqlite3.connect(
+                    f"file:{DB_PATH}?mode=ro&immutable=1",
+                    uri=True, check_same_thread=False)
         _thread_connections.conn = opened
         _thread_connections.path = wanted_path
         if _conn is None or _conn_path != wanted_path:
@@ -196,6 +198,23 @@ def _open() -> sqlite3.Connection:
             _conn_owner_thread_id = thread_id
             _conn_path = wanted_path
         return opened
+
+
+def _open_in_sandbox() -> sqlite3.Connection:
+    """The catalogue as a tool in its sandbox reads it (§7.13).
+
+    The server's store, mounted read-only, opened immutable: no lock and no
+    journal file. A tool never creates or migrates the catalogue: the sandbox
+    root is read-only. A store the server has not created yet reads as an
+    empty catalogue, as when the tool used to create one on the throwaway
+    root.
+    """
+    if Path(DB_PATH).is_file():
+        return sqlite3.connect(f"file:{DB_PATH}?mode=ro&immutable=1",
+                               uri=True, check_same_thread=False)
+    connection = sqlite3.connect(":memory:", check_same_thread=False)
+    connection.executescript(_SCHEMA)
+    return connection
 
 
 def _open_rw() -> sqlite3.Connection:

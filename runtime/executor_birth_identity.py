@@ -310,6 +310,10 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
         "equivalence_gate": None,
         "effects": [_EXECUTION_EFFECT_RULE],
         "frozen_plan": _FROZEN_PLAN,
+        # Signed declaration of what a tool can be divided on
+        # (`partitioned_runs`): part of the identity.
+        "partition": {"arg": None, "list_arg": None, "kind": None,
+                      "union": None, "sums": None},
     },
     "placement": {"scope": None, "min_sandbox": None, "device_ok": None},
     # Signed native file-broker contract (ADR 0237): part of the identity.
@@ -318,6 +322,9 @@ MANIFEST_FIELD_GRAMMAR_V1: dict[str, object] = {
     # Signed declaration of a local search the server serves through the
     # closed list operation (`filesystem_permissions.search_contract`).
     "filesystem_search": {"protocol": None, "root": None},
+    # Signed declaration of a closed operation only the server serves
+    # (`filesystem_permissions.server_contract`).
+    "filesystem_server": {"protocol": None, "operation": None},
     "sandbox": {"network_allowed": None, "fs_read": None, "fs_write": None,
                 "exec_allowed": None},
     "provenance": {"skill_id": None, "imported_from": None,

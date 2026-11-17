@@ -398,7 +398,7 @@ def _fill(system, user, *, max_tokens=80, **_unused) -> str:
         return ""
 
 
-def _ask_before_removing(framework, entry: dict, context: dict):
+def _ask_before_removing(framework, entry: dict, context: dict, catalog=None):
     """After a long job nothing is deleted or moved without asking first.
 
     In a chat turn a few items are removed without a question, because the
@@ -408,14 +408,20 @@ def _ask_before_removing(framework, entry: dict, context: dict):
     and its words change."""
     from engine.dispatch import (
         _MASS_ACTION_KEY, _MASS_MUTATION_VERBS, _insert_mass_mutation_gate,
+        _what_the_question_adds,
     )
     from messages import get as message
 
-    def _words(verb, count):
+    def _words(verb, count, more=""):
         action = message(_MASS_ACTION_KEY.get(verb, "MSG_ACTION_DELETE"))
         if count is None:
-            return message("MSG_CONSENT_GATE_AFTER_LONG_JOB_ANY", action=action)
-        return message("MSG_CONSENT_GATE_AFTER_LONG_JOB", action=action, n=count)
+            return message("MSG_CONSENT_GATE_AFTER_LONG_JOB_ANY", action=action) + more
+        words = message("MSG_CONSENT_GATE_AFTER_LONG_JOB", action=action, n=count) + more
+        if isinstance(count, str) and count.endswith(".@rows}"):
+            # The same step, counted partition by partition: where the items
+            # are, when the long step worked folder by folder. Empty otherwise.
+            words += " " + count[:-len(".@rows}")] + ".@by_partition}"
+        return words
 
     framework = _insert_mass_mutation_gate(
         framework, entry["query"], context, threshold=0, prompt_for=_words)
@@ -424,11 +430,17 @@ def _ask_before_removing(framework, entry: dict, context: dict):
         args = step.args if isinstance(step.args, dict) else None
         if step.tool != "get_approval" or args is None or "guard_threshold" not in args:
             continue
-        guarded = next((later.tool.split("_", 1)[0] for later in steps[position + 1:]
-                        if later.tool.split("_", 1)[0] in _MASS_MUTATION_VERBS), "")
+        acted = next((later for later in range(position + 1, len(steps))
+                      if steps[later].tool.split("_", 1)[0] in _MASS_MUTATION_VERBS), None)
         args["guard_threshold"] = 0
-        if guarded:
-            args["prompt"] = _words(guarded, args.get("guard_count"))
+        if acted is not None:
+            reads = steps[acted].args.get("from_step") \
+                if isinstance(steps[acted].args, dict) else None
+            # Which file of each group stays and any list a ceiling cut: a
+            # wrong reading or a cut is seen before the yes.
+            args["prompt"] = _words(
+                steps[acted].tool.split("_", 1)[0], args.get("guard_count"),
+                _what_the_question_adds(steps, acted, reads, catalog))
     return framework
 
 
@@ -480,7 +492,7 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
     # numbers: after the consent it lets the plan through instead of asking.
     framework = _ask_before_removing(
         Framework.from_dict(json.loads(entry["plan_json"])), entry,
-        {**context, "_gate_approved": False})
+        {**context, "_gate_approved": False}, catalog)
     unasked = _removals_never_asked(framework)
     waiting = list(replay)
     answered = []
@@ -575,6 +587,10 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
         # answer its writer would say only that nothing was done.
         found = next((step.result for step in run.steps
                       if step.tool == entry["tool"] and step.ok), None)
+        if found is None and isinstance(result, dict) and result.get("ok") is True:
+            # A step written before the long one failed, so the plan never
+            # reached it: the job still ran, and what it found is here.
+            found = result
         failed = next((step for step in reversed(run.steps) if not step.ok), None)
         if not text and failed is not None:
             text = "«%s»: %s" % (failed.tool, failed.result.get("error")
@@ -609,6 +625,76 @@ def _job_store():
     return DurableWorkloadStore.open()
 
 
+# What the units of a job asked for several partitions may add up to when
+# they are read back together; beyond it the partitions not read are named.
+_MAX_JOINED_BYTES = 64 * 1024 * 1024
+
+
+def _partition_policy(tool: str, payloads) -> dict:
+    """The partition the tool declares now, or what its own results say."""
+    import partitioned_runs
+    from loader import load_catalog
+
+    try:
+        declared = partitioned_runs.policy_of(
+            load_catalog(verify=True, include_synth=True).executors.get(tool))
+    except Exception as exc:  # noqa: BLE001 - the results still say enough to join them
+        log.info("lre_answers: no partition declared for %s: %r", tool, exc)
+        declared = None
+    if declared is not None:
+        return declared
+    said = next((item for item in payloads if isinstance(item, dict)), {})
+    return {"arg": str(said.get("partition_arg") or ""), "list_arg": "",
+            "kind": "directory", "sums": (),
+            "union": str(said.get("partition_union") or "separate")}
+
+
+def _joined_partitions(entry: dict, store) -> dict | None:
+    """The one result of a job that ran its tool once per partition.
+
+    None for any other job. The units answer in no order and each for its own
+    partition: they are joined in the order the job was admitted with, and a
+    partition nobody answered for is a failed one with its reason, never an
+    absent one (§2.8)."""
+    import partitioned_runs
+    from durable_workloads.partitioned_invocation import (
+        EXECUTE_STAGE, PARTITIONS_STAGE,
+    )
+    from messages import get as message
+
+    owner, job = entry["owner_user_id"], entry["workload_id"]
+    listed, _whole = store.committed_stage_results(
+        owner, job, stage_key=PARTITIONS_STAGE, limit=1, max_bytes=_MAX_PLAN_JSON * 8)
+    order = [row["partition"] for row in (listed[0].get("entries") or ())
+             if isinstance(row, dict) and isinstance(row.get("partition"), str)
+             ] if listed and isinstance(listed[0], dict) else []
+    if not order:
+        return None
+    payloads, complete = store.committed_stage_results(
+        owner, job, stage_key=EXECUTE_STAGE, limit=min(1024, len(order)),
+        max_bytes=_MAX_JOINED_BYTES)
+    code = "ERR_PARTITION_UNANSWERED" if complete else "ERR_PARTITION_RESULT_TOO_LARGE"
+    # The words of the units speak of one folder each: said again of all.
+    for payload in payloads:
+        if isinstance(payload, dict):
+            payload.pop("partial_reason", None)
+    return partitioned_runs.with_partial_reason(partitioned_runs.combine(
+        _partition_policy(entry["tool"], payloads), payloads, order=order,
+        unanswered={"error_class": "resource_unavailable", "error_code": code,
+                    "error": message(code)}))
+
+
+def _job_results(entry: dict, store) -> list[dict]:
+    """What the long step of a request gave: one result when the job has an
+    answer. A tool asked for several partitions committed one result for
+    each, joined here into the one the step would have given in a turn."""
+    joined = _joined_partitions(entry, store)
+    if joined is not None:
+        return [joined]
+    return store.committed_tool_results(
+        entry["owner_user_id"], entry["workload_id"], tool=entry["tool"])
+
+
 def resume_after_consent(on_complete: dict, values: dict):
     """The person answered the question asked after a long job.
 
@@ -622,8 +708,7 @@ def resume_after_consent(on_complete: dict, values: dict):
     if not entry or not entry.get("plan_json"):
         raise LookupError("the request of this question is no longer kept")
     with _job_store() as store:
-        results = store.committed_tool_results(
-            owner, entry["workload_id"], tool=entry["tool"])
+        results = _job_results(entry, store)
     if len(results) != 1:
         raise LookupError("the result of the long job is no longer kept")
     replay = [(str(tool), dict(observation)) for tool, observation
@@ -822,8 +907,7 @@ def _deliver_one(entry: dict, store) -> str:
         _mark(entry["workload_id"], DONE)
         return "gone"
     if state in (WorkloadState.COMPLETED, WorkloadState.COMPLETED_WITH_ERRORS):
-        results = store.committed_tool_results(
-            entry["owner_user_id"], entry["workload_id"], tool=entry["tool"])
+        results = _job_results(entry, store)
         if len(results) != 1:
             # Not the single answer of a plain tool. Its notice was silenced
             # because an answer was due: how it ended is said all the same.

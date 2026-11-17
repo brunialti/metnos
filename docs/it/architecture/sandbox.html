@@ -163,6 +163,14 @@ non mostra la cartella di lavoro, l'executor ne trova una vuota allo stesso
 indirizzo: il percorso risulta inesistente, con lo stesso significato per
 tutti. Le concessioni legate agli argomenti si calcolano sulla stessa base.</p>
 
+<p>Ci&ograve; che il profilo non monta &egrave; in sola lettura: la radice del
+profilo viene resa di sola lettura dopo tutti i montaggi, quindi una scrittura
+fuori dai posti concessi fallisce con l'errore del sistema operativo e lo
+strumento la riferisce come permesso negato. Restano scrivibili soltanto i
+montaggi in lettura e scrittura e il <code>/tmp</code> privato. Dentro il
+profilo uno strumento non crea le cartelle del servizio, non apre il file di
+registro e legge il catalogo dei messaggi e il lessico in sola lettura.</p>
+
 <h2>3.2 Risorse derivate dalle capacit&agrave;</h2>
 
 <table>

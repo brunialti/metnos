@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "move_files"
-version     = "0.11.2"
+version     = "0.12.0"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -53,8 +53,8 @@ en = "Runtime-resolved list of files to move; each item must contain `path` or `
 type        = "string"
 
 [args.properties.dst_template.description]
-it = "Template stringa del path di destinazione con campi nome e data, es. `/tmp/{date_year}/{name}`; ogni risultato deve rientrare nello scope `fs:write`."
-en = "Destination path string template with name and date fields, e.g. `/tmp/{date_year}/{name}`; every result must remain within the `fs:write` scope."
+it = "Template stringa del path di destinazione con i campi della riga tra graffe: nome e data, es. `/tmp/{date_year}/{name}`. Per le righe trovate cartella per cartella anche `{partition}` e `{rel_path}`, il percorso del file dentro la sua cartella, es. `{partition}/da_controllare/{rel_path}`. Ogni risultato deve rientrare nello scope `fs:write`."
+en = "Destination path string template with the row's fields in braces: name and date, e.g. `/tmp/{date_year}/{name}`. For rows found folder by folder also `{partition}` and `{rel_path}`, the path of the file inside its folder, e.g. `{partition}/to_check/{rel_path}`. Every result must remain within the `fs:write` scope."
 
 [args.properties.overwrite]
 type        = "boolean"
@@ -78,8 +78,8 @@ type        = "boolean"
 default     = true
 
 [args.properties.parents.description]
-it = "Se true (default), crea la cartella di destinazione mancante negli spazi ordinari del server. Sui percorsi autorizzati aggiuntivi o remoti la cartella deve già esistere."
-en = "If true (default), create a missing destination folder in ordinary server working areas. For additional authorized or remote paths, the folder must already exist."
+it = "Se true (default), crea la cartella di destinazione mancante, anche nelle cartelle concesse quando sposta. Per una copia su percorsi autorizzati aggiuntivi o remoti la cartella deve già esistere."
+en = "If true (default), create a missing destination folder, also in granted folders when moving. For a copy to additional authorized or remote paths, the folder must already exist."
 
 [args.properties.allow_dirs]
 type        = "boolean"
@@ -262,3 +262,12 @@ en = "For a copy, locate the destination. Specify both locations when device and
 protocol = "filesystem_broker_v1"
 operation = "copy"
 when = { arg = "copy", values = [true] }
+
+# Without copy=true, a move outside this tool's own scope (the person's working
+# folder, a granted folder) is done on the server by the closed operation:
+# destination checked, missing folders made, then the same file renamed on one
+# filesystem or a verified copy before the source goes. Read by the server
+# only: a device runs the tool.
+[filesystem_server]
+protocol  = "filesystem_broker_v1"
+operation = "move"

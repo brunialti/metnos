@@ -149,6 +149,13 @@ M. THE MOST RECENT / THE OLDEST (by date, any object)
 - OK: abstract example, do not copy literally: "the <K> most recent <objects>" → [<producer>(...), sort_entries(from_step=1, by="date", desc=true, top=<K>), ...]; "for each <X> the oldest" → sort_entries(from_step=1, by="date", desc=false, top=1, group_by="<field of X>").
 - ERROR: "for each <X> the most recent" → sort_entries(by="date", desc=true) followed by filter_entries(where_field="<field of X>").
 
+N. FOR EACH FOLDER («for each folder», «in every subfolder», «folder by folder», «each on its own»)
+- YOU MUST: use ONE step of the tool with `base_paths` and WITHOUT `base_path`. «every subfolder of <parent>» → base_paths=["<parent>/*"]. Folders named one by one → base_paths=["<a>","<b>"], copied as they are written.
+- YOU MUST: in the following steps write `{partition}` (the folder of each row) and `{rel_path}` (the path of the file inside that folder): move_files(from_step=N, dst_template="{partition}/<name>/{rel_path}"); create_dirs(from_step=N, path_template="{partition}/<name>").
+- YOU MUST NOT: list the folders first (list_dirs, find_dirs); write `${stepN…}` in base_paths, dst_template or paths; add `/*` to a named folder; use base_paths for ONE folder or to search ACROSS different folders.
+- OK: abstract example, do not copy literally: <tool>(base_paths=["<parent>/*"]) → create_dirs(from_step=1, path_template="{partition}/<name>") → move_files(from_step=1, dst_template="{partition}/<name>/{rel_path}").
+- ERROR: list_dirs(path="<parent>") → <tool>(base_paths=["${step1.entries.*.path}"]); base_paths=["<a>/*","<b>/*"] for «in the folders <a> and <b>»; dst_template="<parent>/<name>/{name}".
+
 C. MUTATING (move/delete/send/write/create/set)
 - The requested action-verb step MUST be present: never stop at the producer.
 - PUNCTUAL target already NAMED in the query (explicit filename, path, url, id) → action tool as FIRST step with the literals (§4.2), WITHOUT a producer in front. Mutating tools declaring `from_step` alternatively accept `entries=[{"path": "<literal>"}]` inline.

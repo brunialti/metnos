@@ -131,16 +131,30 @@ def committed_entries(store):
     return read
 
 
+def literal_entries(args: Mapping[str, Any], _context: ExecutionContext) -> dict[str, object]:
+    """Give back as rows a list written in the plan.
+
+    The list is a literal frozen at admission; the stage's approved output
+    schema decides what a row may hold. Each row then becomes one unit of the
+    stage that depends on this one."""
+    entries = args.get("entries")
+    if not isinstance(entries, list) or any(
+            not isinstance(item, Mapping) for item in entries):
+        return _invalid_output()
+    return {"entries": [dict(item) for item in entries]}
+
+
 def approved_internal_runners(artifacts: ArtifactStore, store) -> dict[str, object]:
     """Return exactly the core internal runners bound to one artifact store."""
     if not isinstance(artifacts, ArtifactStore):
         raise TypeError("artifacts must be an ArtifactStore")
     return {
         "committed_entries": committed_entries(store),
+        "literal_entries": literal_entries,
         "sealed_inventory": sealed_inventory,
         "schema_and_coverage_validator": schema_and_coverage_validator,
         "artifact_store_publish": artifact_store_publish(artifacts),
     }
 
 
-__all__ = ["approved_internal_runners", "artifact_store_publish", "sealed_inventory", "schema_and_coverage_validator"]
+__all__ = ["approved_internal_runners", "artifact_store_publish", "literal_entries", "sealed_inventory", "schema_and_coverage_validator"]

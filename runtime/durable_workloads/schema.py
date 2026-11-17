@@ -36,6 +36,7 @@ _ARTIFACT_SCHEMA_RE = re.compile(r"^metnos\.[a-z0-9_.-]+/[1-9][0-9]*$")
 _MIME_RE = re.compile(r"^[a-z0-9.+-]+/[a-z0-9.+-]+$")
 _INTERNAL_RUNNERS = frozenset({
     "committed_entries",
+    "literal_entries",
     "sealed_inventory",
     "schema_and_coverage_validator",
     "artifact_store_publish",

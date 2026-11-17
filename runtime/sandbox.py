@@ -39,6 +39,9 @@ _TRUSTED_UNDO_BROKER_DIGEST_V1 = (
     "sha256:8f819a52ce9f242ace86de74822058baf609c863557f7cdc4482439983f4f895"
 )
 _PROJECTED_TRUST_ROOT_V1 = Path("/.metnos-admission-v1")
+# Appended after every filesystem operation of an executor sandbox: what no
+# bind shows cannot be written (see ``wrap_command``).
+SANDBOX_ROOT_READ_ONLY = ("--remount-ro", "/")
 _FILESYSTEM_HOST_PRIVATE_PATHS = (
     (Path("/run/metnos-filesystem-host"), True),
     (Path("/var/lib/metnos-filesystem-host"), True),
@@ -1190,9 +1193,16 @@ def wrap_command(
 
     ``working_directory``: where the child starts. A relative path the child
     resolves by itself then means that directory; without it the child keeps
-    the caller's own directory, as before. The directory is created empty in
-    the sandbox when no bind shows it, so the meaning of a relative path never
-    depends on what this executor may see.
+    the caller's own directory, as before. The directory is created empty and
+    read-only in the sandbox when no bind shows it, so the meaning of a
+    relative path never depends on what this executor may see. (A directory
+    below /tmp would land in the private, writable /tmp: the working folders
+    of the persons are not there.)
+
+    What no bind shows is read-only: the sandbox root is remounted read-only
+    after every bind, so a write outside the granted places fails with the
+    operating system's error instead of landing on a throwaway filesystem
+    and being reported as done. ``/tmp`` stays private and writable.
 
     `executor` deve avere `code_path` (Path) e `capabilities` (lista
     di dict o str, formato manifest). `force_net=True` NON isola la rete
@@ -1254,6 +1264,11 @@ def wrap_command(
     # one below a read-only bind, and would refuse the whole invocation.
     if working_directory is not None and Path(working_directory).is_dir():
         bwrap_args += ["--dir", str(working_directory), "--chdir", str(working_directory)]
+    # Last filesystem operation: the root bubblewrap builds is a writable
+    # tmpfs, and a tool writing where no bind reaches would succeed there and
+    # lose the result (a folder "created" that does not exist). Mounts made
+    # above keep their own mode: RW binds and the private /tmp stay writable.
+    bwrap_args += SANDBOX_ROOT_READ_ONLY
     return ["bwrap", *bwrap_args, "--", *command]
 
 

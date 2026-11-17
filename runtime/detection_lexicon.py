@@ -111,8 +111,31 @@ class _Connection(sqlite3.Connection):
         return conn
 
 
+def _connect_in_sandbox() -> _Connection:
+    """The store as a tool in its sandbox reads it (§7.13).
+
+    The server's store, mounted read-only, opened immutable. A tool never
+    creates the store: the sandbox root is read-only. A store the server has
+    not created yet is an empty one in memory, shared by this process's
+    threads, as when the tool used to create one on the throwaway root.
+    """
+    if DB_PATH.is_file():
+        target = (f"file:{DB_PATH}?mode=ro&immutable=1", True)
+        c = sqlite3.connect(
+            target[0], uri=True, check_same_thread=False, factory=_Connection)
+    else:
+        target = ("file:metnos-detection-lexicon?mode=memory&cache=shared", True)
+        c = sqlite3.connect(
+            target[0], uri=True, check_same_thread=False, factory=_Connection)
+        c.executescript(_SCHEMA)
+    c.target = target
+    return c
+
+
 def _connect() -> _Connection:
     """Open the store read-write with its schema, or read-only in the sandbox."""
+    if _C.in_executor_sandbox():
+        return _connect_in_sandbox()
     try:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         target = (str(DB_PATH), False)

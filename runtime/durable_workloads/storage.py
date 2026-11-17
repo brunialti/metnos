@@ -5609,6 +5609,51 @@ class DurableWorkloadStore:
         ).fetchall()
         return [json.loads(row["payload_json"]) for row in rows]
 
+    def committed_stage_results(
+        self, owner_user_id: str, workload_id: str, *, stage_key: str,
+        limit: int, max_bytes: int,
+    ) -> tuple[list[dict], bool]:
+        """Every committed result of one stage of a job, for the owner who asked.
+
+        Sibling of ``committed_tool_results`` for a stage with one unit per
+        partition: the answer of the job is all of them together. Bounded
+        twice, by count and by total size, because a unit result may be large;
+        the second value says whether everything committed was returned.
+        Nothing is promised about order: each result names its partition.
+        """
+        owner = _require_owner(owner_user_id)
+        if (not isinstance(stage_key, str) or not stage_key
+                or type(limit) is not int or not 1 <= limit <= 1024
+                or type(max_bytes) is not int or max_bytes < 1):
+            raise DurableStoreError("committed stage results must be bounded")
+        rows = self._connection.execute(
+            """
+            SELECT result.payload_json, length(result.payload_json) AS size
+            FROM workloads workload
+            JOIN stages stage
+              ON stage.owner_user_id=workload.owner_user_id
+             AND stage.revision_id=workload.active_revision_id
+             AND stage.stage_key=?
+            JOIN units unit
+              ON unit.owner_user_id=stage.owner_user_id
+             AND unit.revision_id=stage.revision_id
+             AND unit.stage_id=stage.id AND unit.state='committed'
+            JOIN results result
+              ON result.owner_user_id=unit.owner_user_id
+             AND result.id=unit.committed_result_id
+            WHERE workload.owner_user_id=? AND workload.id=?
+            ORDER BY unit.id LIMIT ?
+            """, (stage_key, owner, workload_id, limit + 1),
+        )
+        payloads: list[dict] = []
+        taken = 0
+        for row in rows:
+            taken += int(row["size"])
+            if len(payloads) == limit or taken > max_bytes:
+                return payloads, False
+            payloads.append(json.loads(row["payload_json"]))
+        return payloads, True
+
     def read_committed_entries(self, owner_user_id: str, references: object) -> list[dict]:
         """Read explicitly selected, digest-bound historical data, never replay effects.
 

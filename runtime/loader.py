@@ -473,6 +473,7 @@ def builtin_contract_executor(name: str, module_path: Path,
         placement=dict(manifest.get("placement") or {}),
         filesystem=dict(manifest.get("filesystem") or {}),
         filesystem_search=dict(manifest.get("filesystem_search") or {}),
+        filesystem_server=dict(manifest.get("filesystem_server") or {}),
         undo=dict(manifest.get("undo") or {}),
         platforms=list(manifest.get("platforms") or ["linux"]),
         digest=str((manifest.get("code") or {}).get("digest") or ""),
@@ -837,6 +838,9 @@ class Executor:
     # `[filesystem_search]`: a local search the server may serve through the
     # closed list operation (`filesystem_permissions.search_contract`).
     filesystem_search: dict = field(default_factory=dict)
+    # `[filesystem_server]`: a closed operation only the server serves
+    # (`filesystem_permissions.server_contract`); a device never reads it.
+    filesystem_server: dict = field(default_factory=dict)
     # Sezione `[undo]` del manifest (ADR 0209 D3): che cosa rispondere a un
     # «annulla» quando l'operazione NON e' annullabile ma esiste un rimedio.
     # Un'installazione non si ripercorre all'indietro; disinstallare e'
@@ -2233,6 +2237,7 @@ def _load_parsed_manifest_into_catalog(
             placement=_placement,
             filesystem=dict(manifest.get("filesystem") or {}),
             filesystem_search=dict(manifest.get("filesystem_search") or {}),
+            filesystem_server=dict(manifest.get("filesystem_server") or {}),
             undo=dict(manifest.get("undo") or {})
             if isinstance(manifest.get("undo"), dict) else {},
             complexity=_complexity,

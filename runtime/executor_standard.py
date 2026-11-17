@@ -46,7 +46,7 @@ _EQUIVALENCE_GATES = frozenset({"unverified", "verified"})
 _INTELLIGENCE_KINDS = frozenset({"deterministic", "llm", "agentic"})
 _EXECUTION_FIELDS = frozenset({
     "effect", "parallelism_class", "resource_class", "concurrency_key",
-    "equivalence_gate", "effects", "frozen_plan",
+    "equivalence_gate", "effects", "frozen_plan", "partition",
 })
 _JSON_SCHEMA_TYPES = frozenset({
     "array", "boolean", "integer", "null", "number", "object", "string",
@@ -469,6 +469,9 @@ def _validate_execution(findings: list[StandardFinding], manifest: dict,
         _add(findings, "execution_effects", message)
     for message in validate_frozen_plan(manifest):
         _add(findings, "execution_frozen_plan", message)
+    from partitioned_runs import validate_partition
+    for message in validate_partition(manifest):
+        _add(findings, "execution_partition", message)
 
     effect = execution.get("effect", "unknown")
     if effect not in _EXECUTION_EFFECTS:
@@ -678,6 +681,13 @@ def validate_manifest(manifest: dict, *, require_declaration: bool = True,
                 raise ValueError("empty filesystem search contract")
         except (ValueError, TypeError, KeyError) as exc:
             _add(findings, "filesystem_search_contract", str(exc))
+    from filesystem_permissions import SERVER_TABLE, server_contract
+    if SERVER_TABLE in manifest:
+        try:
+            if not manifest[SERVER_TABLE] or server_contract(manifest) is None:
+                raise ValueError("empty server filesystem contract")
+        except (ValueError, TypeError, KeyError) as exc:
+            _add(findings, "filesystem_server_contract", str(exc))
 
     code = manifest.get("code")
     if not isinstance(code, dict) or not code.get("files"):

@@ -181,6 +181,16 @@ names, under the same permissions. A branch that cannot be opened is declared,
 not left out. When an operation cannot work in a folder the answer says so: it
 does not call the folder missing.</p>
 
+<p>The person's own working folder needs no grant, and the files in it are
+read, written and deleted by the same closed operations, as the service
+itself. Folders are created the same way, in that folder and in granted
+folders: each new folder needs the right a write needs, a file or a link in its
+place is refused, and undo removes only the folders it created, if they are
+still empty. Files are moved there too: an existing destination is refused
+before anything is touched, a missing folder is created, and the source is
+removed only after the file has its new name on the same disk or a verified
+copy exists.</p>
+
 <p>Transfers check size and data digests; an atomic replacement publishes the
 file and overwrites preserve an undo backup. The server rechecks grants before
 the final mutation; the device refreshes signed authority within five seconds.

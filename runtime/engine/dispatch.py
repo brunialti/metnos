@@ -7400,6 +7400,13 @@ GUARD_PIPELINE: tuple = (
           reads=frozenset({"query", "step.tool", "step.args", "catalog"}),
           rationale="contenuto assente dalla richiesta + un'altra sorgente nominata = copia, mai testo inventato dichiarato come copia (turno 6978422a)",
           adr="0237"),
+    Guard("partition_plan_to_served_form",
+          lambda fw, i, q, c: _partition_plan_to_served_form(fw, c),
+          scope="structure",
+          writes=frozenset({"args.*", "args.dst_template", "args.path_template"}),
+          reads=frozenset({"catalog", "step.tool", "args.*"}),
+          rationale="«per ogni cartella di X» come lo scrive il pianificatore (elenca le cartelle, le passa per segnaposto, nomina la cartella di ogni riga in tre modi) portato alla forma che il runtime serve: valori letterali, {partition}, {rel_path}. Solo equivalenze, misurate il 16/11/2026",
+          adr="0244"),
     # What the sentence itself says about an argument the planner only has to
     # copy from it (`request_grounding`): declared and tested in that module.
     *_request_grounding_guards(Guard),
@@ -7433,6 +7440,19 @@ def guard_fire_counts() -> dict:
 
 def reset_guard_fire_counts() -> None:
     _GUARD_FIRE_COUNTS.clear()
+
+
+def _partition_plan_to_served_form(framework: Framework,
+                                   catalog: Optional[list]) -> Framework:
+    """A plan that works folder by folder, in the one form the runtime serves
+    (`engine.partition_plans`). Fail-open: a plan this cannot read is left as
+    it was written, and is refused or run as any other."""
+    try:
+        from .partition_plans import normalize_partition_plan
+        return normalize_partition_plan(framework, catalog)
+    except Exception as exc:  # noqa: BLE001 - a guard never breaks a turn
+        log.warning("partition_plan_to_served_form skipped: %r", exc)
+        return framework
 
 
 def _apply_deterministic_structure_guards(framework: Framework, intent,
@@ -7532,7 +7552,8 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     framework = _insert_outbound_data_gate(
         framework, query, runtime_ctx, catalog)
     # mass-mutation gate (6/7): delete/move di massa → conferma umana.
-    framework = _insert_mass_mutation_gate(framework, query, runtime_ctx)
+    framework = _insert_mass_mutation_gate(framework, query, runtime_ctx,
+                                           catalog=catalog)
     return framework
 
 
@@ -7843,9 +7864,33 @@ def _glob_paths_to_find_files(paths) -> Optional[dict]:
             "patterns": sorted(set(bases)), "recursive": False}
 
 
+def _rows_behind(steps, source: int) -> list[int]:
+    """The step a removal reads and the steps that one read in turn (1-based),
+    nearest first: where the rows it acts upon came from."""
+    chain: list[int] = []
+    while isinstance(source, int) and not isinstance(source, bool) \
+            and 1 <= source <= len(steps) and source not in chain:
+        chain.append(source)
+        args = steps[source - 1].args
+        source = args.get("from_step") if isinstance(args, dict) else None
+    return chain
+
+
+def _what_the_question_adds(steps, idx: int, source, catalog) -> str:
+    """Said after the question itself: which record of each group stays, when
+    a step behind chose by age, and any ceiling that cut the rows on the way
+    (`${stepN.@cut}` is empty when nothing was cut)."""
+    from request_grounding import kept_note
+
+    said = [kept_note(steps, idx, catalog)]
+    said += [f"${{step{position}.@cut}}" for position in _rows_behind(steps, source)]
+    return "".join(" " + text for text in said if text)
+
+
 def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
                                threshold: Optional[int] = None,
-                               prompt_for: Optional[Callable] = None):
+                               prompt_for: Optional[Callable] = None,
+                               catalog=None):
     """§2.11/§7.9 (bug live 1ba8e2c4, 6/7: recovery ha espanso una dir in 681
     delete remote senza conferma → 195 file persi). Inserisce un `get_approval`
     PRIMA della prima azione DISTRUTTIVA di massa (delete_/move_) con
@@ -7909,7 +7954,9 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
             #     materializza a runtime, locale E su device.
             # (3) lista inline SENZA glob: conteggio noto ORA → gate solo se >soglia.
             if isinstance(fs, int) and 1 <= fs <= idx:
-                guard_count = f"${{step{fs}.@count}}"
+                # The rows the step will act upon, not how many there are in
+                # all: with a list cut by a ceiling the two differ.
+                guard_count = f"${{step{fs}.@rows}}"
                 n_display = guard_count
             else:
                 paths = a.get("paths")
@@ -7923,7 +7970,7 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
                     consumer_args["from_step"] = ff_idx
                     prefix = prefix + [StepSpec(tool="find_files", args=ff_args)]
                     mut_step = StepSpec(tool=s.tool, args=consumer_args)
-                    guard_count = f"${{step{ff_idx}.@count}}"
+                    guard_count = f"${{step{ff_idx}.@rows}}"
                     n_display = guard_count
                 else:
                     n_inline = len(paths) if isinstance(paths, list) else None
@@ -7950,6 +7997,10 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
                 prompt = _msg_get(
                     "MSG_CONSENT_GATE_MASS_MUTATION_GENERIC",
                     action=action, n=n_display)
+            if prompt_for is None:
+                prompt += _what_the_question_adds(
+                    prefix + [mut_step], len(prefix), mut_step.args.get("from_step")
+                    if isinstance(mut_step.args, dict) else None, catalog)
             gate = StepSpec(tool="get_approval", args={
                 "prompt": prompt,
                 "on_approve": {"tool": "final_answer", "args": {}},

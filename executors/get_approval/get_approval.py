@@ -27,7 +27,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent.parent / "runtime"
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
 
-MAX_PROMPT_LEN = 200
+# A question may carry what the person must know before the yes: which file
+# of each group stays, a list that a ceiling cut, how many items are in each
+# folder. With 200 characters those were the part cut away (16/11/2026).
+MAX_PROMPT_LEN = 600
 MAX_TIMEOUT_S = 3600
 
 
@@ -103,6 +106,8 @@ def invoke(args: dict) -> dict:
     # prompt puo' inglobare un riassunto data-driven (es. ${stepN.@brief} con
     # i titoli delle issue) la cui lunghezza non e' nota a monte; un hard-fail
     # romperebbe l'intero gate. Tronca con ellissi, preservando la domanda.
+    # A part of the question that turned out empty leaves no gap behind.
+    prompt = " ".join(part for part in prompt.strip().split(" ") if part)
     if len(prompt) > MAX_PROMPT_LEN:
         prompt = prompt[:MAX_PROMPT_LEN - 1].rstrip() + "…"
 

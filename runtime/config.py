@@ -868,10 +868,19 @@ def ensure_dirs() -> None:
                     ensure_private_file(candidate)
 
 
+def in_executor_sandbox() -> bool:
+    """True in a tool's process inside its sandbox (``sandbox.wrap_command``
+    sets the flag). The service's folders are not this process's there: what
+    no bind shows is read-only, and a folder created on that throwaway root
+    was lost when the tool ended."""
+    return bool(os.environ.get("METNOS_SANDBOXED"))
+
+
 # Administrative processes read the service configuration too. They must not
 # create root-owned files inside another account's private runtime directories.
-# Runtime processes initialize their own directories under their actual owner.
-if not hasattr(os, "geteuid") or os.geteuid() != 0:
+# Runtime processes initialize their own directories under their actual owner;
+# a sandboxed tool does not own them (see ``in_executor_sandbox``).
+if (not hasattr(os, "geteuid") or os.geteuid() != 0) and not in_executor_sandbox():
     ensure_dirs()
 
 

@@ -155,6 +155,13 @@ M. IL PIÙ RECENTE / IL PIÙ VECCHIO (per data, qualunque oggetto)
 - OK: esempio astratto, non copiare letteralmente: «i <K> <oggetti> più recenti» → [<produttore>(...), sort_entries(from_step=1, by="date", desc=true, top=<K>), ...]; «per ogni <X> il più vecchio» → sort_entries(from_step=1, by="date", desc=false, top=1, group_by="<campo di X>").
 - ERRORE: «per ogni <X> il più recente» → sort_entries(by="date", desc=true) seguito da filter_entries(where_field="<campo di X>").
 
+N. PER OGNI CARTELLA («per ogni cartella», «in ciascuna sottocartella», «cartella per cartella», «ciascuna per conto suo»)
+- DEVI: usare UN solo step del tool con `base_paths` e SENZA `base_path`. «ogni sottocartella di <madre>» → base_paths=["<madre>/*"]. Cartelle nominate una per una → base_paths=["<a>","<b>"], copiate come sono scritte.
+- DEVI: negli step successivi scrivere `{partition}` (la cartella di ogni riga) e `{rel_path}` (il percorso del file dentro quella cartella): move_files(from_step=N, dst_template="{partition}/<nome>/{rel_path}"); create_dirs(from_step=N, path_template="{partition}/<nome>").
+- NON DEVI: elencare prima le cartelle (list_dirs, find_dirs); scrivere `${stepN…}` in base_paths, dst_template o paths; aggiungere `/*` a una cartella nominata; usare base_paths per UNA sola cartella o per cercare FRA cartelle diverse.
+- OK: esempio astratto, non copiare letteralmente: <tool>(base_paths=["<madre>/*"]) → create_dirs(from_step=1, path_template="{partition}/<nome>") → move_files(from_step=1, dst_template="{partition}/<nome>/{rel_path}").
+- ERRORE: list_dirs(path="<madre>") → <tool>(base_paths=["${step1.entries.*.path}"]); base_paths=["<a>/*","<b>/*"] per «nelle cartelle <a> e <b>»; dst_template="<madre>/<nome>/{name}".
+
 C. MUTATING (move/delete/send/write/create/set)
 - Lo step del verbo d'azione richiesto DEVE esserci: mai fermarsi al produttore.
 - Target PUNTUALE gia' NOMINATO nella query (filename esplicito, path, url, id) → tool d'azione come PRIMO step coi literal (§4.2), SENZA produttore davanti. I tool mutating che dichiarano `from_step` accettano in alternativa `entries=[{"path": "<literal>"}]` inline.

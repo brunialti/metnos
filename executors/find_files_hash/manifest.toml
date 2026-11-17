@@ -2,7 +2,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "find_files_hash"
-version     = "0.6.0"
+version     = "0.7.0"
 timeout_s   = 600
 author      = "Roberto Brunialti"
 affinity    = [
@@ -21,9 +21,24 @@ resource_class    = "local_io"
 concurrency_key   = "none"
 equivalence_gate  = "verified"
 
+# Una cartella è una partizione: con più cartelle il runtime chiama lo
+# strumento una volta per ciascuna, e le righe di ciascuna valgono solo dentro
+# di essa (i duplicati dentro le cartelle non sono i duplicati fra le cartelle).
+[execution.partition]
+arg      = "base_path"
+list_arg = "base_paths"
+kind     = "directory"
+union    = "separate"
+sums     = [
+  "scanned_files", "visited_dirs", "same_size_candidates", "sampled_files",
+  "sample_cache_hits", "full_hash_candidates", "hashed_files", "hash_cache_hits",
+  "hashed_bytes", "hash_cache_bytes", "duplicate_groups_count",
+  "duplicate_files_count", "redundant_files_count", "redundant_bytes",
+]
+
 [description]
-it = "SCOPO: trova duplicati esatti (SHA-256); ogni riga una coppia: duplicate_of il file che resta, path l'altro, da togliere. PATTERN: find_files_hash(base_path=\"/foto\", patterns=[\"*.jpg\"]). NON: find_files prima; max_files solo parziale. OUT: entries=[{path,duplicate_of,mtime,duplicate_of_mtime,size,sha256,group_count}] e conteggi completi; cache per utente."
-en = "SCOPO: finds exact duplicates (SHA-256); each row a pair: duplicate_of the file that stays, path the other, to remove. PATTERN: find_files_hash(base_path=\"/photos\", patterns=[\"*.jpg\"]). NON: find_files first; max_files only if partial. OUT: entries=[{path,duplicate_of,mtime,duplicate_of_mtime,size,sha256,group_count}] and complete counts; per-user cache."
+it = "SCOPO: trova duplicati esatti; ogni riga una coppia: duplicate_of resta, path è da togliere. PATTERN: find_files_hash(base_path=\"/foto\"); ogni sottocartella da sola: base_paths=[\"/foto/*\"]; più cartelle: [\"/a\",\"/b\"]. NON: find_files prima. OUT: entries=[{partition,path,duplicate_of,mtime,duplicate_of_mtime,size,sha256,group_count}] e conteggi completi; partition solo con base_paths; cache per utente."
+en = "SCOPO: finds exact duplicates; each row a pair: duplicate_of stays, path is to remove. PATTERN: find_files_hash(base_path=\"/photos\"); each subfolder alone: base_paths=[\"/photos/*\"]; several folders: [\"/a\",\"/b\"]. NON: find_files first. OUT: entries=[{partition,path,duplicate_of,mtime,duplicate_of_mtime,size,sha256,group_count}] and complete counts; partition only with base_paths; per-user cache."
 
 [code]
 files  = ["find_files_hash.py"]
@@ -31,10 +46,19 @@ digest = "sha256:211325dff27cc9507150bc6adac8c9461b6dadc1d641a3828a0047f704853cf
 
 [args]
 type     = "object"
-required = ["base_path"]
+required = []
+requires_one_of = [["base_path", "base_paths"]]
 
 [args.properties.base_path]
 type = "string"
+
+[args.properties.base_paths]
+type = "array"
+items = { type = "string" }
+
+[args.properties.base_paths.description]
+it = "Più cartelle, ciascuna analizzata per conto suo: i duplicati si cercano dentro ognuna, non fra l'una e l'altra. Una sola cartella seguita da '/*' vale ogni sua sottocartella di primo livello, per esempio ['/server/Immagini/*']; più valori sono cartelle nominate una per una. Ogni riga porta `partition`, la cartella a cui appartiene. Default: nessuna."
+en = "Several folders, each analyzed on its own: duplicates are searched inside each one, not across them. A single folder followed by '/*' means each of its first-level subfolders, for example ['/server/Pictures/*']; several values are folders named one by one. Every row carries `partition`, the folder it belongs to. Default: none."
 
 [args.properties.base_path.description]
 it = "Directory radice da analizzare, per esempio '/server/Immagini'."
@@ -116,7 +140,7 @@ schema_inline = """
   ok: bool,
   ok_count: int,
   fail_count: int,
-  entries: Array<{path: str, duplicate_of: str, size: int, sha256: str, group_count: int, mtime: float, duplicate_of_mtime: float}>,
+  entries: Array<{partition?: str, path: str, duplicate_of: str, size: int, sha256: str, group_count: int, mtime: float, duplicate_of_mtime: float}>,
   entry_field_roles: Array<{field: str, roles: Array<str>}>,
   failed: Array<{path: str, error_class: str, error_code: str, error: str}>,
   scanned_files: int,

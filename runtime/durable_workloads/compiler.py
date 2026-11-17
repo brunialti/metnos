@@ -227,6 +227,9 @@ class OutputSchemaRegistry:
         return tuple(self._schemas[name] for name in self.names)
 
 
+PARTITION_LIST_SCHEMA = "metnos.partition-list/1"
+
+
 def core_output_schemas() -> OutputSchemaRegistry:
     """Return schemas owned by generic LRE internal runners."""
 
@@ -272,6 +275,33 @@ def core_output_schemas() -> OutputSchemaRegistry:
                             "required": [
                                 "logical_name", "artifact_id", "digest",
                             ],
+                        },
+                    },
+                },
+                "required": ["entries"],
+            },
+        ),
+        ApprovedOutputSchema.create(
+            # The partitions one admitted call is divided on, each the
+            # identity of one unit (`partitioned_invocation`).
+            PARTITION_LIST_SCHEMA,
+            {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "entries": {
+                        "type": "array",
+                        "maxItems": 1024,
+                        "items": {
+                            "type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "partition": {
+                                    "type": "string", "minLength": 1,
+                                    "maxLength": 32768,
+                                },
+                            },
+                            "required": ["partition"],
                         },
                     },
                 },
@@ -870,12 +900,14 @@ class CompositeRunnerResolver:
 
 _INTERNAL_EFFECTS = {
     "committed_entries": DurableEffect.PURE.value,
+    "literal_entries": DurableEffect.PURE.value,
     "sealed_inventory": DurableEffect.PURE.value,
     "schema_and_coverage_validator": DurableEffect.PURE.value,
     "artifact_store_publish": DurableEffect.IDEMPOTENT.value,
 }
 _INTERNAL_INPUT_TYPES = {
     "committed_entries": {"references": "array"},
+    "literal_entries": {"entries": "array"},
     "sealed_inventory": {"inventory": "object"},
     "schema_and_coverage_validator": {"assembled": "object"},
     "artifact_store_publish": {"artifacts": "array", "validation": "array"},

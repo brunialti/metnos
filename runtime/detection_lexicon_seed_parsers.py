@@ -89,7 +89,24 @@ COMPOUND_CONCEPTS = (
 GROUNDING_CONCEPTS = (
     "parser.grounding.newest",
     "parser.grounding.oldest",
-    "parser.grounding.comparison_connector",
+    "parser.grounding.newest_plain",
+    "parser.grounding.oldest_plain",
+    "parser.grounding.place_word",
+    "parser.grounding.negation",
+    "parser.grounding.record_word",
+    "parser.grounding.neutral_word",
+    "parser.grounding.clause_break",
+    "parser.grounding.article",
+    "parser.grounding.each_word",
+    "parser.grounding.quantity_word",
+    "parser.grounding.group_word",
+    "parser.grounding.group_link",
+    "parser.grounding.place_link",
+    "parser.grounding.place_adverb",
+    "parser.grounding.date_link",
+    "parser.grounding.date_word",
+    "parser.grounding.find_verb",
+    "parser.grounding.request_lead",
     "parser.grounding.keep_verb",
     "parser.grounding.act_verb",
     "parser.grounding.move_verb",
@@ -110,7 +127,24 @@ FAMILY_CONCEPTS = {
 _KINDS = {
     "parser.grounding.newest": "phrases",
     "parser.grounding.oldest": "phrases",
-    "parser.grounding.comparison_connector": "phrases",
+    "parser.grounding.newest_plain": "phrases",
+    "parser.grounding.oldest_plain": "phrases",
+    "parser.grounding.place_word": "phrases",
+    "parser.grounding.negation": "phrases",
+    "parser.grounding.record_word": "phrases",
+    "parser.grounding.neutral_word": "phrases",
+    "parser.grounding.clause_break": "phrases",
+    "parser.grounding.article": "phrases",
+    "parser.grounding.each_word": "phrases",
+    "parser.grounding.quantity_word": "phrases",
+    "parser.grounding.group_word": "phrases",
+    "parser.grounding.group_link": "phrases",
+    "parser.grounding.place_link": "phrases",
+    "parser.grounding.place_adverb": "phrases",
+    "parser.grounding.date_link": "phrases",
+    "parser.grounding.date_word": "phrases",
+    "parser.grounding.find_verb": "phrases",
+    "parser.grounding.request_lead": "phrases",
     "parser.grounding.keep_verb": "phrases",
     "parser.grounding.act_verb": "phrases",
     "parser.grounding.move_verb": "phrases",
@@ -509,10 +543,106 @@ def register_all() -> None:
           "piu antica", "più antica", "piu antichi", "più antichi",
           "piu antiche", "più antiche"],
       en=["oldest", "older", "least recent", "less recent", "earliest"])
-    # «older than 30 days» compares with a threshold and chooses nothing; the
-    # connector counts only before a quantity of time («of each pair» is not).
-    R("parser.grounding.comparison_connector", "phrases", match_mode="word",
-      it=["di"], en=["than"])
+    # The same ages said without a degree («the old files», «tieni i nuovi»).
+    # Left out between an article or a link and a place or a product of the
+    # request («a new folder», «nel nuovo foglio»): there they describe that.
+    R("parser.grounding.newest_plain", "phrases", match_mode="word",
+      it=["recente", "recenti", "nuovo", "nuova", "nuovi", "nuove"],
+      en=["recent", "new"])
+    R("parser.grounding.oldest_plain", "phrases", match_mode="word",
+      it=["vecchio", "vecchia", "vecchi", "vecchie"],
+      en=["old"])
+    R("parser.grounding.place_word", "phrases", match_mode="word",
+      it=["cartella", "cartelle", "sottocartella", "sottocartelle",
+          "directory", "foglio", "fogli", "tabella", "tabelle", "elenco",
+          "elenchi", "archivio", "archivi", "cestino"],
+      en=["folder", "folders", "subfolder", "subfolders", "directories", "bin",
+          "sheet", "sheets", "spreadsheet", "spreadsheets", "table",
+          "tables", "list", "lists", "archive", "archives", "report",
+          "reports"])
+    # A second net under the reader: a sentence with one of these and an age
+    # is not read at all, because a denial can reach across a joining word
+    # («non devi cancellare e spostare …»). It is not what keeps exceptions
+    # out: those are an open class, kept out because the reader reads only
+    # forms it knows entirely. «don't» and its like reach the reader as the
+    # word before the apostrophe.
+    R("parser.grounding.negation", "phrases", match_mode="word",
+      it=["non", "mai", "senza", "tranne", "eccetto", "salvo", "né",
+          "nessuno", "nessuna", "niente", "nulla"],
+      en=["not", "no", "never", "without", "except", "unless", "neither",
+          "nor", "don", "doesn", "didn", "dont", "doesnt", "won", "cannot",
+          "nothing", "none"])
+    # What a request calls the records themselves: the name of the thing a
+    # verb acts on («the old files», «quelli nuovi», «delete them»). «The old
+    # drive» is not one, and its age is not read.
+    R("parser.grounding.record_word", "phrases", match_mode="word",
+      it=["file", "versione", "versioni", "doppione", "doppioni", "foto",
+          "fotografia", "fotografie", "immagine", "immagini", "documento",
+          "documenti", "elemento", "elementi", "quello", "quella", "quelli",
+          "quelle", "questo", "questa", "questi", "queste"],
+      en=["file", "files", "version", "versions", "photo", "photos",
+          "picture", "pictures", "image", "images", "document", "documents",
+          "item", "items", "one", "ones", "those", "these", "them"])
+    # The words of the forms this reader knows entirely. An age is read only
+    # where every word around it, from the start of its clause to its end,
+    # plays one of these parts: the verb, the thing it acts on, the group it
+    # is chosen from, the date it is chosen by, the place it goes to.
+    R("parser.grounding.article", "phrases", match_mode="word",
+      it=["il", "lo", "la", "i", "gli", "le", "l", "un", "uno", "una"],
+      en=["the", "a", "an"])
+    R("parser.grounding.each_word", "phrases", match_mode="word",
+      it=["ogni", "ciascun", "ciascuno", "ciascuna"], en=["each", "every"])
+    R("parser.grounding.quantity_word", "phrases", match_mode="word",
+      it=["tutti", "tutte", "tutto", "solo", "soltanto", "solamente"],
+      en=["all", "only", "just"])
+    R("parser.grounding.group_word", "phrases", match_mode="word",
+      it=["coppia", "coppie", "gruppo", "gruppi"],
+      en=["pair", "pairs", "group", "groups"])
+    # «di ogni coppia», «dei duplicati», «for each file»: the group.
+    R("parser.grounding.group_link", "phrases", match_mode="word",
+      it=["di", "del", "dello", "della", "dell", "dei", "degli", "delle",
+          "per", "tra", "fra", "in", "nel", "nello", "nella", "nell", "nei",
+          "negli", "nelle"],
+      en=["of", "for", "per", "in", "from", "among", "within"])
+    # «in /tmp/x», «nella cartella X», «to a new folder»: the place. A link
+    # that takes something away from a place («from the list») is not one.
+    R("parser.grounding.place_link", "phrases", match_mode="word",
+      it=["in", "nel", "nello", "nella", "nell", "nei", "negli", "nelle",
+          "a", "ad", "al", "allo", "alla", "all", "ai", "agli", "alle",
+          "su", "sul", "sullo", "sulla", "sull", "sui", "sugli", "sulle",
+          "dentro"],
+      en=["in", "into", "to", "inside", "onto", "on", "at", "within"])
+    R("parser.grounding.place_adverb", "phrases", match_mode="word",
+      it=["lì", "là", "qui", "qua"], en=["there", "here"])
+    # «il file con la data più vecchia», «the one that has the newest date».
+    R("parser.grounding.date_link", "phrases", match_mode="word",
+      it=["con", "che ha", "che hanno"],
+      en=["with", "that has", "that have", "which has", "which have"])
+    R("parser.grounding.date_word", "phrases", match_mode="word",
+      it=["data", "data di modifica", "data di creazione"],
+      en=["date", "modification date", "creation date", "timestamp"])
+    # The verb of a search: «find the duplicates in X keeping the newest».
+    R("parser.grounding.find_verb", "phrases", match_mode="word",
+      it=["trova", "trovare", "trovando", "trovami", "cerca", "cercare",
+          "cercando", "cercami", "individua", "individuare"],
+      en=["find", "finding", "search", "searching", "locate", "locating"])
+    # How a request is put before its verb, leaving what the verb says as it
+    # is («puoi cancellare …», «please delete …»). A denial or a verb that
+    # holds back («non puoi», «evita di») is not one of these: it is not read.
+    R("parser.grounding.request_lead", "phrases", match_mode="word",
+      it=["puoi", "potresti", "vorrei", "voglio", "devi", "dovresti",
+          "per favore", "per piacere", "per cortesia", "ora", "adesso",
+          "infine"],
+      en=["please", "can you", "could you", "would you", "i want to",
+          "i would like to", "you should", "you must", "now", "finally",
+          "next"])
+    # Other words that say nothing of which record of a group is meant.
+    R("parser.grounding.neutral_word", "phrases", match_mode="word",
+      it=["da", "dal", "dallo", "dalla", "dall", "dai", "dagli", "dalle",
+          "con", "o", "od"],
+      en=["with", "or"])
+    R("parser.grounding.clause_break", "phrases", match_mode="word",
+      it=["e", "ed", "poi", "quindi"], en=["and", "then"])
     R("parser.grounding.keep_verb", "phrases", match_mode="word",
       it=["tieni", "tenere", "tenendo", "tenga", "tengo", "tienimi",
           "tienili", "tienile", "conserva", "conservare", "conservando",

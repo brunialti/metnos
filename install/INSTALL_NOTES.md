@@ -387,14 +387,18 @@ llama_bin = "/srv/metnos-engines/llama/bin/llama-server"
 - The permissions page keeps existing personal and workspace access. Extra server grants are
   per account, independent of device grants, stored with audit events in the devices
   database. They do not change OS permissions.
-- Its texts reach the installation seed through `scripts/sync_filesystem_permissions_i18n.py`.
-  The seed ships with the matching runtime and templates.
+- Its texts reach the installation seed through `scripts/sync_filesystem_permissions_i18n.py`
+  and `scripts/sync_server_folders_i18n.py`. The seed ships with the matching runtime and
+  templates.
 - Grants outside the service workspace are served by one separate filesystem host, under the
   ordinary OS identity of whoever installed. The root-owned binding keeps that UID/GID across
   upgrades. An application administrator never chooses or acquires an OS identity.
 - After the cutover the installer points the host unit at the new release. It replaces the
   unit only when the installed one is exactly a known managed recipe; any other edit or
   override blocks the refresh.
+- Until that refresh succeeds the host runs the previous code. The service asks the host which
+  closed operations it knows before sending one that older hosts lack (folder creation, move); an
+  older host is refused before any effect (`ERR_FS_HOST_OUTDATED`), never treated as success.
 - The host accepts only the service UID in its own user namespace. The service keeps connected
   descriptors away from executors. Account grants decide every operation, including live
   revocation and expiry. A grant shows as active only after a harmless access probe succeeds

@@ -38,6 +38,7 @@ from lre_config import (
     read_feature_configuration,
 )
 from messages import get as _msg
+from partitioned_runs import PartitionRefusal
 
 
 log = logging.getLogger("metnos.lre_submission")
@@ -393,6 +394,31 @@ def _submit_adapted_invocation(adapter, executor, args, target_device, *,
             return _receipt(store, result)
 
 
+def _direct_or_partitioned(executor, args, target_device, list_children):
+    """The durable plan of one long step: one unit, or one unit for each
+    partition when the tool declares a partition and the step lists several.
+
+    Returns the plan, its inventory and the stage that runs the tool."""
+    import partitioned_runs
+    from durable_workloads.partitioned_invocation import (
+        build_partitioned_candidate, unit_concurrency,
+    )
+
+    policy = partitioned_runs.policy_of(executor)
+    resolution = (
+        partitioned_runs.resolve(policy, args, list_children=(
+            list_children(policy) if list_children is not None else None))
+        if policy is not None else None)
+    if resolution is None:
+        candidate, inventory = build_direct_candidate(executor, args, target_device)
+        return candidate, inventory, candidate["stages"][1]
+    candidate, inventory = build_partitioned_candidate(
+        executor, policy, resolution.base_args, resolution.partitions,
+        target_device,
+        max_concurrency=unit_concurrency(executor, len(resolution.partitions)))
+    return candidate, inventory, candidate["stages"][2]
+
+
 def submit_automatic_lre(
     framework: object,
     *,
@@ -402,11 +428,15 @@ def submit_automatic_lre(
     source_request_id: str = "",
     target_device: str | None = None,
     rest_follows: bool = False,
+    list_children=None,
 ) -> dict | None:
     """Submit one finalized long step, or return ``None`` when none exists.
 
     ``rest_follows``: the caller keeps the plan and runs its other steps when
     the job ends (``lre_answers``). Without it a long step is admitted alone.
+    ``list_children(policy)`` gives the function that lists the partitions
+    under a parent (`partitioned_runs.children_lister`); without it a step
+    that asks for «every child of» a parent is refused, never guessed.
     """
 
     steps = tuple(getattr(framework, "steps", ()) or ())
@@ -464,15 +494,14 @@ def submit_automatic_lre(
                 adapter, executor, args, target_device,
                 owner_user_id=owner_user_id, request_key=request_key,
             )
-        candidate, inventory = build_direct_candidate(
-            executor, args, target_device,
-        )
+        candidate, inventory, tool_stage = _direct_or_partitioned(
+            executor, args, target_device, list_children)
         args_digest = digest_json(
             "lre-direct-arguments",
             args,
             max_bytes=MAX_PLAN_JSON_BYTES,
         )
-        placement = candidate["stages"][1]["placement"]
+        placement = tool_stage["placement"]
         placement_digest = digest_json(
             "lre-direct-placement",
             placement,
@@ -510,6 +539,11 @@ def submit_automatic_lre(
         reason = str(exc)
         code = _READINESS_ERROR_CODES.get(reason, "ERR_LRE_SUBMISSION_FAILED")
         return _automatic_error(code, error_class="dependency_unavailable")
+    except PartitionRefusal as refusal:
+        # The list of partitions cannot be served as written: nothing starts,
+        # and the words say why (one inside another, too many, not listable).
+        return _automatic_error(
+            refusal.code, error_class="invalid_args", **refusal.values)
     except Exception as exc:
         # A long step was already recognized. Never fall through to inline
         # execution, even when admission itself has an unexpected failure.
