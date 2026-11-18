@@ -187,14 +187,14 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'durable_workloads/coordinator.py': ('596a60586216e220498142c64addbc382d7177d75941c42df0f7bd8a43d53042', (('comparison', 2), ('membership', 2))),
     'durable_workloads/direct_invocation.py': ('b8c536c744f060c9d50921408c7d8b7bca4ab80e43a4b5af005614f8edc56b98', (('comparison', 8), ('helper-argument', 1), ('iteration', 4), ('membership', 1), ('regex', 1))),
     'durable_workloads/events.py': ('c0e938f85d832fa75f8cdf4758256fa679bc4f21bb1aca631de7ef7060ecc5cd', (('comparison', 4), ('iteration', 1))),
-    'durable_workloads/execution.py': ('85ec102d8a2e808aa0e2fea619e3fdf158bf3c89eab57b4b08b019dd2319308b', (('comparison', 23), ('membership', 2), ('regex', 1))),
+    'durable_workloads/execution.py': ('7c062cb36769c3d1b347e2eb25c8dbc89a875aad7304f54a33ef3ed47a8aa3ea', (('comparison', 23), ('membership', 2), ('regex', 1))),
     'durable_workloads/image_preset.py': ('3223b56752d9cb233277732be9d4c02f0987d73fede79649ca9053c337dffb3e', (('comparison', 5), ('helper-argument', 9))),
     'durable_workloads/inventory.py': ('99014eade9b0ef02f820039d3edc93f8b0937d92f45e4ed7a832b7cbc4f812a3', (('comparison', 4), ('helper-argument', 1))),
     'durable_workloads/migrations.py': ('784010e6bae5cd4ca72ba14641993c5982664170d576120b9430d1135a651e64', (('comparison', 14), ('prefix-suffix', 1))),
     'durable_workloads/schema.py': ('0bd2ca215119165780b180a84238782f72144ab06abb68a8479b9b95635510bf', (('comparison', 27), ('helper-argument', 14))),
     'durable_workloads/service.py': ('7524dc14f9c37ab711cacc939ff55f809fdb828235d1a52d0cad33a142b8f8ed', (('comparison', 8), ('helper-argument', 1))),
     'durable_workloads/source_authority.py': ('d9129d1a67e6df1a75fea7ec226e03acf3411b250e58ba9e12e3c0207913862e', (('comparison', 2), ('regex', 1))),
-    'durable_workloads/storage.py': ('53d49a5f7f75aeadf6174062b36a47aa2e87989fa2fb73502c545e281a2cedbf', (('comparison', 74), ('helper-argument', 7), ('iteration', 1), ('membership', 4))),
+    'durable_workloads/storage.py': ('07e4207ce8b1c0490d50426bebdbebb8e61ea8ab26bedf830fae69fd6d89afcc', (('comparison', 74), ('helper-argument', 7), ('iteration', 1), ('membership', 4))),
     'engine/__init__.py': ('fa4fbb1ff233bc4ea49e407983c0fb2ab97ad5032ff605da1979dc564ece5165', (('comparison', 1),)),
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
@@ -473,7 +473,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'users.py': ('02c382a6865ff1c58be93a15fcd8b6983cab3b61b50f456eaf3b684ce989483a', (('comparison', 17), ('prefix-suffix', 1), ('regex', 2))),
     'users_pairings_sync.py': ('1f6a6b8d0c21036a610b0e79e0b9c680d945d04cc44d1cbe012389521320327a', (('comparison', 2),)),
     'vaglio.py': ('a04cd6de10fbebde9b9649f6de9bec804cf9d998cd89c27335a8defd34335fb9', (('comparison', 15), ('helper-argument', 5), ('membership', 1), ('prefix-suffix', 3))),
-    'virt/__init__.py': ('9dc0d94519e205424d1879a43ffcd27fe0b51903bb2bc14db50f6c4da9f4bda0', (('comparison', 10), ('membership', 1))),
+    'virt/__init__.py': ('dcac0e3d94b9b66ece3e73ea80262f6226cc413f87c5c1f192d175e702601004', (('comparison', 11), ('membership', 1), ('prefix-suffix', 1))),
     'virt/config_editor.py': ('1ea6c80bf3b8691f9319838815b73243d713503eabe82356047b7f2f7f47bc62', (('comparison', 21),)),
     'virt/configuration.py': ('d40e726e5d0a49058ad717bfc21cf49aa7cde6540018d457d6d2465574228a8d', (('comparison', 16), ('helper-argument', 1))),
     'virt/tiers.py': ('e7e6d00bd76b312946845363aef11cff5a68cd57901d0492fa63a5e9638b3bf4', (('comparison', 2),)),
@@ -620,6 +620,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'partitioned_runs.py': ('bbd948da50378e80ff650993ba113ece97f4efd043f6ae35c5ad19627ebad2a6', (('comparison', 8), ('iteration', 2), ('prefix-suffix', 2), ('regex', 2))),
     'request_grounding.py': ('dfc20cb41b71edf1539a00d5b9bdfc280a97b86d4031f59aa959cb2e7a71a466', (('comparison', 3), ('helper-argument', 1), ('iteration', 2), ('regex', 1))),
     'undo_words.py': ('82bd32f8d83414daebf105dadcbdd10763dd5fa646cccb5a1b17d2157e015468', (('comparison', 6), ('regex', 1))),
+    'vocabulary_dossier.py': ('c9a64377dac240248692b730799585bd0e06be38dfdb806cc1a94f1e0244bf52', (('comparison', 1), ('iteration', 1), ('regex', 1))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

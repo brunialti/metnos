@@ -134,15 +134,16 @@ def get_vlm(role: str = "default") -> dict:
 
 def ensure_vlm_up(role: str = "default", *, wait_s: float = 35,
                   deadline_at: float | None = None) -> bool:
-    """Use the normal host launcher, with one bounded attempt per invocation.
+    """Request local readiness and renew the idle-use signal within one budget.
 
     An instance-wide process lock serializes startup across HTTP and worker
-    lanes. Health is checked again while holding the lock, and successful
-    calls are not latched: the idle watchdog may legitimately stop the model
-    before the next job. The caller's deadline covers locking, startup and
-    health polling. No model inference or download is performed here.
+    lanes. A launcher that lost a stopping process can be retried without
+    renewing the caller's deadline or the original post-start wait. Every
+    local request counts as use, including an already healthy model. No model
+    inference or download is performed here.
     """
     import hashlib
+    import sys
     import os
     import time
     import urllib.error as _ue
@@ -172,10 +173,39 @@ def ensure_vlm_up(role: str = "default", *, wait_s: float = 35,
         except (_ue.URLError, _ue.HTTPError, OSError, TimeoutError):
             return False
 
+    managed_local = (
+        sys.platform.startswith("linux")
+        and endpoint.hostname in {"localhost", "127.0.0.1", "::1"}
+        and (spec.get("provider") or DEFAULT_VLM["default"]["provider"]) == "llamacpp"
+    )
+    if managed_local:
+        import fcntl
+
+        try:
+            activity = config.PATH_USER_STATE / "vlm_last_use"
+            activity.parent.mkdir(parents=True, exist_ok=True)
+            # Share the watchdog's lock so an accepted use cannot race its
+            # final idle check and TERM. Release it before health/startup.
+            with (activity.parent / "vlm_lifecycle.lock").open("a") as lifecycle:
+                while _remaining(1) > 0:
+                    try:
+                        fcntl.flock(lifecycle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                        break
+                    except BlockingIOError:
+                        time.sleep(_remaining(0.05))
+                else:
+                    return False
+                activity.touch(exist_ok=True)
+                if not activity.is_file():
+                    raise OSError("VLM activity path is not a regular file")
+        except OSError as exc:
+            from logging_setup import get_logger
+
+            get_logger(__name__).warning("cannot record VLM readiness activity: %s", exc)
+            return False
     if _health_ok():
         return True
-    if (endpoint.hostname not in {"localhost", "127.0.0.1", "::1"}
-            or (spec.get("provider") or DEFAULT_VLM["default"]["provider"]) != "llamacpp"):
+    if not managed_local:
         return False
     key = hashlib.sha256(health_url.encode("utf-8")).hexdigest()
     lock = ProcessLock(config.PATH_USER_STATE / "model-start" / (key + ".lock"),
@@ -198,25 +228,38 @@ def ensure_vlm_up(role: str = "default", *, wait_s: float = 35,
         if not os.path.exists(helper):
             return False
         import subprocess
-        start_timeout = _remaining(45)
-        if start_timeout <= 0:
-            return False
-        try:
-            from .startup import vlm_startup_environment
+        from .startup import vlm_startup_environment
 
-            result = subprocess.run([helper, "start", "--auto-stop-idle", "600"],
-                                    timeout=start_timeout, capture_output=True, text=True,
-                                    env=vlm_startup_environment(role))
-        except (subprocess.TimeoutExpired, OSError):
-            return False
-        if result.returncode != 0:
-            return False
-        wait_deadline = min(stop_at, time.monotonic() + max(0.0, float(wait_s)))
-        while time.monotonic() < wait_deadline:
-            if _health_ok():
+        environment = dict(vlm_startup_environment(role))
+        environment["METNOS_USER_STATE"] = str(config.PATH_USER_STATE)
+        environment["METNOS_VLM_PORT"] = str(
+            endpoint.port or (443 if endpoint.scheme == "https" else 80))
+        wait_deadline = None
+        while True:
+            start_timeout = _remaining(45)
+            if wait_deadline is not None:
+                start_timeout = min(start_timeout, max(0.0, wait_deadline - time.monotonic()))
+            if start_timeout <= 0:
+                return False
+            environment["METNOS_VLM_START_WAIT_S"] = str(min(30.0, start_timeout))
+            try:
+                result = subprocess.run([helper, "start", "--auto-stop-idle", "600"],
+                                        timeout=start_timeout, capture_output=True, text=True,
+                                        env=environment)
+            except (subprocess.TimeoutExpired, OSError):
+                return False
+            if result.returncode not in {0, 2}:
+                return False
+            if wait_deadline is None:
+                wait_deadline = min(stop_at, time.monotonic() + max(0.0, float(wait_s)))
+            # A live but stopping process must not consume the entire wait:
+            # ask the serialized launcher again after a failed health probe.
+            if _health_ok(min(2.0, max(0.0, wait_deadline - time.monotonic()))):
                 return True
-            time.sleep(max(0.0, min(1.0, wait_deadline - time.monotonic())))
-        return False
+            remaining_wait = min(stop_at, wait_deadline) - time.monotonic()
+            if remaining_wait <= 0:
+                return False
+            time.sleep(min(1.0, remaining_wait))
     except OSError:
         return False
     finally:

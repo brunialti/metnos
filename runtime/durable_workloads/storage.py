@@ -4723,8 +4723,7 @@ class DurableWorkloadStore:
         errors = self._connection.execute(
             """
             WITH error_facts(error_code, model_resource) AS (
-              SELECT CASE WHEN u.error_class='capability_unavailable'
-                     AND json_extract(a.structured_error_json, '$.schema_version')=?
+              SELECT CASE WHEN json_extract(a.structured_error_json, '$.schema_version')=?
                      AND json_extract(a.structured_error_json, '$.scope')='attempt'
                      AND json_extract(a.structured_error_json, '$.error_class')=u.error_class
                      AND json_extract(a.structured_error_json, '$.code')='execution.model_resource_unavailable'

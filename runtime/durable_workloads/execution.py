@@ -857,8 +857,8 @@ class DurableExecutionBridge:
                     ) from exc
                 except ModelResourceUnavailable as exc:
                     raise self._failure(
-                        "capability_unavailable", code="execution.model_resource_unavailable",
-                        message_key="ERR_DURABLE_MODEL_RESOURCE_UNAVAILABLE", retry="manual",
+                        "executor_transient", code="execution.model_resource_unavailable",
+                        message_key="ERR_DURABLE_MODEL_RESOURCE_UNAVAILABLE", retry="automatic",
                     ) from exc
             return (
                 executor, self._remaining_timeout(context),

@@ -405,9 +405,13 @@ been published. Examples and instructions:
 <tr>
  <td>VLM</td>
  <td><code>get_vlm()</code> returns the configuration. The service starts only
- when needed: <code>ensure_vlm_up()</code> checks <code>/health</code>, may attempt the
- configured VLM script once per process, and returns <code>false</code> if the
- service does not become available. The caller chooses the fallback.</td>
+ when needed: <code>ensure_vlm_up()</code> checks <code>/health</code> and coordinates
+ local startup across processes on Linux. A startup that encounters a stopping model is
+ retried within the same deadline; success requires HTTP 200. Each managed local readiness
+ request on Linux renews use, even without a subsequent model call. The watchdog also
+ observes connections and stops the model after 600 idle seconds, checking every
+ 30 seconds. External models and endpoints on other operating systems receive only the health check. The caller chooses
+ the fallback.</td>
 </tr>
 </tbody>
 </table>

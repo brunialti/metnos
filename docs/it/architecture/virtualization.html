@@ -420,10 +420,13 @@ fornitore &egrave; una migrazione amministrativa dedicata, non un comando della 
 <tr>
  <td>VLM</td>
  <td><code>get_vlm()</code> restituisce la configurazione. Il servizio viene
- avviato solo quando serve: <code>ensure_vlm_up()</code> controlla <code>/health</code>, pu&ograve;
- tentare una volta per processo lo script VLM configurato e restituisce
- <code>false</code> se il servizio non diventa disponibile. Il chiamante decide
- il ripiego.</td>
+ avviato solo quando serve: <code>ensure_vlm_up()</code> controlla <code>/health</code>
+ e coordina gli avvii locali su Linux fra i processi. Se l&rsquo;avvio incontra un modello
+ in arresto, riprova entro la stessa scadenza; restituisce vero solo con salute
+ HTTP 200. Ogni richiesta locale gestita su Linux rinnova l&rsquo;uso, anche senza una successiva
+ chiamata al modello. Il guardiano considera anche le connessioni e spegne dopo
+ 600 secondi di inattivit&agrave;, con controllo ogni 30 secondi. I modelli esterni
+ e gli endpoint su altri sistemi ricevono solo il controllo di salute. Il chiamante decide il ripiego.</td>
 </tr>
 </tbody>
 </table>

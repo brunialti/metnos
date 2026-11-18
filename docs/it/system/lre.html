@@ -125,7 +125,10 @@ errori recuperati senza essere dichiarato fallito.</p>
 <h3 id="model-unavailable">Modello momentaneamente non disponibile</h3>
 
 <p>Se il servizio di un modello non riesce a diventare disponibile prima
-dell'esecuzione, il log indica la risorsa configurata, per esempio
+dell'esecuzione, il motore segue la politica già approvata per quella fase:
+quando prevede riprovi automatici, usa il numero di tentativi e le attese
+stabiliti. Esauriti quei tentativi, il lavoro richiede attenzione.
+Il log indica la risorsa configurata, per esempio
 <code>vlm:default</code>, e suggerisce di far ripartire il job appena torna
 disponibile. Questo messaggio distingue l'indisponibilità del modello
 dall'assenza o dal ritiro di una capacità di esecuzione. La risorsa compare

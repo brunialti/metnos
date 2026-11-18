@@ -120,13 +120,17 @@ declared failed.</p>
 
 <h3 id="model-unavailable">Model temporarily unavailable</h3>
 
-<p>If a model service cannot become ready before execution, the log names
-the configured resource, for example <code>vlm:default</code>, and suggests
-restarting the job when it becomes available again. This message distinguishes
-model unavailability from a missing or retired execution capability. The
-resource also appears in attempt history; a historical entry may already
-have been recovered by a successful attempt. The message identifies the
-observed error and does not certify that the service is available again.</p>
+<p>If a model service cannot become ready before execution, the engine
+follows the policy already approved for that stage: when it grants automatic
+retries, the engine uses its existing attempt limit and delays. Once those
+attempts are exhausted, the job requires attention. The log names the
+configured resource, for example
+<code>vlm:default</code>, and suggests restarting the job when it becomes
+available again. This message distinguishes model unavailability from a
+missing or retired execution capability. The resource also appears in attempt
+history; a historical entry may already have been recovered by a successful
+attempt. The message identifies the observed error and does not certify that
+the service is available again.</p>
 
 <h2 id="photo-indexing">Photo indexing: first use and subsequent searches</h2>
 
