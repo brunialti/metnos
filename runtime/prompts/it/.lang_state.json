@@ -69,6 +69,11 @@
     "source_lang": "en",
     "version_hash": "sha256:8cdf69e74b985d6476e49113c7ddf3b30feb57e0f1d22c61a30f248acb3c73ea"
   },
+  "engine_partition_repair": {
+    "source_hash": null,
+    "source_lang": null,
+    "version_hash": "sha256:e12dfee170831fb36229355a9ede2dac0f3ad04e91c20a4b447a549142f1c747"
+  },
   "engine_prior_steps": {
     "source_hash": "sha256:8495bcae4cf8191cbec00586ebffdc496444dfc809284737a7290dc4fdfe988f",
     "source_lang": "en",
@@ -77,7 +82,7 @@
   "engine_proposer": {
     "source_hash": null,
     "source_lang": null,
-    "version_hash": "sha256:1b058929f9f4f27b1c12d68f7df66ff47d6fcc6a08240c7d67d3e9408ff52f86"
+    "version_hash": "3d86d45d406a538bbda5f6b1c56e16b48cb64767cc5d4b917ba3678cf70cf4b7"
   },
   "engine_proposer_metis": {
     "source_hash": null,

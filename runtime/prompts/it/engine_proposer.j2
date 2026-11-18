@@ -60,8 +60,8 @@ ERRORE: "scrivi a Roberto: ciao" → get_inputs(title="quale canale preferisci?"
 PARAMETRI OPZIONALI
 DEVI: omettere gli argomenti opzionali non richiesti, mantenendo i default dichiarati dal tool.
 NON DEVI: attivare modalità aggiuntive o cambiare un default senza evidenza nella richiesta.
-OK: default `dry_run=false`, richiesta di esecuzione → ometti `dry_run`; richiesta di simulazione → `dry_run=true`.
-ERRORE: aggiungere `force=true` o `dry_run=true` a una richiesta ordinaria che non li richiede.
+OK: default `recursive=true`, «esamina la cartella X» → ometti `recursive`; «solo direttamente in X, senza sottocartelle» → `recursive=false`. Default `dry_run=false`, esecuzione richiesta → ometti `dry_run`.
+ERRORE: aggiungere `recursive=false`, `force=true` o `dry_run=true` senza che la richiesta specifichi quella limitazione o modalità.
 
 VALORI CONCRETI (no filler pigro)
 DEVI: usare valori concreti dedotti da query + descrizione del tool (default, enum, parole-chiave nella description).
@@ -90,18 +90,19 @@ DATA PIPING
 - Scalari: `${stepN.field}` (dot-path: `${step1.entries.0.name}`).
 - Proiezione lista: `${step1.entries.0.examples.*.image_path}` ritorna list.
 
-DEVI: passare a uno step le righe di uno step precedente con il solo `from_step: N`: il tool sa quale campo delle righe usare.
-NON DEVI: aggiungere `entries` insieme a `from_step`, né costruire `entries` con segnaposto.
+DEVI: passare le righe di uno step precedente con il solo `from_step: N` quando il consumer lo supporta e non è richiesta una selezione esplicita diversa: il tool sa quale campo delle righe usare.
+NON DEVI: affiancare a `from_step` un input esplicito alternativo delle stesse righe, né ricostruire `entries` con segnaposto.
 OK: esempio astratto, non copiare letteralmente: <azione>(from_step=1).
-ERRORE: <azione>(from_step=1, entries=[{"<campo>": "${step1.entries.0.<campo>}"}]).
+ERRORE: due sorgenti concorrenti per lo stesso input, una passata tramite piping e l'altra esplicita.
 
 DEVI: al PRIMO step valorizzare gli args SOLO con letterali (path, query, account); MAI `from_step` al primo step.
 NON DEVI: emettere `from_step: 0`. `from_step` e' 1-based e punta a uno step PRECEDENTE gia' eseguito (>=1); se non c'e', OMETTI del tutto `from_step`.
 ERRORE: get_files(from_step:0, paths:["/etc"]) oppure filter_entries(from_step:0, kind:"mail") come primo step.
 
-DEVI: quando un arg LIST (paths, urls, ids, file_ids) consuma `entries` dello step precedente, usa **proiezione** `${stepN.entries.*.<field>}` per inviare TUTTI gli elementi, NON `${stepN.entries.0.<field>}` (solo il primo).
-OK: `find_images_web(paths=${step1.entries.*.path})` — invia tutti i path matched.
-ERRORE: `find_images_web(urls=${step1.entries.0.image_path})` — un solo path = una sola ricerca = risultato povero.
+DEVI: se il consumer non supporta `from_step` o la richiesta richiede una selezione esplicita diversa, passa l'input esplicito senza `from_step`; per tutte le righe usa `${stepN.entries.*.<campo>}` con il campo o alias dichiarato che identifica gli elementi richiesti.
+NON DEVI: sostituire l'identità richiesta con un riferimento collegato, inventare alias o ridurre a un indice una lista richiesta per intero.
+OK: esempio astratto, non copiare letteralmente: <azione>(<input_lista>="${step1.entries.*.<campo>}").
+ERRORE: inviare un solo elemento quando servono tutti, oppure scegliere un campo con un ruolo diverso da quello richiesto.
 
 SEGNAPOSTO UTENTE
 - `${FILLER:nome}`: valore da raccogliere da utente.
@@ -150,17 +151,17 @@ I. FOGLIO ESISTENTE (dividere le righe in schede, aggiungere una colonna di clas
 - ERRORE: filter_entries(from_step=1, where_field="<X>", where_value="<A>").
 
 M. IL PIÙ RECENTE / IL PIÙ VECCHIO (per data, qualunque oggetto)
-- DEVI: scegliere «il più recente», «l'ultimo», «il più vecchio» con sort_entries(from_step=N, by="date", desc=<true per il più recente, false per il più vecchio>, top=<quanti>); con «per ogni <X>» aggiungi group_by="<campo di X>".
-- NON DEVI: scegliere per data con filter_entries o compute_entries.
-- OK: esempio astratto, non copiare letteralmente: «i <K> <oggetti> più recenti» → [<produttore>(...), sort_entries(from_step=1, by="date", desc=true, top=<K>), ...]; «per ogni <X> il più vecchio» → sort_entries(from_step=1, by="date", desc=false, top=1, group_by="<campo di X>").
-- ERRORE: «per ogni <X> il più recente» → sort_entries(by="date", desc=true) seguito da filter_entries(where_field="<campo di X>").
+- DEVI: rispettare la selezione già compiuta dal produttore secondo il suo contratto e il criterio richiesto: passa tutte quelle righe all'azione. Solo se resta da scegliere fra candidati usa sort_entries(from_step=N, by="<campo data>", desc=<true per il più recente, false per il più vecchio>, top=<quanti>); «per ogni <X>» richiede group_by="<campo che identifica X>".
+- NON DEVI: riselezionare righe quando il produttore ha già soddisfatto il criterio richiesto; inventare un raggruppamento per conteggio o misura non richiesto; scegliere per data con filter_entries o compute_entries.
+- OK: esempio astratto, non copiare letteralmente: <produttore con selezione richiesta>(...) → <azione>(from_step=1); candidati ancora da selezionare, «per ogni <X> il più vecchio» → sort_entries(from_step=1, by="<campo data>", desc=false, top=1, group_by="<identità di X>").
+- ERRORE: applicare top=1 alle righe che il produttore dichiara già tutte da elaborare secondo il criterio richiesto.
 
-N. PER OGNI CARTELLA («per ogni cartella», «in ciascuna sottocartella», «cartella per cartella», «ciascuna per conto suo»)
-- DEVI: usare UN solo step del tool con `base_paths` e SENZA `base_path`. «ogni sottocartella di <madre>» → base_paths=["<madre>/*"]. Cartelle nominate una per una → base_paths=["<a>","<b>"], copiate come sono scritte.
-- DEVI: negli step successivi scrivere `{partition}` (la cartella di ogni riga) e `{rel_path}` (il percorso del file dentro quella cartella): move_files(from_step=N, dst_template="{partition}/<nome>/{rel_path}"); create_dirs(from_step=N, path_template="{partition}/<nome>").
-- NON DEVI: elencare prima le cartelle (list_dirs, find_dirs); scrivere `${stepN…}` in base_paths, dst_template o paths; aggiungere `/*` a una cartella nominata; usare base_paths per UNA sola cartella o per cercare FRA cartelle diverse.
-- OK: esempio astratto, non copiare letteralmente: <tool>(base_paths=["<madre>/*"]) → create_dirs(from_step=1, path_template="{partition}/<nome>") → move_files(from_step=1, dst_template="{partition}/<nome>/{rel_path}").
-- ERRORE: list_dirs(path="<madre>") → <tool>(base_paths=["${step1.entries.*.path}"]); base_paths=["<a>/*","<b>/*"] per «nelle cartelle <a> e <b>»; dst_template="<madre>/<nome>/{name}".
+N. ORGANIZZAZIONE RICHIESTA PER CARTELLA
+- DEVI: applicare questa regola solo quando la richiesta organizza risultati o azioni per cartella. Se il tool dichiara `base_paths`, indicare le parti in un solo step senza `base_path`: sottocartelle immediate → ["<madre>/*"]; cartelle nominate → ["<a>","<b>"], copiate come scritte. Il raggruppamento non restringe il confronto: l'ambito è quello richiesto.
+- DEVI: se il tool dichiara `from_step`, riferirlo alle righe da elaborare anche dopo un report. Nei template per riga usare `{campo}` della stessa riga e soltanto le derivazioni dichiarate dal tool. Una destinazione dentro la cartella di ogni riga usa `{partition}`, non la cartella madre; una destinazione comune esplicita resta comune. Nel foglio includere `partition`, salvo un elenco esatto di colonne imposto dall'utente.
+- NON DEVI: elencare prima le cartelle; aggiungere `/*` a una cartella nominata; usare riferimenti globali `${stepN…}` nei template di destinazione per riga; sostituire la riga-file con il risultato di un report o della creazione di cartelle.
+- OK: esempio astratto, non copiare letteralmente: <produttore>(base_paths=["<madre>/*"]) → create_dirs(from_step=1, path_template="{partition}/<nome>") → move_files(from_step=1, dst_template="{partition}/<nome>/{rel_path}").
+- ERRORE: ricavare la destinazione di ogni file da un singolo risultato globale anziché dalla sua riga.
 
 C. MUTATING (move/delete/send/write/create/set)
 - Lo step del verbo d'azione richiesto DEVE esserci: mai fermarsi al produttore.

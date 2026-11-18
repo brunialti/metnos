@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "sort_entries"
-version     = "0.2.0"
+version     = "0.2.1"
 author      = "Roberto Brunialti"
 affinity        = ["sort", "ordina", "ordinare", "sort_by", "rank", "classifica", "top", "primi", "first", "ultimi", "last", "biggest", "piu", "grandi", "popolose", "recenti", "vecchi"]
 revertible      = false
@@ -17,7 +17,7 @@ en = "SCOPO: sorts entries and keeps the first N: largest, most recent, oldest, 
 
 [code]
 files  = ["sort_entries.py"]
-digest = "sha256:dc5a91a9bfe9e81c901570f72856f03cf80e913d023412b4c79060adf607396a"
+digest = "sha256:7847d28c286ef83dcd49518936f91b24f229bb0f9316c1c56f223d774f371ae7"
 
 [args]
 type     = "object"
@@ -29,6 +29,16 @@ type        = "array"
 [args.properties.entries.description]
 it = "Lista di dict omogenei da ordinare. Tipicamente passata via from_step=N (il runtime espande dallo scratchpad)."
 en = "List of homogeneous dicts to sort. Typically passed via from_step=N (the runtime expands from the scratchpad)."
+
+[args.properties.field_roles]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "entry_field_roles"
+
+[args.properties.field_roles.description]
+it = "Metadati tipizzati dei campi prodotti dallo step sorgente. Iniettati automaticamente dal runtime; non passarli manualmente."
+en = "Typed metadata for fields produced by the source step. Injected automatically by runtime; do not pass it manually."
 
 [args.properties.by]
 type        = "string"
@@ -74,6 +84,7 @@ schema_inline = """
 {
   ok: bool,
   entries?: Array<object>,
+  entry_field_roles?: Array<{field: str, roles: Array<str>}>,
   count?: int,
   total_input?: int,
   sorted_by?: str,

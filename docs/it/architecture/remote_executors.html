@@ -38,6 +38,7 @@ Windows. Il server decide; il computer associato esegue.</p>
   <li><a href="#scelta">Come Metnos sceglie dove agire</a></li>
   <li><a href="#permessi">Accessi personali ed estensioni dei permessi</a></li>
   <li><a href="#invocazione">Che cosa accade durante un'azione</a></li>
+  <li><a href="#cartelle">Confrontare e raggruppare per cartella</a></li>
   <li><a href="#heartbeat">Che cos'è l'heartbeat</a></li>
   <li><a href="#sandbox">Isolamento su Linux e Windows</a></li>
   <li><a href="#guasti">Rete, duplicati e revoca</a></li>
@@ -264,6 +265,61 @@ al termine dell'esecuzione.</p>
 <p>La cache non rende il codice autonomo: per ogni nuova azione servono comunque
 un'invocazione firmata, argomenti validi, una scadenza accettabile e i normali
 controlli del server.</p>
+
+<h2 id="cartelle">Confrontare e raggruppare per cartella</h2>
+
+<p>Quando una richiesta riguarda una cartella madre, «per ogni cartella»
+stabilisce come presentare i risultati e dove agire. La ricerca comprende la
+madre, i file che contiene direttamente e le sue sottocartelle. Questa regola
+vale sia sul server sia su un computer associato.</p>
+
+<p>Per esempio, cercare i duplicati in <code>Foto</code> e spostare le copie per
+ogni cartella richiede prima un confronto su tutto l'insieme. Le copie vengono
+poi raggruppate per cartella di primo livello. Se si chiede di conservare il file
+più vecchio, questo viene scelto nell'intero gruppo e può trovarsi in una
+cartella diversa da quelle delle copie.</p>
+
+<p>Una richiesta esplicita come «solo dentro ciascuna cartella», «ogni cartella
+per conto suo» o «senza confrontare cartelle diverse» circoscrive invece i
+confronti alle singole cartelle. Il confine viene letto da forme revisionate in
+italiano e inglese. Una restrizione negata o non riconosciuta conserva la ricerca
+sull'intero insieme. La risposta riporta il confine effettivamente usato.</p>
+
+<p>Le chiamate possono essere distribuite fra cartelle quando il contratto dello
+strumento e una prova di equivalenza garantiscono lo stesso risultato del lavoro
+sull'insieme intero. I confronti che richiedono di vedere insieme duplicati,
+simili o gruppi vengono eseguiti prima del raggruppamento. Contatori, errori e
+limiti del risultato globale restano visibili anche nel riepilogo per cartella.</p>
+
+<p>Le cartelle <code>duplicate_to_delete</code> sono ricavate dalle copie da
+spostare: una copia in <code>Foto/2019/viaggio</code> va in
+<code>Foto/2019/duplicate_to_delete/viaggio</code>; una copia direttamente in
+<code>Foto</code> va in <code>Foto/duplicate_to_delete</code>. Le sottocartelle di
+provenienza si conservano e si creano solo le destinazioni che ricevono copie.
+La conferma indica quante righe verranno spostate, la ripartizione per cartella,
+il criterio di scelta del file conservato e gli eventuali limiti. Il foglio contiene una riga per
+copia, con il file conservato e la cartella di provenienza. Restano applicati i
+normali controlli sugli spostamenti e sull'annullamento del lavoro.</p>
+
+<p>La domanda mostra solo conteggi interi e dichiara quante cartelle e copie
+non entrano nel testo. Il foglio richiesto, creato prima della domanda, arriva
+come allegato nello stesso turno: si può aprire prima di rispondere sì.
+Un collegamento non dimostrabile tra le copie e le destinazioni ferma il piano
+prima della sua esecuzione. Il pianificatore può correggere una sola volta
+la destinazione rifiutata, conservando tutti i passaggi e gli altri dati del
+piano. La correzione ripassa tutti i controlli. Se la destinazione resta incerta, il lavoro
+si ferma senza eseguire il piano rifiutato.</p>
+
+<p>Quando la richiesta lascia libere le colonne, il foglio conserva tutti i
+campi delle righe ripartite, inclusi cartella, copia e file mantenuto. Le colonne
+scelte espressamente dalla persona rimangono quelle richieste. La provenienza
+deve essere dimostrata anche attraverso i filtri e gli ordinamenti.</p>
+
+<p>I ruoli dichiarati dal produttore seguono i dati anche attraverso filtri e
+ordinamenti. Prima di scrivere il foglio, una contraddizione riconoscibile fra
+«copia» e «originale» viene corretta solo quando esiste un unico abbinamento
+dimostrabile; se rimane ambigua, il foglio non viene prodotto con intestazioni
+fuorvianti. Le etichette non riconosciute mantengono l'abbinamento richiesto.</p>
 
 <h2 id="heartbeat">Che cos'è l'heartbeat</h2>
 

@@ -42,6 +42,11 @@ _TABULAR_CONCEPTS = frozenset({
     "number", "amount", "status",
 })
 
+# Positive roles may be incomplete: a missing role never proves a conflict.
+# Only this declared semantic opposition is enforced, for any producer/domain.
+# Other concepts (e.g. path/name/amount) are not presumed mutually exclusive.
+_OPPOSING_ROLES = (frozenset({"origin", "duplicate"}),)
+
 
 def _concept_aliases() -> dict[str, list[str]]:
     try:
@@ -89,6 +94,15 @@ def _normalize(value: Any) -> str:
 def _tokens(value: Any) -> tuple[str, ...]:
     normalized = _normalize(value)
     return tuple(token for token in normalized.split("_") if token)
+
+
+def _numeric_identity(value: Any) -> str:
+    """Technical labels may separate letters and digits without an ordinal.
+
+    Preserve word boundaries and stronger spelling matches. A number in an
+    identifier names that field before it can select the Nth semantic field.
+    """
+    return re.sub(r"(?<=[^\W\d_])_(?=\d)|(?<=\d)_(?=[^\W\d_])", "", _normalize(value))
 
 
 def _concepts(value: Any) -> set[str]:
@@ -169,6 +183,61 @@ def _declared_field_roles(field_roles: Iterable[dict] | None
     return out
 
 
+def _opposed_roles(left: set[str], right: set[str]) -> bool:
+    return any(any(role in left and other in right
+                   for role in pair for other in pair if role != other)
+               for pair in _OPPOSING_ROLES)
+
+
+def _transformed_roles(roles: set[str], transform: str) -> set[str]:
+    if transform == "identity":
+        return roles
+    # A path derivation needs an explicitly declared path-like input. Do not
+    # infer that type from a field name or a sample value.
+    if not roles & {"path", "directory"}:
+        return set()
+    if transform == "basename":
+        return (roles - {"path", "directory"}) | {"name"}
+    return (roles - {"name"}) | {"path", "directory"}
+
+
+def _explicit_role_source(header: str, source: str, transform: str,
+                          fields: list[str], declared: dict[str, set[str]]) -> str:
+    """Repair only a positively declared conflict with one provable mapping.
+
+    Header text and transforms remain the caller's. Incomplete producer roles
+    or unfamiliar labels leave an explicit mapping alone. Contradictory roles
+    and unresolved conflicts cannot silently produce a misleading heading.
+    """
+    source_roles = declared.get(source, set())
+    if _opposed_roles(source_roles, source_roles):
+        raise TabularProjectionError([header], fields, "field_role_conflict")
+    # Technical identities such as "Duplicate Of" -> duplicate_of are stronger
+    # than an isolated localized token ("duplicate") in that same identity.
+    if _normalize(header) == _normalize(source):
+        return source
+    if not any(source_roles & pair for pair in _OPPOSING_ROLES):
+        # No declaration can prove a conflict: preserve the explicit contract
+        # without even consulting the presentation vocabulary.
+        return source
+    concepts = _concepts(header)
+    if not _opposed_roles(concepts, source_roles):
+        return source
+    opposing_concepts = set().union(*_OPPOSING_ROLES)
+    if not concepts - opposing_concepts:
+        # A role-only label changes which entity supplies the value, not its
+        # declared kind. An explicit header concept remains authoritative.
+        concepts |= _transformed_roles(source_roles, transform) - opposing_concepts
+    candidates = [field for field in fields
+                  if not _opposed_roles(declared.get(field, set()),
+                                        declared.get(field, set()))
+                  and concepts <= _transformed_roles(
+                      declared.get(field, set()), transform)]
+    if len(candidates) != 1:
+        raise TabularProjectionError([header], fields, "field_role_conflict")
+    return candidates[0]
+
+
 def _field_concept_strength(entries: list[dict], field: str,
                             declared_roles: dict[str, set[str]]
                             ) -> dict[str, int]:
@@ -239,6 +308,9 @@ def _legacy_projection(entries: list[dict], columns: list[str],
             if not matches:
                 matches = [field for field in fields
                            if _normalize(field) == _normalize(header)]
+            if not matches:
+                matches = [field for field in fields
+                           if _numeric_identity(field) == _numeric_identity(header)]
             if len(matches) > 1:
                 unresolved.append(header)
                 continue
@@ -349,6 +421,7 @@ def compile_projection(entries: list[dict], columns: Iterable[str] | None = None
     if specs:
         projections: list[ColumnProjection] = []
         invalid: list[str] = []
+        declared_roles = _declared_field_roles(field_roles)
         for index, spec in enumerate(specs, start=1):
             if not isinstance(spec, dict):
                 invalid.append(f"#{index}")
@@ -359,6 +432,8 @@ def compile_projection(entries: list[dict], columns: Iterable[str] | None = None
             if (not header or source not in fields or transform not in _TRANSFORMS):
                 invalid.append(header or f"#{index}")
                 continue
+            source = _explicit_role_source(
+                header, source, transform, fields, declared_roles)
             projections.append(ColumnProjection(header, source, transform))
         if invalid:
             raise TabularProjectionError(invalid, fields, "invalid_column_specs")

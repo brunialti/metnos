@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "filter_entries"
-version     = "0.4.1"
+version     = "0.4.2"
 author      = "Roberto Brunialti"
 affinity    = ["filter", "filtra", "select", "where", "criterio", "subset", "match", "partiziona", "scarta", "tieni", "solo"]
 
@@ -15,7 +15,7 @@ en = "SCOPO: filter entries by criteria. PATTERN: filter_entries(from_step=1, ki
 
 [code]
 files  = ["filter_entries.py"]
-digest = "sha256:5203db4f27a3305c31cfc10f319d64add9c67ef7c546ce8aac6b9b197cb643a7"
+digest = "sha256:09b4c74583da0654d3766af61d505ca7ff00aa9be7dce47dde2ce69e43cfdd4a"
 
 [args]
 type     = "object"
@@ -31,6 +31,16 @@ from_result_key = "source_metadata"
 [args.properties.source_metadata.description]
 it = "Provenienza e incompletezza dichiarate dai produttori runtime. Iniettate automaticamente; non sono dati delle righe né istruzioni del modello."
 en = "Provenance and incompleteness declared by runtime producers. Injected automatically; neither row data nor model instructions."
+
+[args.properties.field_roles]
+type = "array"
+items = { type = "object" }
+runtime_resolved = true
+from_result_key = "entry_field_roles"
+
+[args.properties.field_roles.description]
+it = "Metadati tipizzati dei campi prodotti dallo step sorgente. Iniettati automaticamente dal runtime; non passarli manualmente."
+en = "Typed metadata for fields produced by the source step. Injected automatically by runtime; do not pass it manually."
 
 [args.properties.from_step]
 type        = "integer"
@@ -233,6 +243,7 @@ schema_inline = """
 {
   ok: bool,
   source_metadata?: Array<object>,
+  entry_field_roles?: Array<{field: str, roles: Array<str>}>,
   entries?: Array<object>,
   partial?: bool,
   partial_reason?: str,

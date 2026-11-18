@@ -615,6 +615,9 @@ def invoke(args):
                 "error_class": "invalid_source_metadata", "error_code": "ERR_ARG_INVALID",
                 "error": _msg("ERR_ARG_INVALID", arg="source_metadata",
                               reason="invalid_source_metadata")}
+    # Filtering keeps the meaning of every source field, even with no rows.
+    if result.get("ok") is True and isinstance(args.get("field_roles"), list):
+        result["entry_field_roles"] = args["field_roles"]
     return result
 
 

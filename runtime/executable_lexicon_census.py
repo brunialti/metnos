@@ -198,15 +198,15 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/__init__.py': ('fa4fbb1ff233bc4ea49e407983c0fb2ab97ad5032ff605da1979dc564ece5165', (('comparison', 1),)),
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
-    'engine/dispatch.py': ('2d0276d073a1cb1412714f8c19923a10e8b0f83e3fb5feb21c1ac97e487db2ec', (('comparison', 256), ('helper-argument', 55), ('iteration', 4), ('membership', 7), ('prefix-suffix', 2), ('regex', 2))),
-    'engine/executor.py': ('5368bd87423761b80293da36cb208857523d4b189d6b58bab691ced75867bfec', (('comparison', 71), ('helper-argument', 14), ('iteration', 4), ('membership', 3), ('prefix-suffix', 2), ('regex', 3))),
+    'engine/dispatch.py': ('6cb4f920e551463925c5bc3af14240c8c017e4f670b93791e05168e15e2a9c9e', (('comparison', 256), ('helper-argument', 56), ('iteration', 5), ('membership', 8), ('prefix-suffix', 3), ('regex', 3))),
+    'engine/executor.py': ('fb66880c25361a48b679c805f9f52911f482c221109e53ac84f39cf7745b504f', (('comparison', 74), ('helper-argument', 14), ('iteration', 4), ('membership', 3), ('prefix-suffix', 2), ('regex', 3))),
     'engine/fastpath.py': ('fe9c37e09e6b884d136b28a244b7d51e72e3c29b53740d01cb61ad912950ffeb', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),
     'engine/grammar_framework.py': ('1e14e30dfe0909732c4b1d5f785843789c7b1f88b2e9a6f9a66eb50a042ed788', (('comparison', 1), ('helper-argument', 1))),
     'engine/guard_stats.py': ('feaa61f7511dc6e15486fa96ee8df9ffdaf997c2491475ce03c0adb30bb016e3', (('comparison', 1),)),
     'engine/parallel_steps.py': ('8eba4b51f294891328191fb4fea78d03875f20bdcd1d2687def294a12116c726', (('comparison', 4),)),
-    'engine/proposer.py': ('ea317eadbe6f3a60e091f9e1e07bd2df7866ed7b9ce32bee078cabd3e0374df7', (('comparison', 14), ('helper-argument', 2), ('membership', 1), ('prefix-suffix', 1))),
-    'engine/proposer_metis.py': ('6b8d8ee3691678bb6f313930dfbf96b930a7e5babb9d905708dd7a0fe7535f96', (('comparison', 4), ('helper-argument', 1), ('membership', 1))),
+    'engine/proposer.py': ('dcb18171e2f4deeac06e75fcb3058c0e38334a381d70cf96fa1111660863af04', (('comparison', 15), ('helper-argument', 4), ('iteration', 2), ('membership', 1), ('prefix-suffix', 1))),
+    'engine/proposer_metis.py': ('dcec477348eca60026611455e6f34c57045662e3e9e294805bdd161734ef944a', (('comparison', 5), ('helper-argument', 1), ('membership', 1))),
     'engine/recovery.py': ('cf535ae0b259c4fcf06072bafdaccd26a2279599a8a33bc50c5ce0924dff71c9', (('comparison', 6),)),
     'engine/recovery_metis.py': ('22b552ede0d5de4ccfc29b9a534b900792a4abcb1b7cb10ec73d66d1f8b6ff2f', (('comparison', 28), ('helper-argument', 1))),
     'engine/routing_pool.py': ('985dcb71537f064b80c52b34413336908e6ccba6d3a82606de2e30fc6d82473f', (('comparison', 14), ('iteration', 1))),
@@ -431,7 +431,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'system/admin.py': ('95baaa5e7ca0105f272b3e9725a08b911b15e3f0f3cb2413144d9b47ca57361c', (('comparison', 35), ('helper-argument', 2), ('iteration', 2), ('literal-lookup', 1), ('membership', 1), ('prefix-suffix', 7), ('regex', 3))),
     'system/sudoer.py': ('5fe41121259fc6ba5b913434fe1c822c3c665fb53922b3d5e2e6a003f46e07b8', (('comparison', 5), ('iteration', 1))),
     'system_binaries.py': ('768e45233baf739ebf3287e14ed06015dadba2216aded7d3acc4c9c173cf1338', (('comparison', 2),)),
-    'tabular_projection.py': ('71c6db7ba1d60583d1545e403f657dd0c7c898d6036f97c0da45369ae8e111f8', (('comparison', 5),)),
+    'tabular_projection.py': ('f612ae381acb2f59246a31a131ebcce5941ce8ea6c70d09b2efea05d4f021b5f', (('comparison', 7),)),
     'target_device.py': ('c1bfaaca3934422e7f8627cd9ab1de34d2ed51238b73441e26056ab6dd7e6e6f', (('comparison', 14),)),
     'telos_introspect.py': ('e2b67fdd0af7a5077f44c0c3e4074cf6cc61d65377122e3567d61966fae9baf3', (('comparison', 2),)),
     'telos_lenses/__init__.py': ('231e6a853e027e04c93351b633f40a69cf9fdbf6ee2e4e449dc3b360b01a8136', (('comparison', 10),)),
@@ -616,11 +616,13 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'field_synonyms.py': ('b7eea7e2cc029b7284fef1fdea08b447822ca2686ebb77ed358175165162f79c', (('prefix-suffix', 1),)),
     'record_dates.py': ('d5089d7476d8bb98764e367468907cc3c3edfbaa86be7597b20d31f9a78211d9', (('comparison', 1), ('prefix-suffix', 1))),
     'durable_workloads/partitioned_invocation.py': ('9ee7b83de9d3b915163095d77ed5675826527b18fea695a9aa7713f8e075ff37', (('comparison', 2),)),
-    'engine/partition_plans.py': ('c4b55fab61296ffce1d52acfaae8b922c7b01dff2c7f3625628162ce349cdb5e', (('comparison', 6), ('iteration', 1), ('prefix-suffix', 1), ('regex', 4))),
-    'partitioned_runs.py': ('bbd948da50378e80ff650993ba113ece97f4efd043f6ae35c5ad19627ebad2a6', (('comparison', 8), ('iteration', 2), ('prefix-suffix', 2), ('regex', 2))),
-    'request_grounding.py': ('dfc20cb41b71edf1539a00d5b9bdfc280a97b86d4031f59aa959cb2e7a71a466', (('comparison', 3), ('helper-argument', 1), ('iteration', 2), ('regex', 1))),
+    'engine/partition_plans.py': ('f6135c13f320c9e3dcb469ad698d25ab749139b936ab8f11b42f5a19e730135a', (('comparison', 18), ('helper-argument', 2), ('iteration', 1), ('prefix-suffix', 3), ('regex', 7))),
+    'partitioned_runs.py': ('3d00a0c58025c5c54c9e3289ff7df08fefb3d81ba85027dd4b877689c64a22c7', (('comparison', 15), ('iteration', 4), ('prefix-suffix', 2), ('regex', 2))),
+    'request_grounding.py': ('279d05b17ee653d316c0ef9e7ad84909175e177663392547e06aca562f8d7231', (('comparison', 5), ('helper-argument', 1), ('iteration', 2), ('regex', 1))),
     'undo_words.py': ('82bd32f8d83414daebf105dadcbdd10763dd5fa646cccb5a1b17d2157e015468', (('comparison', 6), ('regex', 1))),
     'vocabulary_dossier.py': ('c9a64377dac240248692b730799585bd0e06be38dfdb806cc1a94f1e0244bf52', (('comparison', 1), ('iteration', 1), ('regex', 1))),
+    'engine/partition_sheets.py': ('b2e416b9ad7e726a681129f82207071cf97afaf0d760d1a7fd5209f6a3fec059', (('comparison', 2), ('iteration', 1), ('membership', 1))),
+    'engine/planning_repair.py': ('5ffc90866185a59ce8f0ff3c2e188b2e823fb4f4193f51459b1b5c8bccc2a5be', (('comparison', 2), ('iteration', 1), ('regex', 2))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {
@@ -1317,7 +1319,11 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "closed partition error codes mapped to the catalog keys of their causes",
     "f8af0e93f37c4626d7bb7459fff2b3cff08a90f331ec7c448b9dbeb0b4f9baf4":
         "closed error classes of a partition mapped to the catalog keys of their causes",
-    "e7a0dbe6c1960627517b7e91c95e6c8e9ea84db73b4fd249c39f63461c551f96":
+    "4b8b07d06e583a1f74cc3c36edb8b23fd4f04a0242fec08066cd5f3429c4a700":
+        "declared directory traversal semantics mapped to their argument names and types",
+    "497e2aa666274163d07c50d2e79da1ec0a4f4e35b79a79c2811de31291de4ea8":
+        "declared opposite identity roles retained separately in tabular projection",
+    "02ac1ff88fa9a1c16e7e481740ff7cc26d891acb0b05ec71f987d342954e015a":
         "closed names of the parts a word plays in a request, mapped to the lexicon concepts that hold the words",
     "5342aa9d696ab28a5f69aca22a5ab5646a42ff4bf260e0198616d3585542d3c6":
         "closed names of the parts that are verbs, among the parts a word plays in a request",

@@ -238,6 +238,9 @@ def invoke(args):
         out["used"] = len(sorted_entries)
         out["available_total"] = total_input
         out["truncated_intentional"] = True
+    # Ordering and taking a subset leave source field meanings unchanged.
+    if isinstance(args.get("field_roles"), list):
+        out["entry_field_roles"] = args["field_roles"]
     return out
 
 

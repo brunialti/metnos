@@ -17,8 +17,8 @@ revertible      = true
 reverse_pattern = "delete_created_paths"
 
 [description]
-it = "SCOPO: crea directory (batch, anche vuote). PATTERN: create_dirs(paths=[\"/tmp/d\"]); una per riga di uno step: create_dirs(from_step=1, path_template=\"{partition}/d\"). NON: cancellare (-> delete_dirs); cercare (-> find_dirs). OUT: results=[{created}], best-effort."
-en = "SCOPO: create directories (batch, even empty). PATTERN: create_dirs(paths=[\"/tmp/d\"]); one per row of a step: create_dirs(from_step=1, path_template=\"{partition}/d\"). NON: delete (-> delete_dirs); search (-> find_dirs). OUT: results=[{created}], best-effort."
+it = "SCOPO: crea cartelle in batch, anche vuote. PATTERN: create_dirs(paths=['/tmp/d']) o create_dirs(from_step=1,path_template='{campo}/d'); {campo}: stessa riga from_step. NON: cancellare -> delete_dirs; cercare -> find_dirs. OUT: results=[{created}], best-effort."
+en = "SCOPO: create folders in batches, even empty. PATTERN: create_dirs(paths=['/tmp/d']) or create_dirs(from_step=1,path_template='{field}/d'); {field}: same from_step row. NON: delete -> delete_dirs; search -> find_dirs. OUT: results=[{created}], best-effort."
 
 [code]
 files  = ["create_dirs.py"]

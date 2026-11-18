@@ -54,8 +54,8 @@ ERROR: "write to Roberto: hi" → get_inputs(title="which channel do you prefer?
 OPTIONAL PARAMETERS
 YOU MUST: omit unrequested optional arguments, preserving the defaults declared by the tool.
 YOU MUST NOT: enable additional modes or change a default without evidence in the request.
-OK: default `dry_run=false`, execution requested → omit `dry_run`; simulation requested → `dry_run=true`.
-ERROR: adding `force=true` or `dry_run=true` to an ordinary request that does not ask for them.
+OK: default `recursive=true`, "inspect folder X" → omit `recursive`; "only directly in X, without subfolders" → `recursive=false`. Default `dry_run=false`, execution requested → omit `dry_run`.
+ERROR: adding `recursive=false`, `force=true` or `dry_run=true` without the request specifying that restriction or mode.
 
 CONCRETE VALUES (no lazy filler)
 YOU MUST: use concrete values inferred from query + tool description (defaults, enums, keywords in the description).
@@ -84,18 +84,19 @@ DATA PIPING
 - Scalars: `${stepN.field}` (dot-path: `${step1.entries.0.name}`).
 - List projection: `${step1.entries.0.examples.*.image_path}` returns list.
 
-YOU MUST: pass a step the rows of a previous step with `from_step: N` alone: the tool knows which field of the rows to use.
-YOU MUST NOT: add `entries` together with `from_step`, nor build `entries` out of placeholders.
+YOU MUST: pass the rows of a previous step with `from_step: N` alone when the consumer supports it and a different explicit selection is not requested: the tool knows which field of the rows to use.
+YOU MUST NOT: add an alternative explicit input for the same rows alongside `from_step`, nor rebuild `entries` out of placeholders.
 OK: abstract example, do not copy literally: <action>(from_step=1).
-ERROR: <action>(from_step=1, entries=[{"<field>": "${step1.entries.0.<field>}"}]).
+ERROR: two competing sources for the same input, one passed through piping and the other explicitly.
 
 YOU MUST: at the FIRST step set args ONLY from literals (path, query, account); NEVER `from_step` at the first step.
 YOU MUST NOT: emit `from_step: 0`. `from_step` is 1-based and points to a PREVIOUS already-executed step (>=1); if none exists, OMIT `from_step` entirely.
 ERROR: get_files(from_step:0, paths:["/etc"]) or filter_entries(from_step:0, kind:"mail") as the first step.
 
-MUST: when a LIST arg (paths, urls, ids, file_ids) consumes previous step `entries`, use **projection** `${stepN.entries.*.<field>}` to send ALL elements, NOT `${stepN.entries.0.<field>}` (only the first).
-OK: `find_images_web(paths=${step1.entries.*.path})` — sends all matched paths.
-ERROR: `find_images_web(urls=${step1.entries.0.image_path})` — single path = single lookup = poor output.
+YOU MUST: if the consumer does not support `from_step` or the request requires a different explicit selection, pass the explicit input without `from_step`; for all rows use `${stepN.entries.*.<field>}` with the field or declared alias identifying the requested elements.
+YOU MUST NOT: replace the requested identity with a linked reference, invent aliases, or reduce a list requested in full to one index.
+OK: abstract example, do not copy literally: <action>(<list_input>="${step1.entries.*.<field>}").
+ERROR: sending one element when all are needed, or choosing a field with a different role from the requested one.
 
 USER PLACEHOLDERS
 - `${FILLER:name}`: value to collect from user (e.g., spam dst_folder).
@@ -144,17 +145,17 @@ I. EXISTING SHEET (split the rows into tabs, add a column of classes)
 - ERROR: filter_entries(from_step=1, where_field="<X>", where_value="<A>").
 
 M. THE MOST RECENT / THE OLDEST (by date, any object)
-- YOU MUST: choose "the most recent", "the latest", "the oldest" with sort_entries(from_step=N, by="date", desc=<true for the most recent, false for the oldest>, top=<how many>); with "for each <X>" add group_by="<field of X>".
-- YOU MUST NOT: choose by date with filter_entries or compute_entries.
-- OK: abstract example, do not copy literally: "the <K> most recent <objects>" → [<producer>(...), sort_entries(from_step=1, by="date", desc=true, top=<K>), ...]; "for each <X> the oldest" → sort_entries(from_step=1, by="date", desc=false, top=1, group_by="<field of X>").
-- ERROR: "for each <X> the most recent" → sort_entries(by="date", desc=true) followed by filter_entries(where_field="<field of X>").
+- YOU MUST: respect the selection already performed by the producer according to its contract and the requested criterion: pass all those rows to the action. Only if candidates still need selection, use sort_entries(from_step=N, by="<date field>", desc=<true for the most recent, false for the oldest>, top=<how many>); "for each <X>" requires group_by="<field identifying X>".
+- YOU MUST NOT: select again when the producer has already satisfied the requested criterion; invent an unrequested grouping by count or measurement; choose by date with filter_entries or compute_entries.
+- OK: abstract example, do not copy literally: <producer with requested selection>(...) → <action>(from_step=1); candidates still requiring selection, "for each <X> the oldest" → sort_entries(from_step=1, by="<date field>", desc=false, top=1, group_by="<identity of X>").
+- ERROR: apply top=1 to rows the producer declares are already all to be processed according to the requested criterion.
 
-N. FOR EACH FOLDER («for each folder», «in every subfolder», «folder by folder», «each on its own»)
-- YOU MUST: use ONE step of the tool with `base_paths` and WITHOUT `base_path`. «every subfolder of <parent>» → base_paths=["<parent>/*"]. Folders named one by one → base_paths=["<a>","<b>"], copied as they are written.
-- YOU MUST: in the following steps write `{partition}` (the folder of each row) and `{rel_path}` (the path of the file inside that folder): move_files(from_step=N, dst_template="{partition}/<name>/{rel_path}"); create_dirs(from_step=N, path_template="{partition}/<name>").
-- YOU MUST NOT: list the folders first (list_dirs, find_dirs); write `${stepN…}` in base_paths, dst_template or paths; add `/*` to a named folder; use base_paths for ONE folder or to search ACROSS different folders.
-- OK: abstract example, do not copy literally: <tool>(base_paths=["<parent>/*"]) → create_dirs(from_step=1, path_template="{partition}/<name>") → move_files(from_step=1, dst_template="{partition}/<name>/{rel_path}").
-- ERROR: list_dirs(path="<parent>") → <tool>(base_paths=["${step1.entries.*.path}"]); base_paths=["<a>/*","<b>/*"] for «in the folders <a> and <b>»; dst_template="<parent>/<name>/{name}".
+N. REQUESTED ORGANIZATION BY FOLDER
+- YOU MUST: apply this rule only when the request organizes results or actions by folder. If the tool declares `base_paths`, name the parts in one step without `base_path`: immediate subfolders → ["<parent>/*"]; named folders → ["<a>","<b>"], copied as written. Grouping does not restrict comparison: use the requested scope.
+- YOU MUST: if the tool declares `from_step`, point it to the rows to process, including after a report. In per-row templates, use `{field}` from that same row and only derivations declared by the tool. A destination inside each row's folder uses `{partition}`, not the parent folder; an explicit common destination stays common. Include `partition` in the spreadsheet, unless the user requires an exact list of columns.
+- YOU MUST NOT: list folders first; append `/*` to a named folder; use global `${stepN…}` references in per-row destination templates; replace the file row with a report or directory-creation result.
+- OK: abstract example, do not copy literally: <producer>(base_paths=["<parent>/*"]) → create_dirs(from_step=1, path_template="{partition}/<name>") → move_files(from_step=1, dst_template="{partition}/<name>/{rel_path}").
+- ERROR: derive each file's destination from a single global result instead of its own row.
 
 C. MUTATING (move/delete/send/write/create/set)
 - The requested action-verb step MUST be present: never stop at the producer.

@@ -90,6 +90,7 @@ TABULAR_CONCEPT_PAYLOAD = {
     "origin": [
         "origin", "origins", "original", "originals", "origine", "origini",
         "originale", "originali", "source", "sources", "sorgente", "sorgenti",
+        "kept", "retained", "conservato", "conservati", "conservata", "conservate",
     ],
     "duplicate": [
         "duplicate", "duplicates", "duplicato", "duplicati", "copia",

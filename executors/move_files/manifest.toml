@@ -20,8 +20,8 @@ revertible      = true
 reverse_pattern = ["swap_src_dst", "restore_blob_backup", "delete_created_dirs"]
 
 [description]
-it = "SCOPO: sposta, rinomina o copia file in batch; copy=true conserva l’origine, anche fra dispositivo e server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: formati (-> change_files_format); comprimere (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
-en = "SCOPO: move, rename or copy files in batch; copy=true keeps the source, also between device and server. PATTERN: move_files(from_step=1, dst_template='/a/{name}'). NON: formats (-> change_files_format); compress (-> compress_files). OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort."
+it = "SCOPO: sposta/rinomina file server↔PC; copy=true copia. PATTERN: from_step=1,dst_template='/a/{name}'; rel_path=path/src relativo a partition; conserva nomi/albero salvo richiesta. NON: formati→change_files_format; compress→compress_files. OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
+en = "SCOPO: move/rename files server↔PC; copy=true copies. PATTERN: from_step=1,dst_template='/a/{name}'; rel_path=path/src relative to partition; keep names/tree unless requested. NON: formats→change_files_format; compress→compress_files. OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best effort."
 
 [code]
 files  = ["move_files.py"]
@@ -53,8 +53,8 @@ en = "Runtime-resolved list of files to move; each item must contain `path` or `
 type        = "string"
 
 [args.properties.dst_template.description]
-it = "Template stringa del path di destinazione con i campi della riga tra graffe: nome e data, es. `/tmp/{date_year}/{name}`. Per le righe trovate cartella per cartella anche `{partition}` e `{rel_path}`, il percorso del file dentro la sua cartella, es. `{partition}/da_controllare/{rel_path}`. Ogni risultato deve rientrare nello scope `fs:write`."
-en = "Destination path string template with the row's fields in braces: name and date, e.g. `/tmp/{date_year}/{name}`. For rows found folder by folder also `{partition}` and `{rel_path}`, the path of the file inside its folder, e.g. `{partition}/to_check/{rel_path}`. Every result must remain within the `fs:write` scope."
+it = "Campi della riga; {rel_path}=path/src relativo a partition. Conserva nome/albero salvo rinomina richiesta. Es. {partition}/raccolta/{rel_path}; scope fs:write."
+en = "Row fields; {rel_path}=path/src relative to partition. Keep names/tree unless renaming is requested. E.g. {partition}/collection/{rel_path}; scope fs:write."
 
 [args.properties.overwrite]
 type        = "boolean"

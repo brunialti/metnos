@@ -74,6 +74,7 @@ COMPOUND_CONCEPTS = (
     "parser.compound.field_stop",
     "parser.compound.field_cut",
     "parser.compound.schema_marker",
+    "parser.compound.schema_restriction",
     "parser.compound.tabular_noun",
     "parser.compound.with_connector",
     "parser.compound.list_connector",
@@ -93,6 +94,7 @@ GROUNDING_CONCEPTS = (
     "parser.grounding.oldest_plain",
     "parser.grounding.place_word",
     "parser.grounding.negation",
+    "parser.grounding.restriction_link",
     "parser.grounding.record_word",
     "parser.grounding.neutral_word",
     "parser.grounding.clause_break",
@@ -115,7 +117,14 @@ GROUNDING_CONCEPTS = (
     "parser.grounding.definite_determiner",
 )
 
+# A request may ask for independent comparisons inside each partition.
+# Grouping output by folder alone does not declare that narrower scope.
+PARTITION_SCOPE_CONCEPTS = (
+    "parser.partition_scope.separate",
+)
+
 FAMILY_CONCEPTS = {
+    "partition_scope": PARTITION_SCOPE_CONCEPTS,
     "grounding": GROUNDING_CONCEPTS,
     "ordering": ORDERING_CONCEPTS,
     "time_resolver": TIME_RESOLVER_CONCEPTS,
@@ -125,12 +134,14 @@ FAMILY_CONCEPTS = {
 }
 
 _KINDS = {
+    "parser.partition_scope.separate": "phrases",
     "parser.grounding.newest": "phrases",
     "parser.grounding.oldest": "phrases",
     "parser.grounding.newest_plain": "phrases",
     "parser.grounding.oldest_plain": "phrases",
     "parser.grounding.place_word": "phrases",
     "parser.grounding.negation": "phrases",
+    "parser.grounding.restriction_link": "phrases",
     "parser.grounding.record_word": "phrases",
     "parser.grounding.neutral_word": "phrases",
     "parser.grounding.clause_break": "phrases",
@@ -195,6 +206,7 @@ _KINDS = {
     "parser.compound.field_stop": "phrases",
     "parser.compound.field_cut": "phrases",
     "parser.compound.schema_marker": "phrases",
+    "parser.compound.schema_restriction": "phrases",
     "parser.compound.tabular_noun": "phrases",
     "parser.compound.with_connector": "phrases",
     "parser.compound.list_connector": "phrases",
@@ -229,6 +241,20 @@ def register_all() -> None:
     """Register the complete IT/EN parser corpus idempotently."""
 
     R = _dl.register
+
+    R("parser.partition_scope.separate", "phrases", match_mode="word",
+      review_policy="manual",
+      it=[
+          "solo dentro ciascuna cartella", "solo dentro ogni cartella",
+          "solo all'interno di ciascuna cartella",
+          "ogni cartella per conto suo", "ciascuna cartella per conto suo",
+          "senza confrontare cartelle diverse",
+      ],
+      en=[
+          "only within each folder", "only inside each folder",
+          "each folder on its own", "each folder separately",
+          "without comparing different folders",
+      ])
 
     R("parser.ordering.mode_verb", "mapping", match_mode="word",
       it={
@@ -506,8 +532,10 @@ def register_all() -> None:
           "sulle", "per", "con", "tra", "fra", "presso", "in"],
       en=["from", "in", "into", "about", "regarding", "for"])
     R("parser.compound.schema_marker", "phrases", match_mode="word",
-      it=["colonne", "campi", "intestazioni", "voci", "dati"],
-      en=["columns", "fields", "headers", "data"])
+      it=["colonne", "colonna", "campi", "intestazioni", "voci", "dati"],
+      en=["columns", "column", "fields", "headers", "data"])
+    R("parser.compound.schema_restriction", "phrases", match_mode="word",
+      it=["solo", "soltanto", "solamente"], en=["only", "just"])
     R("parser.compound.tabular_noun", "phrases", match_mode="word",
       it=["foglio di calcolo", "foglio elettronico", "foglio", "tabella"],
       en=["spreadsheet", "sheet", "table"])
@@ -560,18 +588,21 @@ def register_all() -> None:
           "sheet", "sheets", "spreadsheet", "spreadsheets", "table",
           "tables", "list", "lists", "archive", "archives", "report",
           "reports"])
-    # A second net under the reader: a sentence with one of these and an age
-    # is not read at all, because a denial can reach across a joining word
-    # («non devi cancellare e spostare …»). It is not what keeps exceptions
-    # out: those are an open class, kept out because the reader reads only
-    # forms it knows entirely. «don't» and its like reach the reader as the
-    # word before the apostrophe.
+    # Denial is a role in the closed clause grammar: it cannot be consumed
+    # as a place description or cross a coordination into an asserted age.
+    # An unrelated clause with its own subject does not negate that reading.
+    # Apostrophe forms reach the reader as the word before the apostrophe.
     R("parser.grounding.negation", "phrases", match_mode="word",
       it=["non", "mai", "senza", "tranne", "eccetto", "salvo", "né",
           "nessuno", "nessuna", "niente", "nulla"],
       en=["not", "no", "never", "without", "except", "unless", "neither",
           "nor", "don", "doesn", "didn", "dont", "doesnt", "won", "cannot",
           "nothing", "none"])
+    # A separate restrictive adjunct can qualify an unrelated operation.
+    # These remain denials too; the clause grammar checks their scope and
+    # never infers independence merely from a record/place being mentioned.
+    R("parser.grounding.restriction_link", "phrases", match_mode="word",
+      it=["senza"], en=["without"])
     # What a request calls the records themselves: the name of the thing a
     # verb acts on («the old files», «quelli nuovi», «delete them»). «The old
     # drive» is not one, and its age is not read.
@@ -765,6 +796,7 @@ __all__ = [
     "COMPOUND_CONCEPTS",
     "FAMILY_CONCEPTS",
     "ORDERING_CONCEPTS",
+    "PARTITION_SCOPE_CONCEPTS",
     "RECURRENCE_CONCEPTS",
     "TIME_PARSER_CONCEPTS",
     "TIME_RESOLVER_CONCEPTS",

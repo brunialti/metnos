@@ -72,7 +72,8 @@ _PARTS = {
     "article": "article", "each": "each_word", "quantity": "quantity_word",
     "record": "record_word", "copy": "copy_word", "group": "group_word",
     "of": "group_link", "to": "place_link", "place": "place_word",
-    "there": "place_adverb",
+    "there": "place_adverb", "denial": "negation",
+    "restriction": "restriction_link",
 }
 _VERBS = frozenset({"keep", "act", "find"})
 _HEADS = ("record", "copy", "group")
@@ -256,10 +257,11 @@ def _place(kinds: list, at: set[int]) -> set[int]:
 def _described(kinds: list, at: set[int]) -> set[int]:
     """What is said of a place closes the clause: its name, where it is, how
     it was made («in una cartella X creata dentro quella stessa cartella»).
-    It holds no age and no verb of this reader: those would be said of
-    something else, in a form this reader does not know."""
+    It holds no age, denial, or verb of this reader: those would be said of
+    something else, in a form this reader does not know. In particular a
+    trailing denied clause must not be swallowed into this description."""
     closing = {position for position in range(len(kinds) + 1)
-               if not any(kinds[later] & _VERBS or "age" in kinds[later]
+               if not any(kinds[later] & (_VERBS | {"age", "denial"})
                           for later in range(position, len(kinds)))}
     return {len(kinds)} if closing.intersection(at) else set()
 
@@ -329,7 +331,22 @@ def _governed(lexicon: dict, tokens: list[str],
     index = 0
     while index < len(stretches):
         words = list(stretches[index][1])
-        verbs = _verbs(kinds_of(words))
+        kinds = kinds_of(words)
+        if any("denial" in kind for kind in kinds):
+            # Only a registered restriction link can introduce an unrelated
+            # operation («without opening documents»). A named file/place
+            # alone cannot close «for these files do not, ...». The operation
+            # must name its own object, contain no age or known action, and
+            # not coordinate the following clause under the same restriction.
+            separate = (len(kinds) > 2 and "restriction" in kinds[0]
+                        and kinds[1] == {"name"}
+                        and any(kind & (set(_HEADS) | {"place"}) for kind in kinds[2:])
+                        and not any(kind & (_VERBS | {"age", "denial"})
+                                    for kind in kinds[1:])
+                        and not (index + 1 < len(stretches) and stretches[index + 1][0]))
+            if not separate:
+                return {}
+        verbs = _verbs(kinds)
         index += 1
         while (verbs is not None and index < len(stretches)
                and not stretches[index][0]
@@ -347,6 +364,9 @@ def _governed(lexicon: dict, tokens: list[str],
         if any(kinds & {"keep", "act"} for kinds in kinds_of(words)):
             sure = sure and verbs is not None
         else:
+            # Denied actions have already rejected the whole sentence above;
+            # an inserted clause cannot make them affirmative again. Preserve the
+            # ordinary reading of unrelated descriptions without a denial.
             sure = True
     return governed
 
@@ -359,16 +379,15 @@ def kept_by_age(query: str) -> str | None:
     if not query or lexicon is None:
         return None
     keeps, acts = _single(lexicon, "keep_verb"), _single(lexicon, "act_verb")
-    denials = _single(lexicon, "negation")
     stays: set[str] = set()
     for tokens in _sentence_tokens(query):
         mentions = _age_mentions(lexicon, tokens)
         if not mentions:
             continue
-        if denials.intersection(tokens):
-            # A second net: a denial can reach across a joining word, and
-            # what it covers is not told by the order of the words.
-            return None
+        # Negation belongs to the clause it qualifies. The closed grammar
+        # rejects a denied verb/object and _governed carries that uncertainty
+        # across coordinated actions. An unrelated clause («without opening
+        # documents») does not negate a separately asserted move.
         governed = _governed(lexicon, tokens, mentions)
         for age, start, _end in mentions:
             verb = governed.get(start)

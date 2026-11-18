@@ -47,6 +47,10 @@ KINDS = ("directory",)
 
 _SECTION_FIELDS = frozenset({"arg", "list_arg", "kind", "union", "sums"})
 _REQUIRED_FIELDS = frozenset({"arg", "list_arg", "kind"})
+_TRAVERSAL_SEMANTICS = {
+    "directory_recursion": ("recursive", "boolean"),
+    "directory_max_depth": ("depth", "integer"),
+}
 _NAME_RE = re.compile(r"[a-z][a-z0-9_]{0,63}")
 _MAX_SUMS = 32
 _ROW_KEYS = ("entries", "results")
@@ -69,6 +73,37 @@ def _partition_section(manifest: Mapping[str, Any] | None) -> object:
     return execution.get("partition") if isinstance(execution, Mapping) else None
 
 
+def _directory_traversal(properties: Mapping[str, Any]) -> tuple[dict | None, list[str]]:
+    """Derive traversal metadata from signed argument semantics, not names.
+
+    The pair promises directory-root depth 0, immediate entries depth 1,
+    and 0 as unlimited. Explicit defaults preserve calls that omit either
+    argument. A partial or ambiguous promise cannot safely lift the root.
+    """
+    selected = {semantic: [(name, spec) for name, spec in properties.items()
+                           if isinstance(spec, Mapping)
+                           and spec.get("semantic_type") == semantic]
+                for semantic in _TRAVERSAL_SEMANTICS}
+    if not any(selected.values()):
+        return None, []
+    if any(len(items) != 1 for items in selected.values()):
+        return None, ["directory traversal requires exactly one directory_recursion "
+                      "and one directory_max_depth argument"]
+    traversal: dict[str, Any] = {}
+    for semantic, (field, schema_type) in _TRAVERSAL_SEMANTICS.items():
+        name, spec = selected[semantic][0]
+        default = spec.get("default")
+        valid_default = (type(default) is bool if field == "recursive" else
+                         type(default) is int and default >= 0)
+        if (spec.get("type") != schema_type or not valid_default
+                or spec.get("runtime_resolved") is True):
+            return None, [f"{semantic} requires a declared {schema_type} argument "
+                          "with a valid explicit default"]
+        traversal[field + "_arg"] = name
+        traversal[field + "_default"] = default
+    return traversal, []
+
+
 def validate_partition(manifest: Mapping[str, Any] | None) -> list[str]:
     """Findings on ``[execution.partition]``; an absent section has none."""
     raw = _partition_section(manifest)
@@ -88,6 +123,8 @@ def validate_partition(manifest: Mapping[str, Any] | None) -> list[str]:
     args = args if isinstance(args, Mapping) else {}
     properties = args.get("properties")
     properties = properties if isinstance(properties, Mapping) else {}
+    _, traversal_findings = _directory_traversal(properties)
+    findings.extend(traversal_findings)
     required = args.get("required")
     required = ({name for name in required if isinstance(name, str)}
                 if isinstance(required, list) else set())
@@ -155,13 +192,17 @@ def normalized_partition(manifest: Mapping[str, Any] | None) -> dict | None:
     raw = _partition_section(manifest)
     if not isinstance(raw, Mapping) or validate_partition(manifest):
         return None
-    return {
+    partition = {
         "arg": raw["arg"],
         "list_arg": raw["list_arg"],
         "kind": raw["kind"],
         "union": raw.get("union", "separate"),
         "sums": tuple(raw.get("sums", ())),
     }
+    traversal, _ = _directory_traversal(manifest["args"]["properties"])
+    if traversal is not None:
+        partition["traversal"] = traversal
+    return partition
 
 
 def policy_of(executor: object) -> dict | None:
@@ -176,7 +217,7 @@ def policy_of(executor: object) -> dict | None:
             or not _REQUIRED_FIELDS <= set(partition)
             or partition.get("kind") not in KINDS):
         return None
-    return {
+    result = {
         "arg": str(partition["arg"]),
         "list_arg": str(partition["list_arg"]),
         "kind": str(partition["kind"]),
@@ -185,6 +226,18 @@ def policy_of(executor: object) -> dict | None:
         "sums": tuple(name for name in (partition.get("sums") or ())
                       if isinstance(name, str)),
     }
+    if "traversal" in partition:
+        traversal = partition["traversal"]
+        if (not isinstance(traversal, Mapping)
+                or not isinstance(traversal.get("recursive_arg"), str)
+                or not isinstance(traversal.get("depth_arg"), str)
+                or traversal["recursive_arg"] == traversal["depth_arg"]
+                or type(traversal.get("recursive_default")) is not bool
+                or type(traversal.get("depth_default")) is not int
+                or traversal["depth_default"] < 0):
+            return None
+        result["traversal"] = dict(traversal)
+    return result
 
 
 # ---------------------------------------------------------------- resolution
@@ -574,9 +627,6 @@ def missing_partitions(result: Mapping[str, Any], order: Sequence[str]) -> list[
 
 # ------------------------------------------------------- words for a person
 
-_SHOWN_COUNTS = 12
-
-
 def _display_parts(partition: str) -> list[str]:
     return [part for part in re.split(r"[\\/]+", partition) if part]
 
@@ -707,12 +757,13 @@ def with_partial_reason(result: dict) -> dict:
     return result
 
 
-def counts_text(rows: object) -> str:
+def counts_text(rows: object, *, max_chars: int | None = None, field_roles: object = None) -> str:
     """How many of these rows belong to each partition, in one sentence.
 
     For a question that must say where something is about to happen (a
     consent before moving files folder by folder). Empty when the rows do not
-    carry a partition."""
+    carry a partition. A budget keeps whole folders in their original order,
+    accounting for both folders and copies omitted from the text."""
     counts: dict[str, int] = {}
     for row in rows if isinstance(rows, (list, tuple)) else ():
         if isinstance(row, Mapping) and isinstance(row.get(PARTITION_FIELD), str):
@@ -722,12 +773,27 @@ def counts_text(rows: object) -> str:
     from messages import get as message
 
     names = labels(list(counts))
-    shown = list(counts)[:_SHOWN_COUNTS]
-    items = " · ".join(f"{names[partition]}: {counts[partition]}" for partition in shown)
-    if len(counts) > len(shown):
-        return message("MSG_PARTITION_COUNTS_MORE", items=items,
-                       more=len(counts) - len(shown))
-    return message("MSG_PARTITION_COUNTS", items=items)
+    tokens = [f"{names[partition]}: {count}" for partition, count in counts.items()]
+    full = message("MSG_PARTITION_COUNTS", items=" · ".join(tokens))
+    if max_chars is None or len(full) <= max_chars:
+        return full
+    roles = [set(item["roles"]) for item in field_roles if isinstance(item, Mapping)
+             and isinstance(item.get("roles"), (list, tuple))
+             and all(isinstance(role, str) for role in item["roles"])] \
+        if isinstance(field_roles, (list, tuple)) else []
+    copies = (any({"path", "duplicate"} <= role for role in roles)
+              and any({"path", "origin"} <= role for role in roles))
+    closing_key = "MSG_PARTITION_COUNTS_OMITTED_COPIES" if copies else "MSG_PARTITION_COUNTS_OMITTED"
+    quantities = list(counts.values())
+    omitted_copies = 0
+    for shown in range(len(tokens) - 1, -1, -1):
+        omitted_copies += quantities[shown]
+        closing = message(closing_key, folders=len(tokens) - shown, items=omitted_copies)
+        prefix = message("MSG_PARTITION_COUNTS", items=" · ".join(tokens[:shown])) if shown else ""
+        candidate = " ".join(part for part in (prefix, closing) if part)
+        if len(candidate) <= max_chars:
+            return candidate
+    raise ValueError("The folder-count budget cannot hold even the omission totals")
 
 
 # ----------------------------------------------------------------------- run
@@ -744,14 +810,106 @@ def refusal_result(refusal: PartitionRefusal) -> dict:
     }
 
 
+def _first_level_partition(root: str, path: object) -> str | None:
+    """The first child containing a returned path, without filesystem access.
+
+    A file directly in the root belongs to the root. A path outside it, or
+    one the tool did not name, cannot be assigned a destination by guessing.
+    """
+    if not isinstance(path, str) or not path or _flavour(path) is not _flavour(root):
+        return None
+    flavour = _flavour(root)
+    root = flavour.normpath(root)
+    path = flavour.normpath(path)
+    if flavour.isabs(path) != flavour.isabs(root):
+        return None
+    root_key, path_key = _key(root), _key(path)
+    if (len(path_key) <= len(root_key)
+            or path_key[:len(root_key)] != root_key):
+        return None
+    try:
+        relative = flavour.relpath(path, root)
+    except ValueError:
+        return None
+    pieces = relative.split(flavour.sep)
+    if pieces[0] == flavour.pardir:
+        return None
+    return root if len(pieces) == 1 else flavour.join(root, pieces[0])
+
+
+def _project_first_level(policy: Mapping[str, Any], args: Mapping[str, Any],
+                         observation: dict) -> dict:
+    """Group one global answer, keeping its scope, counters and evidence.
+
+    ``exact`` here describes a projection of the same global answer: no
+    independent invocation or local counter is claimed. Global truncation
+    cannot tell how many missing rows belong to any child, so group counts
+    are lower bounds without invented group totals.
+    """
+    if not isinstance(observation, Mapping):
+        return observation
+    rows_key = next((key for key in _ROW_KEYS
+                     if isinstance(observation.get(key), list)), None)
+    failed = observation.get("failed", [])
+    worked = observation.get("ok") is True or (
+        observation.get("ok") is False and bool(failed)
+        and not any(observation.get(key) not in (None, "") for key in _ERROR_KEYS))
+    if not worked or rows_key is None or not isinstance(failed, list):
+        return observation
+
+    metadata = observation.get("metadata")
+    resolved = metadata.get(policy["arg"]) if isinstance(metadata, Mapping) else None
+    root = resolved if isinstance(resolved, str) and resolved else args[policy["arg"]]
+    root = _flavour(root).normpath(root)
+    groups: dict[str, dict] = {}
+    projected: dict[str, list] = {}
+    for key, items in ((rows_key, observation[rows_key]), ("failed", failed)):
+        projected[key] = []
+        for row in items:
+            partition = (_first_level_partition(root, row.get("path"))
+                         if isinstance(row, Mapping) else None)
+            if partition is None:
+                # Preserve the complete evidence when its contract does not
+                # provide enough information for a truthful projection.
+                return observation
+            summary = groups.setdefault(partition, {
+                PARTITION_FIELD: partition, "ok": True, "count": 0})
+            counter = "fail_count" if key == "failed" else "count"
+            summary[counter] = summary.get(counter, 0) + 1
+            projected[key].append({**row, PARTITION_FIELD: partition})
+
+    cut = any(observation.get(key) is True for key in (
+        "truncated", "scan_truncated", "results_truncated"))
+    if cut:
+        for summary in groups.values():
+            summary.update(truncated=True, used=summary["count"])
+            for key in ("truncated_what", "cap_field", "cap_value", "truncated_intentional"):
+                if key in observation:
+                    summary[key] = observation[key]
+    return {
+        **observation, **projected,
+        "partitions": list(groups.values()),
+        "partition_arg": policy["arg"],
+        "partition_union": "exact",
+        "partitions_total": len(groups),
+        "partitions_ok": len(groups),
+        "partitions_failed": 0,
+        "totals_complete": (
+            not failed and not cut and observation.get("partial") is not True
+            and observation.get("source_complete") is not False
+            and observation.get("totals_complete") is not False),
+    }
+
+
 def run(executor: object, args: object, invoke: Callable[[dict], dict], *,
         list_children: Callable[[str], Sequence[str]] | None = None) -> dict:
     """Serve one call of a tool, partition by partition when it asks for it.
 
     ``invoke(arguments)`` is the ordinary call of the tool, with its own
     sandbox, guard and time limit; here it is made once per partition, one
-    after the other. A call that does not use the list argument passes
-    through untouched.
+    after the other. An ordinary call passes through untouched. A single
+    directory call with ``group_by="first_level"`` consumes that argument
+    here and groups one global answer, without partitioning the invocation.
     """
     policy = policy_of(executor)
     if policy is None or not isinstance(args, Mapping):
@@ -761,6 +919,14 @@ def run(executor: object, args: object, invoke: Callable[[dict], dict], *,
     except PartitionRefusal as refusal:
         return refusal_result(refusal)
     if resolution is None:
+        if (policy["kind"] == "directory" and policy["union"] == "separate"
+                and args.get("group_by") == "first_level"
+                and isinstance(args.get(policy["arg"]), str)
+                and args[policy["arg"]].strip()):
+            ordinary_args = {key: value for key, value in args.items()
+                             if key != "group_by"}
+            return with_partial_reason(_project_first_level(
+                policy, ordinary_args, invoke(ordinary_args)))
         return invoke(args)
     return with_partial_reason(assemble(policy, [
         (partition, invoke(unit_args(policy, resolution.base_args, partition)))

@@ -17,17 +17,20 @@ import os
 import re
 import time
 from dataclasses import dataclass
+from functools import wraps
 from pathlib import Path
 from typing import Optional, Callable
 
 from .types import (
     Intent, Framework, RunResult, StepSpec, result_error_classes,
 )
+from .partition_plans import PartitionDestinationError
 from .executor import (
     Executor, compute_execution_fingerprint, compute_framework_hash,
     resolve_query_canonical_args,
 )
 from .routing_pool import build_routing_pool
+from .partition_sheets import complete_partition_sheets
 from . import fastpath as _fp
 from . import autopath as _ap
 from . import (
@@ -7401,11 +7404,17 @@ GUARD_PIPELINE: tuple = (
           rationale="contenuto assente dalla richiesta + un'altra sorgente nominata = copia, mai testo inventato dichiarato come copia (turno 6978422a)",
           adr="0237"),
     Guard("partition_plan_to_served_form",
-          lambda fw, i, q, c: _partition_plan_to_served_form(fw, c),
+          lambda fw, i, q, c: _partition_plan_to_served_form(fw, c, query=q),
           scope="structure",
-          writes=frozenset({"args.*", "args.dst_template", "args.path_template"}),
-          reads=frozenset({"catalog", "step.tool", "args.*"}),
-          rationale="«per ogni cartella di X» come lo scrive il pianificatore (elenca le cartelle, le passa per segnaposto, nomina la cartella di ogni riga in tre modi) portato alla forma che il runtime serve: valori letterali, {partition}, {rel_path}. Solo equivalenze, misurate il 16/11/2026",
+          writes=frozenset({"args.*", "args.group_by", "args.dst_template", "args.path_template"}),
+          reads=frozenset({"query", "catalog", "step.tool", "args.*"}),
+          rationale="La ripartizione exact conserva il risultato; separate confronta prima l’intero insieme e poi raggruppa le righe, salvo restrizione esplicita dal lessico rivisto. Destinazioni dalle copie effettive, con percorsi relativi conservati (S-011)",
+          adr="0244"),
+    Guard("complete_partition_sheets",
+          lambda fw, i, q, c: complete_partition_sheets(fw, c, query=q),
+          scope="structure", writes=frozenset({"args.columns", "args.column_specs"}),
+          reads=frozenset({"query", "catalog", "step.tool", "args.*"}),
+          rationale="Senza colonne scelte dalla persona, conserva tutti i campi delle righe ripartite, inclusi cartella e percorsi correlati (S-011 C3)",
           adr="0244"),
     # What the sentence itself says about an argument the planner only has to
     # copy from it (`request_grounding`): declared and tested in that module.
@@ -7443,16 +7452,39 @@ def reset_guard_fire_counts() -> None:
 
 
 def _partition_plan_to_served_form(framework: Framework,
-                                   catalog: Optional[list]) -> Framework:
-    """A plan that works folder by folder, in the one form the runtime serves
-    (`engine.partition_plans`). Fail-open: a plan this cannot read is left as
-    it was written, and is refused or run as any other."""
+                                   catalog: Optional[list], *, query: str = "") -> Framework:
+    """Normalize partition plans; a disproved destination is a terminal refusal."""
     try:
         from .partition_plans import normalize_partition_plan
-        return normalize_partition_plan(framework, catalog)
+        return normalize_partition_plan(framework, catalog, query=query)
+    except PartitionDestinationError as exc:
+        exc.framework = framework
+        raise
     except Exception as exc:  # noqa: BLE001 - a guard never breaks a turn
         log.warning("partition_plan_to_served_form skipped: %r", exc)
         return framework
+
+
+def _partition_destination_boundary(run):
+    """Keep a typed pre-execution refusal outside proposal/recovery retries."""
+    @wraps(run)
+    def guarded(*args, **kwargs):
+        started_at = time.time()
+        try:
+            return run(*args, **kwargs)
+        except PartitionDestinationError as exc:
+            from messages import get as _msg_get
+            framework = getattr(exc, "framework", None)
+            log.warning("[partition_destination] refused step%s: %s",
+                        exc.step, exc.reason)
+            return DispatchResult(
+                final_text=_msg_get("MSG_PARTITION_DESTINATION_UNPROVEN"),
+                final_kind="error", match_source="partition_destination",
+                framework_hash=(compute_framework_hash(framework)
+                                if framework is not None else ""),
+                elapsed_ms=int((time.time() - started_at) * 1000),
+                error_class="wrong_args")
+    return guarded
 
 
 def _apply_deterministic_structure_guards(framework: Framework, intent,
@@ -7887,6 +7919,64 @@ def _what_the_question_adds(steps, idx: int, source, catalog) -> str:
     return "".join(" " + text for text in said if text)
 
 
+_PARTITION_QUESTION_LIMIT = 600  # Kept equal to get_approval by a contract test.
+
+
+def _partition_question_text(template, resolved, history):
+    """Finish a partitioned question only once its counts and files exist.
+
+    This is presentation, after resolution: it changes no gate argument other
+    than prompt. The original total/criterion stay; only whole folder counts
+    may give way to an explicit count of the omitted folders and copies.
+    """
+    import re
+    from partitioned_runs import counts_text
+    from messages import get as message
+
+    reference = re.search(r"\$\{step(\d+)\.@by_partition\}", str(template or ""))
+    if not reference or not isinstance(resolved, str):
+        return resolved
+    source = int(reference.group(1)) - 1
+    if not 0 <= source < len(history):
+        return resolved
+    result = history[source].result
+    if not isinstance(result, dict):
+        return resolved
+    from .executor import _find_list_of_dicts
+
+    rows = next((result[key] for key in ("entries", "results", "items")
+                 if isinstance(result.get(key), list) and result[key]),
+                _find_list_of_dicts(result))
+    unbounded = counts_text(rows)
+    if not unbounded:
+        return resolved
+    fixed = " ".join(resolved.replace(unbounded, "", 1).split())
+
+    # Exactly the successful producer TurnLog will attach. A planned filename,
+    # an unsuccessful write, or a file that does not exist is not a delivery.
+    from agent_runtime import _derive_file_attachments
+
+    for step in reversed(history):
+        produced = step.result if isinstance(step.result, dict) else {}
+        if not produced.get("ok"):
+            continue
+        attachments = _derive_file_attachments(step.tool, produced)
+        if not attachments:
+            continue
+        sheet = next((item for item in attachments if item.get("mime") in {
+            "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            "application/vnd.ms-excel", "application/vnd.oasis.opendocument.spreadsheet",
+            "text/csv",
+        }), None)
+        if sheet:
+            fixed += " " + message("MSG_PARTITION_QUESTION_SHEET", name=sheet["basename"])
+        break
+    fixed = " ".join(fixed.split())
+    bounded = counts_text(rows, max_chars=_PARTITION_QUESTION_LIMIT - len(fixed) - 1,
+                          field_roles=result.get("entry_field_roles"))
+    return fixed + " " + bounded
+
+
 def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
                                threshold: Optional[int] = None,
                                prompt_for: Optional[Callable] = None,
@@ -8001,6 +8091,10 @@ def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
                 prompt += _what_the_question_adds(
                     prefix + [mut_step], len(prefix), mut_step.args.get("from_step")
                     if isinstance(mut_step.args, dict) else None, catalog)
+                if isinstance(guard_count, str) and guard_count.endswith(".@rows}"):
+                    # Count the actual rows in each destination folder; empty
+                    # for a source that does not declare grouped results.
+                    prompt += " " + guard_count[:-len(".@rows}")] + ".@by_partition}"
             gate = StepSpec(tool="get_approval", args={
                 "prompt": prompt,
                 "on_approve": {"tool": "final_answer", "args": {}},
@@ -8392,6 +8486,7 @@ def _recompose_faceless_upload(run: RunResult) -> None:
     run.final_text = ((lead + "\n\n" + tail).strip() if lead else tail)
 
 
+@_partition_destination_boundary
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
               submit_executor_cb: Optional[Callable] = None,
@@ -8489,6 +8584,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     ) -> tuple[Optional[DispatchResult], Optional[RunResult]]:
         """Use the single durable boundary before every inline execution."""
 
+        # Also covers direct technical/upload routes which skip finalization.
+        # A typed refusal escapes to run_turn's terminal boundary, before any
+        # form, durable admission, confirmation or executor can be invoked.
+        framework_to_run = _partition_plan_to_served_form(
+            framework_to_run, catalog, query=query)
+
         prohibited = _prohibited_plan_verbs(framework_to_run, query)
         if prohibited:
             from messages import get as _msg_get
@@ -8583,6 +8684,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 match_source="undo", framework_hash=run.framework_hash,
                 elapsed_ms=int((time.time() - t_start) * 1000),
                 run=run, framework=_undo_fw)
+    except PartitionDestinationError:
+        raise
     except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
         log.warning("undo short-circuit noop (best-effort): %r", ex)
 
@@ -8640,6 +8743,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     framework_hash=run.framework_hash,
                     elapsed_ms=int((time.time() - t_start) * 1000),
                     run=run, framework=_fw)
+        except PartitionDestinationError:
+            raise
         except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
             log.warning("upload-default short-circuit noop (best-effort): %r", ex)
 
@@ -8964,10 +9069,16 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # Fotografia del piano GREZZO (6/8): le guardie mutano sul posto, quindi
     # va presa qui. Serve a sapere che cosa ciascuna guardia ripara davvero —
     # l'observation da sola registra un piano già sano.
-    _framework_raw = framework.to_dict()
-    _proposed_hash = compute_framework_hash(framework)
-    framework = _apply_deterministic_structure_guards(
-        framework, intent, query, catalog)
+    from .planning_repair import guard_with_partition_repair
+    framework, _framework_raw = guard_with_partition_repair(
+        framework,
+        apply_guards=lambda candidate: _apply_deterministic_structure_guards(
+            candidate, intent, query, catalog),
+        proposal_kwargs=dict(
+            query=query, pool=pool_names, excluded_hashes=excluded,
+            lang=lang, catalog=catalog, prior_steps=seed_state or ()),
+        intent=intent, llm_call=llm_call_wise)
+    _proposed_hash = compute_framework_hash(Framework.from_dict(_framework_raw))
 
     # Layer 2: Validator (opt-in)
     if is_validator_enabled():

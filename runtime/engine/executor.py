@@ -1344,16 +1344,31 @@ def _render_embedded(val) -> str:
     return str(val)
 
 
-def _resolve_stepref(value: Any, history: list[StepRun]) -> Any:
-    """Sostituisce ${stepN.field} (1-indexed) e ${steps.N.field} (0-indexed).
-    Full-match preserva tipo nativo (list/dict/int), embedded stringifica.
-    Fallback universal §7.9 su entries projection quando path diretto non
-    risolve. Ricorsivo su nested dict/list.
+def _resolve_stepref(value: Any, history: list[StepRun], schema=None) -> Any:
+    """Resolve native references and embedded text recursively.
+
+    A reference item returning strings expands into an array of strings only
+    when the consumer declares that item type. Literal containers, matrices
+    and callers without a schema retain their existing meaning.
     """
     if isinstance(value, dict):
-        return {k: _resolve_stepref(v, history) for k, v in value.items()}
+        properties = schema.get("properties", {}) if isinstance(schema, dict) else {}
+        return {k: _resolve_stepref(v, history, properties.get(k))
+                for k, v in value.items()}
     if isinstance(value, list):
-        return [_resolve_stepref(x, history) for x in value]
+        item_schema = schema.get("items") if isinstance(schema, dict) else None
+        strings = (isinstance(schema, dict) and schema.get("type") == "array"
+                   and isinstance(item_schema, dict) and item_schema.get("type") == "string")
+        out = []
+        for item in value:
+            resolved = _resolve_stepref(item, history, item_schema)
+            if (strings and isinstance(item, str)
+                    and (_STEPREF_RE.fullmatch(item.strip()) or _STEPSREF_RE.fullmatch(item.strip()))
+                    and isinstance(resolved, list) and all(isinstance(x, str) for x in resolved)):
+                out.extend(resolved)
+            else:
+                out.append(resolved)
+        return out
     if not isinstance(value, str):
         return value
     # Try ${stepN.field} (1-indexed)
@@ -2978,9 +2993,14 @@ class Executor:
                     if _pe:
                         args["entries"] = _pe
                         break
-            args = {k: _resolve_stepref(v, result.steps) for k, v in args.items()}
+            question_template = args.get("prompt") if step.tool == "get_approval" else None
+            args = _resolve_stepref(args, result.steps, self._schema_map.get(step.tool))
             args = _resolve_fillers(args, framework.fillers, self.llm_fast, query)
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
+            if question_template:
+                from .dispatch import _partition_question_text
+                args["prompt"] = _partition_question_text(
+                    question_template, args.get("prompt"), result.steps)
             # Resolver EXEC-ONLY (backend/self_recipient/calendar): dipendono da
             # runtime ctx/creds → override deterministico LLM-invisibile. Registro
             # ArgTransform scope="exec-only" (ADR 0155/0163/0136; razionali

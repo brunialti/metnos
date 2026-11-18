@@ -227,7 +227,11 @@ class MetisProposer:
         # Retry path: serve alternativa cached senza LLM call. SKIP se
         # exclude_tools attivo: la cache NON è filtrata per tool esclusi →
         # ri-servirebbe il framework con get_inputs che il guard sta escludendo.
-        if excluded_hashes and not _excl:
+        recovery = getattr(intent, "_recovery_signal", None)
+        fresh_destination_proposal = (
+            isinstance(recovery, dict)
+            and recovery.get("kind") == "partition_destination")
+        if excluded_hashes and not _excl and not fresh_destination_proposal:
             cached_list = self._cache_get(cache_key)
             if cached_list:
                 for cached in cached_list:

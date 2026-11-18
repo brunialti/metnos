@@ -38,6 +38,7 @@ decides; the paired computer executes.</p>
   <li><a href="#choice">How Metnos chooses where to act</a></li>
   <li><a href="#permissions">Personal access and permission extensions</a></li>
   <li><a href="#invocation">What happens during an action</a></li>
+  <li><a href="#folders">Comparing and grouping by folder</a></li>
   <li><a href="#heartbeat">What a heartbeat is</a></li>
   <li><a href="#sandbox">Isolation on Linux and Windows</a></li>
   <li><a href="#failures">Network failures, duplicates, and revocation</a></li>
@@ -249,6 +250,61 @@ working directory for one invocation is removed after execution.</p>
 <p>The cache does not make the code autonomous. Every new action still requires
 a signed invocation, valid arguments, an acceptable expiry, and the server's
 ordinary controls.</p>
+
+<h2 id="folders">Comparing and grouping by folder</h2>
+
+<p>When a request names a parent folder, “for each folder” determines how to
+present the results and where to act. The search includes the parent, files
+directly inside it, and its subfolders. This applies both on the server and on a
+paired computer.</p>
+
+<p>For example, finding duplicates in <code>Photos</code> and moving the copies
+for each folder requires a comparison across the whole set first. The copies
+are then grouped by their first-level folder. If the request says to keep the
+oldest file, it is selected from the entire group and may be in a different
+folder from its copies.</p>
+
+<p>An explicit request such as “only within each folder”, “each folder on its
+own”, or “without comparing different folders” limits comparisons to individual
+folders. The boundary is read from reviewed Italian and English phrases. A
+negated or unrecognised restriction preserves the search across the whole set.
+The answer states the boundary actually used.</p>
+
+<p>Calls may be distributed across folders when the tool contract and an
+equivalence test guarantee the same result as working on the whole set.
+Comparisons that need to consider duplicates, similar items, or groups together
+run before grouping the results. Counts, errors, and limits of the global result
+remain visible in the folder summary.</p>
+
+<p>The <code>duplicate_to_delete</code> folders are derived from the copies to
+move: a copy in <code>Photos/2019/trip</code> goes into
+<code>Photos/2019/duplicate_to_delete/trip</code>; a copy directly in
+<code>Photos</code> goes into <code>Photos/duplicate_to_delete</code>. The source
+subfolder structure is preserved, and only destinations that receive copies are
+created. The confirmation states the number of rows to move, the breakdown by
+folder, the criterion for choosing the file to keep, and any limits. The spreadsheet has one row per copy,
+with the retained file and the copy's source folder. The usual controls on moves
+and undoing the work still apply.</p>
+
+<p>The question shows only whole folder counts and states how many folders
+and copies do not fit in the text. The requested spreadsheet, created before
+the question, is attached to the same turn and can be opened before answering
+yes. A mapping between copies and destinations that cannot be proved stops
+the plan before execution. The planner can correct the refused destination
+once, preserving every step and all other plan arguments. The correction
+passes through all checks again. If the destination remains uncertain, the rejected plan
+is not executed.</p>
+
+<p>When the request leaves columns open, the spreadsheet preserves every
+field in the partitioned records, including the folder, copy and retained file.
+Columns explicitly selected by the user stay as requested. Provenance must
+also be proved through filtering and sorting.</p>
+
+<p>Producer-declared field roles stay with the data through filtering and
+sorting. Before writing a spreadsheet, a recognized conflict between “copy”
+and “original” is corrected only when one mapping can be proved. An unresolved
+conflict prevents the spreadsheet from being written with misleading headings.
+Unrecognized labels keep the requested mapping.</p>
 
 <h2 id="heartbeat">What a heartbeat is</h2>
 

@@ -18,8 +18,8 @@ revertible = true
 reverse_pattern = ["restore_blob_backup", "restore_trashed_files"]
 
 [description]
-it = "SCOPO: cancella file dopo un backup verificato. PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: directory (-> delete_dirs), symlink o spostamenti (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed e conteggi."
-en = "SCOPO: delete files after a verified backup. PATTERN: delete_files(paths=[\"/tmp/a.tmp\"]). NON: directories (-> delete_dirs), symlinks, or moves (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed, and counts."
+it = "SCOPO: cancella file dopo backup verificato. PATTERN: delete_files(from_step=1) usa path/ID delle righe; oppure paths=[\"/tmp/a\"] espliciti. NON: directory (-> delete_dirs), symlink o spostamenti (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed e conteggi."
+en = "SCOPO: delete files after a verified backup. PATTERN: delete_files(from_step=1) uses row paths/IDs; or explicit paths=[\"/tmp/a\"]. NON: directories (-> delete_dirs), symlinks, or moves (-> move_files). OUT: results=[{path,removed,blob_path,blob_sha256,restore_mode,mode,mtime_ns,atime_ns}], failed, and counts."
 
 [code]
 files  = ["delete_files.py"]

@@ -681,6 +681,8 @@ def invoke(args):
         "entry_field_roles": [
             {"field": "path", "roles": ["path", "duplicate"]},
             {"field": "duplicate_of", "roles": ["path", "origin"]},
+            {"field": "mtime", "roles": ["date", "duplicate"]},
+            {"field": "duplicate_of_mtime", "roles": ["date", "origin"]},
         ],
         "failed": failed,
         "scanned_files": scanned_files,

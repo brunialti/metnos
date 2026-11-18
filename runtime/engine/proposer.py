@@ -266,6 +266,21 @@ def _render_recovery_signal(intent: Intent, lang: str = "it") -> str:
     enter the prompt; no snippets or result URLs are included.
     """
     signal = getattr(intent, "_recovery_signal", None)
+    if isinstance(signal, dict) and signal.get("kind") == "partition_destination":
+        from prompt_loader import get as _prompt_get
+        # The public facts stay structural. Local repair supplies a bounded,
+        # private argument context; never render arbitrary signal fields.
+        facts = {key: signal.get(key) for key in (
+            "step", "tool", "argument", "from_step", "row_source_tool", "reason",
+            "references", "row_fields")}
+        return "\n\n" + _prompt_get(
+            "engine_partition_repair", lang,
+            facts=json.dumps(facts, ensure_ascii=False, separators=(",", ":")),
+            context=json.dumps({key: signal["repair_context"].get(key) for key in
+                               ("argument", "value", "schema", "related_templates")}
+                               if isinstance(signal.get("repair_context"), dict) else {},
+                               ensure_ascii=False, separators=(",", ":")),
+        ).strip()
     if not isinstance(signal, dict) or signal.get("kind") != "search_no_results":
         return ""
     attempted = str(signal.get("attempted_query") or "").replace("\n", " ")[:500]
