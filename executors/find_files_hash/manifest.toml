@@ -53,8 +53,8 @@ type = "string"
 
 [args.properties.group_by]
 type = "string"
+pipeline_role = "normalized_literal"
 enum = ["first_level"]
-runtime_resolved = true
 
 [args.properties.group_by.description]
 it = "Con first_level confronta tutti i file della radice e delle sottocartelle insieme; attribuisce ogni copia alla cartella di primo livello che la contiene, o alla radice per i file diretti. Non restringe i confronti. Usare per raggruppare risultati e azioni per cartella. Si applica a base_path."

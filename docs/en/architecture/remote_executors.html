@@ -276,6 +276,13 @@ Comparisons that need to consider duplicates, similar items, or groups together
 run before grouping the results. Counts, errors, and limits of the global result
 remain visible in the folder summary.</p>
 
+<p>Grouping is an ordinary literal plan argument supplied by the normalizer.
+The manifest role <code>normalized_literal</code> hides such arguments from
+the planner without granting runtime authority. Searches on one folder,
+on separate folders, and on the grouped whole set pass through the same
+long-job admission. The portable suite checks that every long-running tool
+has an admissible contract before installation.</p>
+
 <p>The <code>duplicate_to_delete</code> folders are derived from the copies to
 move: a copy in <code>Photos/2019/trip</code> goes into
 <code>Photos/2019/duplicate_to_delete/trip</code>; a copy directly in

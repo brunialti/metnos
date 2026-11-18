@@ -30,6 +30,18 @@ DEFAULT_EXECUTION_POLICY = {
 }
 
 
+def planner_argument_visible(spec: object) -> bool:
+    """Hide runtime-owned values and literals supplied by plan normalizers.
+
+    ``pipeline_role = normalized_literal`` changes presentation only: the
+    argument remains ordinary, validated and persistable. It grants no runtime
+    authority and supplies no value by itself. All other roles stay visible.
+    """
+    return not (isinstance(spec, dict) and (
+        spec.get("runtime_resolved")
+        or spec.get("pipeline_role") == "normalized_literal"))
+
+
 def standard_state(declaration: object, lifecycle: object = "active") -> str:
     """Return lifecycle/declaration state without claiming semantic proof."""
     if str(lifecycle or "active") in _CANDIDATE_LIFECYCLES:

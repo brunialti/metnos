@@ -14,6 +14,7 @@ hardcoded verso _legacy.
 from __future__ import annotations
 
 import re as _re
+from executor_metadata import planner_argument_visible
 
 # `__TOOLNAME_RULE__` e' un placeholder: `build_framework_grammar(pool)` lo
 # sostituisce con `toolName ::= "\"a\"" | "\"b\"" | ...` (alternation dei nomi
@@ -113,19 +114,19 @@ _FREE_ARGS_RULES = (
 
 
 def _strip_runtime_resolved(schema):
-    """Ritorna una COPIA dello schema senza gli args `runtime_resolved`
-    (proprietà + required): l'LLM non deve emetterli, li inietta il runtime
-    (proposer._render_tool_pool li nasconde per la stessa ragione). None se
-    lo schema non è un dict tipizzato utile."""
+    """Copy the schema without runtime-owned or normalized literal arguments.
+
+    Properties and required agree with the textual and native planner views.
+    None means no useful typed schema, retaining the existing fallback.
+    """
     if not isinstance(schema, dict):
         return None
     props = schema.get("properties")
     if not isinstance(props, dict) or not props:
         return None
-    keep = {k: v for k, v in props.items()
-            if not (isinstance(v, dict) and v.get("runtime_resolved"))}
+    keep = {k: v for k, v in props.items() if planner_argument_visible(v)}
     if not keep:
-        # tutti gli args sono runtime_resolved → nessun arg-intento: args liberi
+        # No intent arguments remain: preserve the existing free-args fallback.
         return None
     req = [r for r in (schema.get("required") or []) if r in keep]
     out = {"type": "object", "properties": keep}

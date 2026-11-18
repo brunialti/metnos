@@ -21,7 +21,7 @@ import logging
 import re
 from typing import Optional, Callable, Protocol, Sequence
 from config import env_int
-from executor_metadata import output_record as _output_record
+from executor_metadata import output_record as _output_record, planner_argument_visible
 from from_step_projection import input_conditions
 
 from .types import Intent, Framework
@@ -142,9 +142,9 @@ def _render_tool_pool(pool: list[str], catalog: Optional[list]) -> str:
         # Every declared argument is shown (15/11/2026): with only the first
         # eight, the text operators of the filter never reached the planner
         # and «starts with» was planned as a value plus a presence flag.
-        props = [p for p in props_map.keys()
-                 if not (isinstance(props_map.get(p), dict)
-                         and props_map[p].get("runtime_resolved"))]
+        # Normalized literals also stay out: their normalizer writes an
+        # ordinary argument, without making it runtime-owned authority.
+        props = [p for p in props_map if planner_argument_visible(props_map[p])]
         bits = [f"- {name}"]
         if desc_short:
             bits.append(f" — {desc_short}")

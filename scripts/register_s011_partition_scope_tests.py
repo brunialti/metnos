@@ -30,6 +30,9 @@ GROUPS = {
         'tests/runtime/engine/test_planner_sees_output_fields.py',
         'tests/runtime/executors/test_executor_metadata.py',
         'tests/runtime/executors/test_executor_catalog_metadata.py',
+        'tests/runtime/engine/test_normalized_literal_arguments.py',
+        'tests/runtime/engine/test_planner_sees_every_argument.py',
+        'tests/runtime/engine/test_tool_schema_slim.py',
     ),
     'cluster': (
         'tests/runtime/engine/test_engine_core.py',
@@ -38,6 +41,8 @@ GROUPS = {
         'tests/runtime/infra/test_undo_request_unit.py',
         'tests/runtime/durable_workloads/test_partitioned_invocation.py',
         'tests/runtime/test_lre_submission_partitions.py',
+        'tests/runtime/durable_workloads/test_long_tools_have_a_home.py',
+        'tests/runtime/infra/test_s011_long_admission.py',
         'tests/runtime/executors/test_files_inside_a_partition.py',
         'tests/runtime/executors/test_find_files_hash.py',
         'tests/runtime/engine/test_request_grounding.py',

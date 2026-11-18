@@ -1279,16 +1279,17 @@ def planner_facing_schema(schema):
         new_required = required
 
     # Gli argomenti runtime-owned non appartengono alla superficie del modello.
-    # Il filtro deve valere anche nel percorso tool-use nativo, non soltanto
-    # nel proposer testuale; la dichiarazione firmata e la validazione runtime
-    # restano invariate.
-    runtime_owned = {
+    # Keep runtime-owned and normalized arguments out of native tool use too;
+    # the signed declaration and runtime validation remain unchanged.
+    from executor_metadata import planner_argument_visible
+
+    hidden = {
         name for name, spec in props.items()
-        if isinstance(spec, dict) and spec.get("runtime_resolved")
+        if not planner_argument_visible(spec)
     }
-    for name in runtime_owned:
+    for name in hidden:
         props.pop(name, None)
-    new_required = [name for name in new_required if name not in runtime_owned]
+    new_required = [name for name in new_required if name not in hidden]
 
     out = dict(schema)
     out["properties"] = props
