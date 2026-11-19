@@ -7944,7 +7944,7 @@ def _partition_question_text(template, resolved, history, *, fixed_note=""):
     rows = next((result[key] for key in ("entries", "results", "items")
                  if isinstance(result.get(key), list) and result[key]),
                 _find_list_of_dicts(result))
-    unbounded = counts_text(rows)
+    unbounded = counts_text(rows, excluded_files=result.get("excluded_files"))
     if not unbounded and not fixed_note:
         return resolved
     fixed = " ".join((resolved.replace(unbounded, "", 1) if unbounded else resolved).split())
@@ -7974,11 +7974,11 @@ def _partition_question_text(template, resolved, history, *, fixed_note=""):
     if len(fixed) > _PARTITION_QUESTION_LIMIT:
         raise ValueError(message("MSG_MUTATION_QUESTION_TOO_LONG"))
     try:
-        bounded = counts_text(rows, max_chars=_PARTITION_QUESTION_LIMIT - len(fixed) - 1,
+        bounded = counts_text(rows, max_chars=_PARTITION_QUESTION_LIMIT - len(fixed) - 2, excluded_files=result.get("excluded_files"),
                               field_roles=result.get("entry_field_roles"))
     except ValueError:
         raise ValueError(message("MSG_MUTATION_QUESTION_TOO_LONG")) from None
-    return " ".join(part for part in (fixed, bounded) if part)
+    return "\n\n".join(part for part in (fixed, bounded) if part)
 
 
 def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,

@@ -4625,6 +4625,7 @@ class TurnLog:
             # fallimenti mutanti reali e non devono sparire dietro il successo
             # di uno step precedente della stessa pipeline.
             if (_is_mut_tool and res.get("ok") is False
+                    and res.get("error_code") != "unasked_removal"
                     and not res.get("failed") and not res.get("not_found")
                     and (res.get("error") or res.get("error_code"))):
                 top_level_failures.append({
@@ -7638,7 +7639,7 @@ def _run_engine(
     # mancanti → Validator falsa `tool_unknown` (§11, fix wiring B).
     catalog_v2 = _engine_v2_catalog_with_builtins(catalog)
 
-    def _partition_children(policy):
+    def _partition_children(policy, *, excluded_files):
         # «Every child of» a parent is listed by the catalog's own tool, where
         # the files are and under the guard a step naming that parent meets.
         import partitioned_runs
@@ -7655,7 +7656,7 @@ def _run_engine(
                 source_request_id=source_request_id,
                 request_text=user_query_raw or query)
 
-        return partitioned_runs.children_lister(policy, _call)
+        return partitioned_runs.children_lister(policy, _call, excluded_files=excluded_files)
 
     def _admit_long_work(framework):
         import lre_answers

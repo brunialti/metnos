@@ -250,7 +250,8 @@ def move_rows(args):
             rows.append({key: entry[key] for key in ("src", "refused", "error") if key in entry})
         elif isinstance(entry.get("src"), str) and isinstance(entry.get("dst"), str):
             rows.append({"src": permissions.normalize_path(entry["src"], "posix"),
-                         "dst": permissions.normalize_path(entry["dst"], "posix")})
+                         "dst": permissions.normalize_path(entry["dst"], "posix"),
+                         **{key: entry[key] for key in ("sha256", "size", "mtime") if key in entry}})
         else:
             return None
     return rows
@@ -290,7 +291,7 @@ def _settled_moves(owner, args):
     entries, template = args.get("entries"), args.get("dst_template")
     if not isinstance(entries, list) or not isinstance(template, str) or not template:
         return args
-    if template == _SETTLED_MOVE and all(isinstance(entry, dict) and set(entry) <= {"src", "dst", "refused", "error"}
+    if template == _SETTLED_MOVE and all(isinstance(entry, dict) and set(entry) <= {"src", "dst", "refused", "error", "sha256", "size", "mtime"}
                                          for entry in entries):
         return args
     from pathlib import Path
@@ -316,7 +317,8 @@ def _settled_moves(owner, args):
             rows.append({"src": str(src), "refused": "ERR_TEMPLATE_FAIL",
                          "error": _msg("ERR_TEMPLATE_FAIL", stage="placeholder", reason=str(exc))})
             continue
-        rows.append({"src": str(src), "dst": place(owner, destination)})
+        rows.append({"src": str(src), "dst": place(owner, destination),
+                     **{key: entry[key] for key in ("sha256", "size", "mtime") if key in entry}})
     rest = {key: value for key, value in args.items() if key not in {"entries", "dst_template", "from_step"}}
     return {**rest, "entries": rows, "dst_template": _SETTLED_MOVE}
 
@@ -1454,7 +1456,7 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, autho
                     except (OSError, ValueError, TypeError, LookupError):
                         uncertain = True
                 failed.append(_failure(operation, index, spec, exc))
-                if uncertain:
+                if uncertain and not args.get("_row_observe"):
                     failed[-1]["_unsure"] = True
                     failed.extend(_failure(operation, later, other, exc)
                                   for later, other in enumerate(specs[index + 1:], index + 1))
@@ -1538,7 +1540,8 @@ def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, tr
             if _undo_key(i, folder) not in completed]
     deadline = time.monotonic() + max(0, timeout_s)
     done, failed = [], []
-    left = {"time": 0, "refused": 0, "uncertain": 0}
+    left = {"time": 0, "refused": 0, "uncertain":
+            len(results.get("failed") or []) if pattern == "swap_src_dst" and context["args"].get("_row_observe") else 0}
     cost = 0.0
     for position, (index, entry, folder, identity) in enumerate(todo):
         remaining = deadline - time.monotonic()

@@ -399,7 +399,7 @@ def _direct_or_partitioned(executor, args, target_device, list_children):
     """The durable plan of one long step: one unit, or one unit for each
     partition when the tool declares a partition and the step lists several.
 
-    Returns the plan, its inventory and the stage that runs the tool."""
+    Returns the plan, its inventory, tool stage and observed excluded files."""
     import partitioned_runs
     from durable_workloads.partitioned_invocation import (
         build_partitioned_candidate, unit_concurrency,
@@ -408,20 +408,21 @@ def _direct_or_partitioned(executor, args, target_device, list_children):
     policy = row_policy(executor)
     if policy is not None:
         candidate, inventory = build_direct_candidate(executor, args, target_device, policy=policy)
-        return candidate, inventory, candidate["stages"][-1]
+        return candidate, inventory, candidate["stages"][-1], {}
     policy = partitioned_runs.policy_of(executor)
+    excluded_files = {}
     resolution = (
         partitioned_runs.resolve(policy, args, list_children=(
-            list_children(policy) if list_children is not None else None))
+            list_children(policy, excluded_files=excluded_files) if list_children is not None else None))
         if policy is not None else None)
     if resolution is None:
         candidate, inventory = build_direct_candidate(executor, args, target_device)
-        return candidate, inventory, candidate["stages"][1]
+        return candidate, inventory, candidate["stages"][1], {}
     candidate, inventory = build_partitioned_candidate(
         executor, policy, resolution.base_args, resolution.partitions,
         target_device,
         max_concurrency=unit_concurrency(executor, len(resolution.partitions)))
-    return candidate, inventory, candidate["stages"][2]
+    return candidate, inventory, candidate["stages"][2], excluded_files
 
 
 def submit_rows(executor, args, context, framework, replay, query):
@@ -553,7 +554,7 @@ def submit_automatic_lre(
                 adapter, executor, args, target_device,
                 owner_user_id=owner_user_id, request_key=request_key,
             )
-        candidate, inventory, tool_stage = _direct_or_partitioned(
+        candidate, inventory, tool_stage, excluded_files = _direct_or_partitioned(
             executor, args, target_device, list_children)
         args_digest = digest_json(
             "lre-direct-arguments",
@@ -586,7 +587,7 @@ def submit_automatic_lre(
                 redacted_request=redacted,
                 admission_boundary=_admission_boundary,
             )
-            return _receipt(store, result)
+            return {**_receipt(store, result), "_partition_excluded": excluded_files}
     except DirectInvocationUnsupported as exc:
         return contract_refusal_error(long_steps[0][2], exc)
     except IdempotencyConflictError:

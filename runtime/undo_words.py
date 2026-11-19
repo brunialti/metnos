@@ -121,7 +121,7 @@ def tally(observation: dict, lang: str | None = None) -> tuple[dict, list[str]]:
             if not done and isinstance(result.get("ok_count"), int) and result["ok_count"] > 0:
                 counts[_ITEMS] += result["ok_count"]   # a reverse that only counts
             remaining = result.get("_left_counts") or {}
-            if remaining.get("time") or sum(remaining.values()) > _LEFT_SHOWN:
+            if remaining.get("time") or remaining.get("uncertain") or sum(remaining.values()) > _LEFT_SHOWN:
                 for cause, count in remaining.items():
                     if count:
                         left.append(_say("MSG_UNDO_LEFT_" + cause.upper(), lang, count=count))
@@ -148,7 +148,7 @@ def describe(observation: dict, lang: str | None = None) -> str:
     stayed = "; ".join(left[:_LEFT_SHOWN])
     if len(left) > _LEFT_SHOWN:
         stayed += " " + _say("MSG_UNDO_LEFT_MORE", lang, count=len(left) - _LEFT_SHOWN)
-    resumable = any((stage.get("result") or {}).get("_left_counts", {}).get("time")
+    resumable = any(any((stage.get("result") or {}).get("_left_counts", {}).get(key) for key in ("time", "uncertain"))
                     for detail in _rows(observation.get("details"))
                     for stage in _rows(detail.get("stages")))
     again = " " + _say("MSG_UNDO_CONTINUE", lang) if resumable else ""

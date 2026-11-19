@@ -409,6 +409,7 @@ _LISTING = {
 
 def children_lister(policy: Mapping[str, Any],
                     call_tool: Callable[[str, dict], object],
+                    *, excluded_files=None,
                     ) -> Callable[[str], list[str]]:
     """The ``list_children`` of ``resolve``, served by a catalog tool.
 
@@ -440,6 +441,8 @@ def children_lister(policy: Mapping[str, Any],
             # Children the listing could not read would be folders nobody
             # works on and nobody names.
             raise PartitionRefusal("ERR_PARTITION_LIST_INCOMPLETE", parent=parent)
+        if excluded_files is not None:
+            excluded_files[parent] = sum(isinstance(row, Mapping) and row.get("type") == "file" for row in rows)
         return [row["path"] for row in rows
                 if isinstance(row, Mapping) and row.get("type") in markers
                 and isinstance(row.get("path"), str)]
@@ -486,6 +489,10 @@ def _part(policy: Mapping[str, Any], partition: str, observation: object) -> _Pa
         answer.get("ok") is False and not own_error and bool(lost))
 
     summary: dict[str, Any] = {PARTITION_FIELD: partition, "ok": worked}
+    context = answer.get("_filesystem")
+    if isinstance(context, Mapping):
+        from filesystem_permissions import served_operation
+        summary["operation"] = served_operation(context["manifest"], context["args"])
     summary.update({key: answer[key] for key in _ERROR_KEYS if answer.get(key) not in (None, "")})
     if _whole_number(answer.get("ok_count")):
         summary["ok"] = answer.get("ok") is True and not lost and not answer.get("fail_count")
@@ -707,6 +714,8 @@ def notice(result: object) -> str:
     from messages import get as message
 
     names = labels([line[PARTITION_FIELD] for line in lines])
+    lines.sort(key=lambda line: names[line[PARTITION_FIELD]].casefold())
+    moving = all(line.get("operation") == "move" for line in lines)
 
     def outcome(line: Mapping[str, Any]) -> str:
         if line.get("ok") is not True:
@@ -727,12 +736,16 @@ def notice(result: object) -> str:
         return str(text).replace("|", "\\|").replace("\n", " ")
 
     table = ["| %s | %s | %s |" % (
-        message("MSG_PARTITION_COL_NAME"), message("MSG_PARTITION_COL_COUNT"),
-        message("MSG_PARTITION_COL_OUTCOME")), "|---|---|---|"]
+        message("MSG_PARTITION_COL_NAME"), message("MSG_PARTITION_COL_MOVED" if moving else "MSG_PARTITION_COL_COUNT"),
+        message("MSG_PARTITION_COL_NOT_MOVED" if moving else "MSG_PARTITION_COL_OUTCOME")), "|---|---|---|"]
     table += ["| %s | %s | %s |" % (
         cell(names[line[PARTITION_FIELD]]),
         line.get("count", 0) if line.get("ok") is True else "–",
-        cell(outcome(line))) for line in lines]
+        line.get("fail_count", 0) if moving else cell(outcome(line))) for line in lines]
+    table[2:2] = [message("MSG_PARTITION_PARENT_ROW", name=cell(labels([parent])[parent]), n=count)
+                  for parent, count in sorted((result.get("excluded_files") or {}).items())]
+    table.append("| %s | %s | %s |" % (message("MSG_PARTITION_TOTAL"), sum(line.get("count", 0) for line in lines),
+                 sum(line.get("fail_count", 0) for line in lines) + sum((result.get("excluded_files") or {}).values()) if moving else ""))
     head = message(
         "MSG_PARTITION_SEPARATE" if result["partition_union"] == "separate"
         else "MSG_PARTITION_EXACT", total=len(lines))
@@ -772,12 +785,12 @@ def with_partial_reason(result: dict) -> dict:
     return result
 
 
-def counts_text(rows: object, *, max_chars: int | None = None, field_roles: object = None) -> str:
-    """How many of these rows belong to each partition, in one sentence.
+def counts_text(rows: object, *, max_chars: int | None = None, field_roles: object = None, excluded_files=None) -> str:
+    """How many of these rows belong to each partition, in the existing table.
 
     For a question that must say where something is about to happen (a
     consent before moving files folder by folder). Empty when the rows do not
-    carry a partition. A budget keeps whole folders in their original order,
+    carry a partition. A budget keeps whole folders in name order,
     accounting for both folders and copies omitted from the text."""
     counts: dict[str, int] = {}
     for row in rows if isinstance(rows, (list, tuple)) else ():
@@ -788,8 +801,15 @@ def counts_text(rows: object, *, max_chars: int | None = None, field_roles: obje
     from messages import get as message
 
     names = labels(list(counts))
-    tokens = [f"{names[partition]}: {count}" for partition, count in counts.items()]
-    full = message("MSG_PARTITION_COUNTS", items=" · ".join(tokens))
+    counts = dict(sorted(counts.items(), key=lambda item: names[item[0]].casefold()))
+    tokens = ["| %s | %s | |" % (names[partition].replace("|", "\\|").replace("\n", " "), count)
+              for partition, count in counts.items()]
+    parents = [message("MSG_PARTITION_PARENT_ROW", name=labels([parent])[parent].replace("|", "\\|").replace("\n", " "), n=count)
+               for parent, count in sorted((excluded_files or {}).items())]
+    def table(tokens):
+        return message("MSG_PARTITION_COUNTS", items="\n".join(parents + tokens), total=sum(counts.values()),
+                       excluded=sum((excluded_files or {}).values()))
+    full = table(tokens)
     if max_chars is None or len(full) <= max_chars:
         return full
     roles = [set(item["roles"]) for item in field_roles if isinstance(item, Mapping)
@@ -804,8 +824,7 @@ def counts_text(rows: object, *, max_chars: int | None = None, field_roles: obje
     for shown in range(len(tokens) - 1, -1, -1):
         omitted_copies += quantities[shown]
         closing = message(closing_key, folders=len(tokens) - shown, items=omitted_copies)
-        prefix = message("MSG_PARTITION_COUNTS", items=" · ".join(tokens[:shown])) if shown else ""
-        candidate = " ".join(part for part in (prefix, closing) if part)
+        candidate = table(tokens[:shown]) + "\n\n" + closing if shown or parents else closing
         if len(candidate) <= max_chars:
             return candidate
     raise ValueError("The folder-count budget cannot hold even the omission totals")

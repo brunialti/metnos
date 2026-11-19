@@ -378,6 +378,13 @@ quella sola cartella, con i suoi controlli e il suo tempo massimo.</p>
  <li><strong>Limiti.</strong> Le cartelle non possono stare una dentro l'altra e in una richiesta sono al massimo 256: altrimenti il lavoro non parte e la risposta dice perché. I file che stanno direttamente nella cartella madre, fuori da ogni sottocartella, non sono compresi. Le unità vengono eseguite una dopo l'altra.</li>
 </ul>
 
+<p>Domanda e risposta mostrano le cartelle in ordine di nome, con una riga
+per la madre e il totale. Le intestazioni distinguono trovati, spostati e
+non spostati; la madre indica quanti file diretti sono rimasti fuori.
+All'arresto il messaggio dà i conteggi già completati e indica «annulla».
+Un passo di rimozione successivo non richiesto viene segnalato senza
+presentare come fallita la modifica approvata già riuscita.</p>
+
 <h2 id="executor">Executor locali, remoti e intelligenti</h2>
 
 <p>Ogni fase dichiara <em>dove</em> e <em>come</em> può essere eseguita. Un

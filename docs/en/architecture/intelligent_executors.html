@@ -112,6 +112,9 @@
  by undo type and check current permissions; uncertain effects need attention
  and are never repeated or reversed by similarity. Undo stops the job first,
  covers the whole request and keeps its remainder if its time runs out.
+ After an interruption it reverses recognized effects and retains uncertain
+ ones for another attempt. Moves reuse the approved list's digest when the
+ file's size and modification time match.
  <a href="../system/lre.html#rest-of-request">Continuation and undo</a>.</p>
 
  <div class="note"><strong>The loop's elapsed-time limit does not

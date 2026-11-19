@@ -118,20 +118,24 @@ TRANSLATIONS = {
         'The results of this folder were not read: all together they exceed the largest size of an answer.'),
     # Beside the answer: what was done, and one line for each folder.
     'MSG_PARTITION_SEPARATE': (
-        'Ho lavorato su {total} cartelle, ciascuna per conto suo: fra cartelle diverse non ho cercato.',
-        'I worked on {total} folders, each on its own: I did not look across different folders.'),
+        'Ricerca in {total} cartelle, ciascuna per conto suo: fra cartelle diverse non ho cercato.',
+        'Search in {total} folders, each on its own: I did not look across different folders.'),
     'MSG_PARTITION_EXACT': (
-        'Ho lavorato su {total} cartelle.',
-        'I worked on {total} folders.'),
+        'Risultati per {total} cartelle.',
+        'Results for {total} folders.'),
     'MSG_PARTITION_TOTALS_MINIMUM': (
         'I totali sono un minimo: non tutte le cartelle sono complete.',
         'The totals are a minimum: not every folder is complete.'),
     'MSG_PARTITION_COL_NAME': ('Cartella', 'Folder'),
-    'MSG_PARTITION_COL_COUNT': ('Risultati', 'Results'),
-    'MSG_PARTITION_COL_OUTCOME': ('Esito', 'Outcome'),
-    'MSG_PARTITION_DONE': ('fatto', 'done'),
+    'MSG_PARTITION_COL_COUNT': ('Trovati', 'Found'),
+    'MSG_PARTITION_COL_OUTCOME': ('Esito ricerca', 'Search outcome'),
+    'MSG_PARTITION_COL_MOVED': ('Spostati', 'Moved'),
+    'MSG_PARTITION_COL_NOT_MOVED': ('Non spostati', 'Not moved'),
+    'MSG_PARTITION_TOTAL': ('Totale', 'Total'),
+    'MSG_PARTITION_PARENT_ROW': ('| {name} (madre) | 0 | {n} file fuori |', '| {name} (parent) | 0 | {n} files excluded |'),
+    'MSG_PARTITION_DONE': ('ricerca completata', 'search completed'),
     'MSG_PARTITION_DONE_LOST': (
-        'fatto, {n} elementi non riusciti', 'done, {n} items not done'),
+        'ricerca completata, {n} elementi non riusciti', 'search completed, {n} items not done'),
     'MSG_PARTITION_CUT': ('primi {used} di {total}', 'first {used} of {total}'),
     'MSG_PARTITION_CUT_UNKNOWN': (
         'primi {used}, ce ne sono altri', 'first {used}, there are more'),
@@ -144,7 +148,8 @@ TRANSLATIONS = {
         'Elementi non riusciti dentro le cartelle: {n}.',
         'Items not done inside the folders: {n}.'),
     # In a question before moving or deleting: where the items are.
-    'MSG_PARTITION_COUNTS': ('Per cartella: {items}.', 'By folder: {items}.'),
+    'MSG_PARTITION_COUNTS': ('| Cartella | Trovati | Fuori |\n|---|---|---|\n{items}\n| Totale | {total} | {excluded} |',
+                             '| Folder | Found | Excluded |\n|---|---|---|\n{items}\n| Total | {total} | {excluded} |'),
     'MSG_PARTITION_COUNTS_MORE': (
         'Per cartella: {items} e altre {more} cartelle.',
         'By folder: {items} and {more} more folders.'),

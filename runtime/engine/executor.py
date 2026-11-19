@@ -1235,8 +1235,8 @@ def _resolve_stepref_with_fallback(result: dict, path: str):
         for k in ("entries", "results", "items"):
             v = result.get(k)
             if isinstance(v, list) and v:
-                return counts_text(v)
-        return counts_text(_find_list_of_dicts(result))
+                return counts_text(v, excluded_files=result.get("excluded_files"))
+        return counts_text(_find_list_of_dicts(result), excluded_files=result.get("excluded_files"))
     if path == "@brief":
         # Riassunto BREVE per-item della lista prodotta (id + titolo), per i
         # prompt che devono dire COSA si sta per fare (es. consent-gate: «#53

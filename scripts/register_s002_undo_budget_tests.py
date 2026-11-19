@@ -16,6 +16,8 @@ GROUPS = {
         "tests/runtime/infra/test_s013_end_to_end.py",
         "tests/runtime/infra/test_s013_rimandi.py",
         "tests/runtime/infra/test_s013_live_rimandi.py",
+        "tests/runtime/infra/test_s013_timeout_recovery.py",
+        "tests/runtime/infra/test_s013_presentation.py",
         "tests/portable/test_s013_retention_progress.py",
         "tests/runtime/executors/test_independent_rows_equivalence.py",
         "tests/runtime/infra/test_s002_list_outcomes.py",

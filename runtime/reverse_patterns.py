@@ -82,7 +82,15 @@ def recognize_file(broker, pattern, item, evidence=None):
             row["absent_dirs"].append(parent)
             parent = os.path.dirname(parent)
         if moving:
-            row["sha256"] = digest(src)
+            if all(key in item for key in ("sha256", "size", "mtime")):
+                fingerprint = item["sha256"]
+                if (item["size"] != before[3] or item["mtime"] != before[2] / 1e9
+                        or not isinstance(fingerprint, str) or len(fingerprint) != 64
+                        or any(c not in "0123456789abcdef" for c in fingerprint)):
+                    raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                row["sha256"] = fingerprint
+            else:
+                row["sha256"] = digest(src)
         elif not directory:
             with io.parent(src) as (parent, name):
                 fd = io.open_file(parent, name)
@@ -102,7 +110,8 @@ def recognize_file(broker, pattern, item, evidence=None):
         current = identity(src)
     if moving:
         destination = identity(item["dst"])
-        if current is None and destination == before:
+        if current is None and (destination == before or destination is not None
+                and destination[3] == before[3] and digest(item["dst"]) == evidence["sha256"]):
             value = {"src": src, "dst": item["dst"], "moved": True, "_identity": destination,
                      "_sha256": evidence["sha256"], "_reconciled": True}
         elif current == before and destination is None:

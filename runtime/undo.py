@@ -183,6 +183,34 @@ def remember_rows(workload_id, owner, executor, context):
         channel=context["channel"], request_turn_id=request_of(context["turn_id"]))
 
 
+def observe_rows(row, *, timeout_s=30):
+    """Recognize the recorded effects through the ordinary filesystem broker."""
+    import server_filesystem as files
+    proof, owner = row["plan"], row["plan"]["owner"]
+    args = files.settled(owner, files.permissions.served_operation(proof["filesystem"], row["args"]), row["args"])
+    if files.move_rows(args) is not None:
+        args["entries"] = [proof["rows"].get(str(i), {}).get("item", item)
+                           for i, item in enumerate(args["entries"])]
+    return files.execute(owner, proof["filesystem"], {**args,
+        "_row_journal": proof["rows"], "_row_observe": True,
+        "_row_pattern": next(iter(proof["rows"].values()))["pattern"]}, row["turn_id"], timeout_s=timeout_s)
+
+
+def stopped_row_counts(job):
+    """Counts for a stopped job, without cancelling or closing its operations."""
+    journal, done, uncertain = UndoLog(), 0, 0
+    with journal.path.with_name(journal.path.name + "." + job + ".lock").open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        for op in journal._aggregate_ops().values():
+            row = op.get("pending", {})
+            if row.get("plan", {}).get("workload_id") != job or not row["plan"].get("rows") or "undone" in op:
+                continue
+            result = op["done"]["results"] if op.get("done", {}).get("results", {}).get("ok") else observe_rows(row)
+            done += result.get("ok_count", 0)
+            uncertain += result.get("fail_count", 0)
+    return done, uncertain
+
+
 def stop_rows(journal, pending):
     """Cancel before draining the same lock every mutating unit must hold."""
     from durable_workloads.storage import DurableWorkloadStore
@@ -206,17 +234,12 @@ def stop_rows(journal, pending):
             for op in journal._aggregate_ops().values():
                 row = op.get("pending", {})
                 proof = row.get("plan", {})
-                if proof.get("workload_id") != job or any(key in op for key in ("done", "closed", "undone")):
+                if (proof.get("workload_id") != job or any(key in op for key in ("closed", "undone"))
+                        or "done" in op and op["done"]["results"].get("ok")):
                     continue
                 if proof.get("rows"):
-                    result = files.execute(owner, proof["filesystem"], {**row["args"],
-                        "_row_journal": proof["rows"], "_row_observe": True,
-                        "_row_pattern": next(iter(proof["rows"].values()))["pattern"]}, row["turn_id"],
-                        timeout_s=files.undo_seconds_remaining())
-                    if not result.get("ok"):
-                        raise RuntimeError(get("ERR_UNDO_ROWS_UNCERTAIN", done=result.get("ok_count", 0),
-                            uncertain=result.get("fail_count", len(proof["rows"]))))
-                    journal.append_completion(row["op_id"], result)
+                    result = observe_rows(row, timeout_s=files.undo_seconds_remaining())
+                    journal.append_done(row["op_id"], result)
                 else:
                     journal.append_closed(row["op_id"], "no_effect")
 
@@ -445,7 +468,7 @@ class UndoLog:
         for pending, done in same_turn:
             progress = ops[pending["op_id"]].get("undo_progress", {})
             results = done["results"]
-            if progress.get("completed"):
+            if progress.get("completed") and not results.get("_filesystem", {}).get("args", {}).get("_row_observe"):
                 results = {**results, "_undo_completed": progress["completed"]}
             records.append({**pending, "results": results})
         if not budget_started and any((row.get("results") or {}).get("_filesystem") for row in records):

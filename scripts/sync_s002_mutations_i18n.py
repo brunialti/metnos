@@ -8,6 +8,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from scripts import sync_undo_request_i18n as seed
 
 TRANSLATIONS = {
+    "MSG_LRE_STOPPED_ROWS": (
+        "Operazioni sui file già completate: {done}. Effetti da verificare: {uncertain}. Scrivi «annulla» per riportare i file riconosciuti al loro posto.",
+        "File operations already completed: {done}. Effects needing verification: {uncertain}. Say “undo” to return the recognized files to their original location."),
     "MSG_ROWS_NOT_PREPARED": ("Trovati {count} elementi. Non è stato possibile preparare l’elenco per questa operazione: nessuna conferma richiesta e nessuna modifica eseguita.", "Found {count} items. The list could not be prepared for this operation: no confirmation was requested and no changes were made."),
     "ERR_ROWS_NOT_ADMISSIBLE": ("Non è stato possibile registrare questa operazione sull’elenco. Nessuna modifica eseguita.", "This operation on the list could not be registered. No changes were made."),
     "MSG_ORCH_CONTINUATION_FAILED": ("Non è stato possibile proseguire la richiesta.", "The request could not be continued."),

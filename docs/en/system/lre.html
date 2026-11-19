@@ -366,6 +366,13 @@ with its own checks and its own time limit.</p>
  <li><strong>Limits.</strong> Folders cannot be one inside another and a request takes 256 at most: otherwise the job does not start and the answer says why. Files that sit directly in the parent folder, outside every subfolder, are not included. Units run one after the other.</li>
 </ul>
 
+<p>The question and answer list folders by name, with a parent row and a
+total. Headers distinguish found, moved and not moved; the parent row
+states how many direct files were excluded. A stopped job reports completed
+counts and tells you to say “undo”. A subsequent removal that was not
+requested is reported without marking the successful approved change as
+failed.</p>
+
 <h2 id="executors">Local, remote, and intelligent executors</h2>
 
 <p>Each stage declares <em>where</em> and <em>how</em> it may run. A local executor

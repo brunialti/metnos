@@ -201,7 +201,8 @@ def remember_request(
         workload_id, owner_user_id=owner_user_id,
         channel=channel, actor=actor, conversation_id=conversation_id,
         turn_id=turn_id, query=query, tool=tool,
-        args=dict(getattr(handed[0], "args", None) or {}),
+        args={**dict(getattr(handed[0], "args", None) or {}),
+              "_partition_excluded": admitted.pop("_partition_excluded", {})},
         final_template=str(getattr(framework, "final_message", "") or ""),
         target_device=target_device, intent_verb=intent_verb,
         expects_answer=plain_tool,
@@ -604,6 +605,7 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
         if forbidden:
             # The question could not be put before this step: it does not run.
             return {"ok": False, "error_class": "continuation_failed",
+                    "error_code": "unasked_removal",
                     "error": message("MSG_LRE_REST_NEEDS_YOU")}
         if tool == "get_approval":
             if consent_used:
@@ -706,10 +708,13 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
         if found is not None:
             text = "\n\n".join(part for part in (
                 _answer_text({**entry, "final_template": "${step1.@table}"}, found),
-                message("MSG_LRE_REST_FAILED"), text) if part)
+                message("MSG_LRE_REST_NOT_DONE" if failed is not None and failed.result.get("error_code") == "unasked_removal"
+                        else "MSG_LRE_REST_FAILED"), text) if part)
     from durable_workloads.direct_invocation import row_policy
     tool = next((tool for tool in catalog if tool.name == entry["tool"] and row_policy(tool)), None)
     if tool and tool.execution_policy["effect"] != "read_only" and type(result.get("ok_count")) is int:
+        if result.get("ok") and kind == "error" and failed is not None and failed.result.get("error_code") == "unasked_removal":
+            kind = "answer"
         receipt = message("MSG_LIST_PARTIAL", done=result["ok_count"],
                           total=result["ok_count"] + result.get("fail_count", 0))
         text = "\n\n".join((receipt, text)) if not text.startswith(receipt) else text
@@ -803,10 +808,13 @@ def _job_results(entry: dict, store) -> list[dict]:
     """What the long step of a request gave: one result when the job has an
     answer. A tool asked for several partitions committed one result for
     each, joined here into the one the step would have given in a turn."""
-    args = json.loads(entry["args_json"] or "{}")
+    args = json.loads(entry.get("args_json") or "{}")
     joined = _joined_partitions(entry, store)
     if joined is not None:
-        return [joined]
+        excluded = args.get("_partition_excluded") or next((value["excluded_files"]
+            for _, value in json.loads(entry.get("plan_json") or "{}").get("_rows_replay", [])
+            if value.get("excluded_files")), {})
+        return [{**joined, "excluded_files": excluded}]
     return store.committed_tool_results(
         entry["owner_user_id"], entry["workload_id"], tool=entry["tool"])
 
@@ -1004,6 +1012,11 @@ def _tell_outcome(entry: dict, store, state) -> str:
         text = "\n\n".join(part for part in (
             text, message("MSG_LRE_REST_NOT_DONE")) if part)
     stopped = state in (WorkloadState.NEEDS_ATTENTION, WorkloadState.FAILED)
+    import undo
+    if stopped and undo.request_of_workload(entry["workload_id"]):
+        from messages import get as message
+        done, uncertain = undo.stopped_row_counts(entry["workload_id"])
+        text += "\n\n" + message("MSG_LRE_STOPPED_ROWS", done=done, uncertain=uncertain)
     turn = _write_turn(entry, text=text, kind="error" if stopped else "answer",
                        result=None)
     # In attention the job may still be resumed and end: the answer is due.
