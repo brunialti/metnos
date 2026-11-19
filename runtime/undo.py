@@ -23,6 +23,8 @@ volo); listato da `find_crashed`. Nessun auto-rollback.
 """
 import fcntl
 import json
+from contextvars import ContextVar
+from contextlib import contextmanager
 import os
 import threading
 import time
@@ -116,9 +118,102 @@ def execution_undo_outcome(results: object, *, contract: str = "") -> str:
     return outcome if outcome in UNDO_OUTCOMES else "invalid"
 
 
+_ROWS = ContextVar("undo_rows", default=None)
+
+
+@contextmanager
+def row_execution(context, executor, args, store):
+    """One job lock is also the barrier used before reversing its request."""
+    import hashlib
+    import lre_answers
+    journal = UndoLog()
+    lock = journal.path.with_name(journal.path.name + "." + context.workload_id + ".lock")
+    with lock.open("a") as held:
+        fcntl.flock(held, fcntl.LOCK_EX)
+        if store.get_workload(context.owner_user_id, context.workload_id).state.value in {"cancel_requested", "cancelled"}:
+            raise RuntimeError("durable job cancelled")
+        op_id = hashlib.sha256((context.workload_id + ":" + context.unit_key).encode()).hexdigest()
+        old = journal._aggregate_ops().get(op_id, {}).get("pending")
+        origin = lre_answers.origin(context.workload_id, owner_user_id=context.owner_user_id)
+        if not origin:
+            raise ValueError("durable request origin missing")
+        pending = old or {"op_id": op_id, "turn_id": "durable-" + context.unit_key,
+            "executor": executor.name, "args": args, "actor": origin.get("actor", context.owner_user_id),
+            "channel": origin.get("channel", "durable_workload"),
+            "request_turn_id": request_of(origin["turn_id"]) or origin["turn_id"],
+            "plan": {"workload_id": context.workload_id, "owner": context.owner_user_id, "rows": {}}}
+        checkpoint_pending(pending, journal)
+        token = _ROWS.set(pending)
+        try:
+            yield pending
+        finally:
+            _ROWS.reset(token)
+
+
+def checkpoint_pending(pending, journal=None):
+    (journal or UndoLog()).append_pending(**{key: value for key, value in pending.items()
+        if key in {"op_id", "turn_id", "executor", "args", "plan", "actor", "channel", "request_turn_id"}})
+
+
+def row_checkpoint(row):
+    from server_filesystem import MAX_ITEMS
+    pending = _ROWS.get()
+    if pending is None or not isinstance(row, dict) or set(row) != {"index", "item", "evidence", "pattern"}:
+        raise ValueError("unexpected undo checkpoint")
+    index = row["index"]
+    if type(index) is not int or not 0 <= index < MAX_ITEMS:
+        raise ValueError("unexpected undo row")
+    pending["plan"]["rows"][str(index)] = row
+    checkpoint_pending(pending)
+
+
+def remember_rows(workload_id, owner, executor, context):
+    UndoLog().append_pending(workload_id + "-boundary", context["turn_id"], executor.name, {},
+        {"workload_id": workload_id, "owner": owner, "rows": {}}, actor=context["actor"],
+        channel=context["channel"], request_turn_id=request_of(context["turn_id"]))
+
+
+def stop_rows(journal, pending):
+    """Cancel before draining the same lock every mutating unit must hold."""
+    from durable_workloads.storage import DurableWorkloadStore
+    from messages import get
+    import server_filesystem as files
+    plan = pending["plan"]
+    job, owner = plan["workload_id"], plan["owner"]
+    with DurableWorkloadStore.open() as store:
+        current = store.get_workload(owner, job)
+        if current.state.value not in {"completed", "completed_with_errors", "failed", "cancelled", "cancel_requested"}:
+            store.request_cancel(owner, job, expected_version=current.version, idempotency_key="undo-" + job)
+        with journal.path.with_name(journal.path.name + "." + job + ".lock").open("a") as held:
+            while True:
+                try:
+                    fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    if files.undo_seconds_remaining() <= 0:
+                        raise TimeoutError(get("ERR_UNDO_ROWS_DRAIN"))
+                    time.sleep(min(0.05, files.undo_seconds_remaining()))
+            for op in journal._aggregate_ops().values():
+                row = op.get("pending", {})
+                proof = row.get("plan", {})
+                if proof.get("workload_id") != job or any(key in op for key in ("done", "closed", "undone")):
+                    continue
+                if proof.get("rows"):
+                    result = files.execute(owner, proof["filesystem"], {**row["args"],
+                        "_row_journal": proof["rows"], "_row_observe": True,
+                        "_row_pattern": next(iter(proof["rows"].values()))["pattern"]}, row["turn_id"],
+                        timeout_s=files.undo_seconds_remaining())
+                    if not result.get("ok"):
+                        raise RuntimeError(get("ERR_UNDO_ROWS_UNCERTAIN", done=result.get("ok_count", 0),
+                            uncertain=result.get("fail_count", len(proof["rows"]))))
+                    journal.append_completion(row["op_id"], result)
+                else:
+                    journal.append_closed(row["op_id"], "no_effect")
+
+
 class UndoLog:
-    def __init__(self, path: Path = DEFAULT_LOG):
-        self.path = Path(path)
+    def __init__(self, path: Path | None = None):
+        self.path = Path(DEFAULT_LOG if path is None else path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
         if not self.path.exists():
             self.path.touch()
@@ -217,7 +312,15 @@ class UndoLog:
         return closed
 
     def append_undone(self, op_id: str, reverse_results: dict) -> None:
-        self._append({"type": "undone", "op_id": op_id, "ts": time.time(), "reverse_results": reverse_results})
+        stages = reverse_results.get("stages") or []
+        progress = {stage["pattern"]: stage["result"]["_undo_progress"]
+                    for stage in stages if isinstance(stage.get("result"), dict)
+                    and "_undo_progress" in stage["result"]}
+        pending = any(stage.get("pending_time", 0) for stage in progress.values())
+        self._append({"type": "undo_progress" if pending else "undone",
+                      "op_id": op_id, "ts": time.time(), "reverse_results": reverse_results,
+                      **({"completed": {name: value["completed"] for name, value in progress.items()}}
+                         if pending else {})})
 
     def _iter_records(self) -> Iterator[dict]:
         if not self.path.exists():
@@ -259,13 +362,42 @@ class UndoLog:
         che dice «annulla» NON deve ribaltare l'operazione di un altro utente.
         """
         ops = self._aggregate_ops()
+        # An approved job may be between its effect and its durable receipt.
+        # Its pending boundary participates in request selection. Stop and
+        # reconcile that request before exposing any inverse, never an older
+        # request or another person's work.
+        candidates = []
+        for op in ops.values():
+            pending = op.get("pending", {})
+            if not pending or actor is not None and (pending.get("actor") or "host") != actor:
+                continue
+            boundary = (op.get("undone") or op.get("undo_progress") or op.get("closed") or op.get("done")
+                        or (pending if pending.get("plan", {}).get("workload_id") else None))
+            if boundary:
+                candidates.append((boundary["ts"], pending))
+        budget_started = False
+        if candidates:
+            latest = max(candidates, key=lambda item: item[0])[1]
+            request = _request_unit(latest)
+            relevant = [op["pending"] for op in ops.values() if op.get("pending")
+                        and _request_unit(op["pending"]) == request
+                        and (op["pending"].get("actor") or "host") == (latest.get("actor") or "host")]
+            jobs = {pending["plan"]["workload_id"]: pending for pending in relevant
+                    if pending.get("plan", {}).get("workload_id")}
+            if jobs:
+                from server_filesystem import begin_undo_budget, undo_seconds_remaining
+                begin_undo_budget()
+                budget_started = True
+                for pending in jobs.values():
+                    stop_rows(self, pending)
+                ops = self._aggregate_ops()
         # A closed no-effect/irreversible operation is a turn boundary even
         # though it has nothing to reverse.  Otherwise "undo" after such an
         # action could unexpectedly reach into an older turn.
         completed_ops = []
         for op in ops.values():
             pending = op.get("pending")
-            completion = (op.get("undone") or op.get("closed")
+            completion = (op.get("undone") or op.get("undo_progress") or op.get("closed")
                           or op.get("done"))
             if pending and completion:
                 completed_ops.append((
@@ -299,10 +431,17 @@ class UndoLog:
             if _same_boundary(pending) and done is not None
         ]
         same_turn.sort(key=lambda item: item[1]["ts"])
-        return [
-            {**pending, "results": done["results"]}
-            for (pending, done) in same_turn
-        ]
+        records = []
+        for pending, done in same_turn:
+            progress = ops[pending["op_id"]].get("undo_progress", {})
+            results = done["results"]
+            if progress.get("completed"):
+                results = {**results, "_undo_completed": progress["completed"]}
+            records.append({**pending, "results": results})
+        if not budget_started and any((row.get("results") or {}).get("_filesystem") for row in records):
+            from server_filesystem import begin_undo_budget
+            begin_undo_budget()
+        return records
 
     def find_crashed(self) -> list[dict]:
         """Pending orfani: senza done ne' undone."""

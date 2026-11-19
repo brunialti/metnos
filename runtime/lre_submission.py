@@ -23,6 +23,7 @@ from durable_workloads.direct_invocation import (
     build_direct_candidate,
     contract_refusal,
     is_intrinsically_long,
+    row_policy,
     references_runtime,
     references_step,
 )
@@ -404,6 +405,10 @@ def _direct_or_partitioned(executor, args, target_device, list_children):
         build_partitioned_candidate, unit_concurrency,
     )
 
+    policy = row_policy(executor)
+    if policy is not None:
+        candidate, inventory = build_direct_candidate(executor, args, target_device, policy=policy)
+        return candidate, inventory, candidate["stages"][-1]
     policy = partitioned_runs.policy_of(executor)
     resolution = (
         partitioned_runs.resolve(policy, args, list_children=(
@@ -417,6 +422,53 @@ def _direct_or_partitioned(executor, args, target_device, list_children):
         target_device,
         max_concurrency=unit_concurrency(executor, len(resolution.partitions)))
     return candidate, inventory, candidate["stages"][2]
+
+
+def submit_rows(executor, args, context, framework, replay, query):
+    """The resolved invocation boundary, after the ordinary approval gate."""
+    from server_filesystem import MAX_ITEMS
+    import lre_answers
+    policy = row_policy(executor)
+    if not policy or len(args.get(policy["list_arg"], [])) <= MAX_ITEMS:
+        return None
+    if executor.execution_policy["effect"] != "read_only" and not context.get("_gate_approved"):
+        return None
+    args = {key: value for key, value in args.items() if not key.startswith("_")}
+    try:
+        _require_ready()
+        owner = context["owner_user_id"]
+        if not lre_answers.rest_can_follow(owner_user_id=owner, channel=context["channel"]):
+            raise RuntimeError("origin unavailable")
+        candidate, inventory, stage = _direct_or_partitioned(executor, args, context.get("target_device"), None)
+        if stage["placement"]["target"] != "server":
+            raise DirectInvocationUnsupported("row execution is server only")
+        from frozen_plan_consent import executor_binding
+        frozen = digest_json("approved-independent-rows", {"owner": owner, "args": args,
+            "contract": executor_binding(executor), "turn": context["turn_id"]}, max_bytes=MAX_PLAN_JSON_BYTES)
+        redacted = {"runner_name": executor.name, "arguments_digest": frozen}
+        kept_plan = {**framework.to_dict(), "_rows_replay": replay,
+                     "_rows_approved": bool(context.get("_gate_approved"))}
+        key = "rows_" + frozen
+        with DurableWorkloadStore.open() as store:
+            with feature_configuration_lock(path=store.database_path.with_name(store.database_path.name + ".submissions")):
+                draft = store.create_draft(owner, key, redacted_request=redacted)
+                # Persist the conversation and the frozen observations before queueing.
+                kept = lre_answers.remember(draft.workload_id, owner_user_id=owner,
+                    channel=context["channel"], actor=context["actor"],
+                    conversation_id=context.get("conversation_id", ""), turn_id=context["turn_id"],
+                    query=query, tool=executor.name, args={key: value for key, value in args.items()
+                        if key != policy["list_arg"]}, target_device="", plan=kept_plan)
+                if not kept and lre_answers.origin(draft.workload_id, owner_user_id=owner) is None:
+                    raise RuntimeError("origin unavailable")
+                if executor.execution_policy["effect"] != "read_only":
+                    from undo import remember_rows
+                    remember_rows(draft.workload_id, owner, executor, context)
+                result = submit_candidate(store, default_runtime_registry(), owner, key, candidate, inventory,
+                    redacted_request=redacted, admission_boundary=_admission_boundary)
+                return _receipt(store, result)
+    except Exception as exc:
+        log.warning("row_submission_failed type=%s", type(exc).__name__)
+        return _automatic_error("ERR_LRE_SUBMISSION_FAILED", error_class="operation_failed")
 
 
 def submit_automatic_lre(
@@ -447,6 +499,8 @@ def submit_automatic_lre(
         if tool == "final_answer":
             continue
         executor = executors.get(tool)
+        if executor is not None and row_policy(executor) and executor.execution_policy["effect"] != "read_only":
+            continue  # The resolved, owner-approved boundary admits these rows.
         if executor is not None and (
                 is_intrinsically_long(executor) or getattr(executor, "lre_plan", "")):
             long_steps.append((index, step, executor))

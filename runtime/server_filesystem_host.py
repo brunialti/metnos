@@ -255,12 +255,15 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
     host_answer = None if operation in permissions.SERVER_OPERATIONS else 'ok'
     for index, spec in enumerate(specs):
         source_fd = None
+        reply = {}
         sent = False
         try:
             if operation == 'move' and 'refused' in spec:
                 failed.append(server.move_failure(index, spec, None))
                 continue
             item_args = _single_args(operation, args, spec)
+            if "_row_journal" in args:
+                item_args["_row_offset"] = index
             # Check every path before opening it under either Linux identity.
             for path, action in server.requests(operation, item_args):
                 broker.check(path, action)
@@ -292,13 +295,21 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                     with io.parent(spec['src']) as (parent, name):
                         source_fd = io.open_file(parent, name)
             if native:
-                entry = (broker.copy(spec, source_fd=source_fd) if operation == 'copy'
-                         else getattr(broker, operation)(spec))
+                reply = server.execute(owner, manifest, item_args, turn_id,
+                    timeout_s=_remaining(deadline), authority=authority, source_fd=source_fd)
+                if not reply.get('ok'):
+                    raise permissions.PermissionError(reply.get('error_code', 'ERR_FS_IO'))
+                if args.get('_row_observe') and not reply.get('results'):
+                    continue
+                entry = reply.get('entries' if operation == 'read' else 'results', [])[0]
             else:
                 remaining = _remaining(deadline)
                 sent = True
                 reply = _exchange(binding, message, authority, timeout_s=remaining, source_fd=source_fd)
+                sent = any(row.get('_unsure') for row in reply.get('failed', []))
                 entries = reply.get('entries' if operation == 'read' else 'results', [])
+                if reply.get('ok') and args.get('_row_observe') and not entries:
+                    continue
                 if not reply.get('ok') or len(entries) != 1:
                     code = reply.get('error_code', 'ERR_FS_IO')
                     # A move names two causes in the tool's own codes; the
@@ -320,6 +331,11 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                 # The host had the item when this side stopped waiting: what
                 # it did is not known here (`_unsure`, never said undone).
                 failed[-1]['_unsure'] = True
+            if '_row_journal' in args and (sent or any(row.get('_unsure') for row in reply.get('failed', []))):
+                failed[-1]['_unsure'] = True
+                failed.extend(server._failure(operation, later, other, exc)
+                              for later, other in enumerate(specs[index + 1:], index + 1))
+                break
         finally:
             if source_fd is not None:
                 os.close(source_fd)
@@ -478,3 +494,5 @@ if __name__ == '__main__':
     if binding is None:
         raise SystemExit('filesystem host binding unavailable')
     serve(binding)
+
+

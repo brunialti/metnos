@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "move_files"
-version     = "0.12.0"
+version     = "0.13.0"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -18,6 +18,20 @@ affinity    = [
 ]
 revertible      = true
 reverse_pattern = ["swap_src_dst", "restore_blob_backup", "delete_created_dirs"]
+
+[execution]
+effect = "reversible"
+parallelism_class = 0
+resource_class = "local_io"
+concurrency_key = "none"
+equivalence_gate = "verified"
+
+[execution.partition]
+arg = "entries"
+list_arg = "entries"
+kind = "independent_rows"
+union = "exact"
+sums = ["ok_count", "fail_count"]
 
 [description]
 it = "SCOPO: sposta/rinomina file server↔PC; copy=true copia. PATTERN: from_step=1,dst_template='/a/{name}'; rel_path=path/src relativo a partition; conserva nomi/albero salvo richiesta. NON: formati→change_files_format; compress→compress_files. OUT: {results:[{src,dst}], dirs_created:[...], failed:[...]}, best-effort."
@@ -146,6 +160,11 @@ setup    = "mkdir -p /tmp/metnos_test_move_files && echo x > /tmp/metnos_test_mo
 input    = { entries = [{path = "/tmp/metnos_test_move_files/a.txt"}], dst_template = "/tmp/metnos_test_move_files/b.txt" }
 expect   = { ok = true, ok_count_eq = 1 }
 teardown = "rm -rf /tmp/metnos_test_move_files"
+
+[[tests]]
+name = "lista_intera_equivale_ai_blocchi"
+reference = "tests/runtime/executors/test_independent_rows_equivalence.py::test_move_files_whole_equals_blocks"
+equivalence_runs = 3
 
 [[tests]]
 name   = "lista_vuota_ok"

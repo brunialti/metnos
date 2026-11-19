@@ -125,6 +125,12 @@ def is_intrinsically_long(executor: object) -> bool:
     return type(timeout) is int and timeout >= AUTO_LRE_MIN_TIMEOUT_S
 
 
+def row_policy(executor):
+    from partitioned_runs import policy_of
+    policy = policy_of(executor)
+    return policy if policy and policy["kind"] == "independent_rows" else None
+
+
 def _require_persistable_schema(schema: Mapping[str, Any]) -> None:
     """Reject authority/secret annotations at every schema depth, not data depth."""
 
@@ -173,6 +179,12 @@ def _argument_schema(executor: object) -> tuple[Mapping[str, Any], tuple[str, ..
     schema = getattr(executor, "args_schema", None)
     if not isinstance(schema, Mapping) or schema.get("type") != "object":
         raise DirectInvocationUnsupported("executor argument schema is not an object")
+    policy = row_policy(executor)
+    if policy:
+        schema = {**schema, "properties": {name: {key: value for key, value in definition.items()
+            if key != "runtime_resolved" or not (name == policy["list_arg"]
+                or definition.get("enum") == [definition.get("default")])}
+            for name, definition in schema["properties"].items()}}
     _require_persistable_schema(schema)
     additional = schema.get("additionalProperties")
     if additional is not None and additional is not False:
@@ -206,6 +218,8 @@ def _durable_effect(executor: object) -> str:
     policy = getattr(executor, "execution_policy", None)
     if not isinstance(policy, Mapping):
         raise DirectInvocationUnsupported("executor execution policy is invalid")
+    if row_policy(executor) and policy.get("effect") != "read_only":
+        return DurableEffect.RECONCILABLE.value
     try:
         return _EFFECTS[str(policy.get("effect"))]
     except KeyError as exc:
@@ -238,7 +252,7 @@ def _eligible(executor: object) -> bool:
     signed_by = str(getattr(executor, "signed_by", "") or "")
     digest = str(getattr(executor, "digest", "") or "")
     return bool(
-        is_intrinsically_long(executor)
+        (is_intrinsically_long(executor) or row_policy(executor))
         and signed_by
         and not signed_by.startswith("(")
         and _DIGEST_RE.fullmatch(digest) is not None
@@ -448,12 +462,40 @@ def build_direct_candidate(
     executor: object,
     finalized_args: Mapping[str, Any],
     target_device: str | None,
+    *, policy=None, partitions=(), max_concurrency=1,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build a canonicalizable two-stage plan without executing anything."""
 
     if not _eligible(executor):
         raise DirectInvocationUnsupported("executor contract is not admissible")
+    if type(max_concurrency) is not int or not 1 <= max_concurrency <= 256:
+        raise DirectInvocationUnsupported("unit concurrency is invalid")
+    rows = []
     bindings = _literal_args(executor, finalized_args)
+    if policy:
+        properties, _ = _argument_schema(executor)
+        if (policy["arg"] not in properties or policy["list_arg"] not in properties
+                or properties[policy["list_arg"]].get("type") != "array"):
+            raise DirectInvocationUnsupported("partition arguments are not declared")
+        if policy["kind"] == "independent_rows":
+            from server_filesystem import MAX_ITEMS
+            if policy != row_policy(executor) or max_concurrency != 1:
+                raise DirectInvocationUnsupported("row contract or concurrency is invalid")
+            values = finalized_args[policy["list_arg"]]
+            if not isinstance(values, list) or not 1 <= len(values) <= 102400:
+                raise DirectInvocationUnsupported("row list is invalid")
+            rows = [{"partition": str(start).zfill(8), "rows": values[start:start + MAX_ITEMS]}
+                    for start in range(0, len(values), MAX_ITEMS)]
+            finalized_args = {key: value for key, value in finalized_args.items() if key != policy["list_arg"]}
+            del bindings[policy["list_arg"]]
+        else:
+            values = list(partitions)
+            if (not 1 <= len(values) <= 1024 or len(set(values)) != len(values)
+                    or any(not isinstance(value, str) or not value or "\x00" in value for value in values)
+                    or {policy["arg"], policy["list_arg"]} & set(finalized_args)):
+                raise DirectInvocationUnsupported("partition list is invalid")
+            rows = [{"partition": value} for value in values]
+    rows = json.loads(canonical_json(rows, max_bytes=MAX_PLAN_JSON_BYTES))
     placement = _placement(executor, finalized_args, target_device)
     effect = _durable_effect(executor)
     attempts = 3 if effect == DurableEffect.PURE.value else 1
@@ -487,9 +529,21 @@ def build_direct_candidate(
         "required": True,
         "placement": placement,
     }
+    stages = [_inventory_stage()]
+    if rows:
+        listing = {**_inventory_stage(), "key": "partitions", "type": "validate",
+            "depends_on": ["inventory"], "runner": {"kind": "internal", "name": "literal_entries"},
+            "input_bindings": {"entries": {"ref": "literal", "value": rows}},
+            "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.partition-list/1"}}
+        stages.append(listing)
+        direct_stage.update(type="map", depends_on=["partitions"],
+            cardinality={"mode": "per_dependency", "max_units": len(rows), "entry_identity_field": "partition"})
+        direct_stage["input_bindings"][policy["list_arg"]] = {"ref": "dependency.entries", "stage": "partitions"}
+        direct_stage["invalidation_keys"].append("dependencies.digest")
+    stages.append(direct_stage)
     plan = {
         "schema_version": "metnos.durable-plan/1",
-        "plan_id": DIRECT_PLAN_ID,
+        "plan_id": "metnos.partitioned.v1" if rows else DIRECT_PLAN_ID,
         "objective_redacted": "Automatic durable executor invocation.",
         "inventory": {
             "mode": "sealed",
@@ -506,13 +560,15 @@ def build_direct_candidate(
             "require_usage_complete": True,
             "reject_unaccepted_truncation": True,
         },
-        "error_policy": {"mode": "strict", "allowed_error_classes": []},
+        "error_policy": {"mode": "declared" if rows else "strict",
+                         "allowed_error_classes": ["contract_violation", "executor_permanent"] if rows else []},
         "budgets": {
-            "max_units": 2,
+            "max_units": len(rows) + 2 if rows else 2,
             "max_attempts_per_unit": attempts,
             "max_wall_time_s": min(
                 2_592_000,
-                60 + timeout_s * attempts + (60 * max(0, attempts - 1)),
+                120 + max(1, (len(rows) + max_concurrency - 1) // max_concurrency)
+                * (timeout_s * attempts + 60 * max(0, attempts - 1)),
             ),
             "max_bytes_read": 9_223_372_036_854_775_807,
             # This counter includes the committed JSON result, not only an
@@ -522,9 +578,9 @@ def build_direct_candidate(
             "max_tokens": 0,
             "max_cost_micros": 0,
             "max_artifacts": 0,
-            "max_concurrency": 1,
+            "max_concurrency": max_concurrency,
         },
-        "stages": [_inventory_stage(), direct_stage],
+        "stages": stages,
         "required_artifacts": [],
     }
     inventory = {

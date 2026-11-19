@@ -2124,7 +2124,7 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
                  "source_request_id": (
                      on_complete.get("source_request_id") or ""),
                  "target_device": device or ""},
-                framework=framework)
+                framework=framework, catalog=catalog)
 
         text = run.final_text
         last_result = (run.steps[-1].result

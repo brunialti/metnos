@@ -300,6 +300,7 @@ def core_output_schemas() -> OutputSchemaRegistry:
                                     "type": "string", "minLength": 1,
                                     "maxLength": 32768,
                                 },
+                                "rows": {"type": "array"},
                             },
                             "required": ["partition"],
                         },

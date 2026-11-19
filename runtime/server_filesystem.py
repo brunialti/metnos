@@ -256,6 +256,32 @@ def move_rows(args):
     return rows
 
 
+def fixed_refusal_preview(owner, manifest, args):
+    """Pure preparation shared with execution; no new permission decision."""
+    if permissions.served_operation(manifest, args) != "move":
+        return ""
+    rows = move_rows(settled(owner, "move", args))
+    if not rows:
+        return ""
+    refused = [row for row in rows if "refused" in row]
+    if not refused:
+        return ""
+    from collections import Counter
+    from list_outcomes import reasons
+    from messages import get as message
+    # These are the tool's own fixed, translated reasons, not a second
+    # classifier. Other validation failures keep their bounded category.
+    fixed = Counter(row["error"] for row in refused if row["refused"] == "ERR_REFUSE_MOVE")
+    detail = [message("MSG_MUTATION_QUESTION_CAUSE", count=count, cause=cause)
+              for cause, count in fixed.items()]
+    other = reasons([{"error_code": row["refused"]} for row in refused
+                     if row["refused"] != "ERR_REFUSE_MOVE"])
+    if other:
+        detail.append(other)
+    return message("MSG_MUTATION_QUESTION_FIXED", total=len(rows), refused=len(refused),
+                   reasons="; ".join(detail))
+
+
 def _settled_moves(owner, args):
     """Every row's final source and destination, by the tool's own rule
     (`local._entry_fields`, links resolved as the tool resolves them), once,
@@ -400,6 +426,10 @@ class LocalAuthority:
     def check(self, path, action, **kwargs):
         permissions.require(self.owner, "server", path, action, conn=self._connection,
                             db_path=self.db_path, manifest=self.manifest, args=self.args, **kwargs)
+
+    def checkpoint(self, row):
+        from undo import row_checkpoint
+        row_checkpoint(row)
 
     @contextmanager
     def mutation(self):
@@ -794,7 +824,7 @@ class Broker:
                 source = io.open_file(sparent, sname)
         except FileNotFoundError as exc:
             raise permissions.PermissionError("ERR_FS_SOURCE_MISSING") from exc
-        made, made_ids = [], []
+        made, made_ids, copied_hash = [], [], None
         try:
             info = io.regular(source)
             before = io.identity(info)
@@ -834,7 +864,8 @@ class Broker:
                             raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
 
                     # The verified copy is committed only where nothing is.
-                    self.replace(dst, produce, overwrite=False, final_check=final_check)
+                    copied = self.replace(dst, produce, overwrite=False, final_check=final_check)
+                    copied_hash = copied["sha256"]
                     own = moved_identity = self._identity_at(dparent, dname)
                     try:
                         if own[3] != info.st_size:
@@ -855,7 +886,8 @@ class Broker:
         # The tool's row is {src, dst}; what the undo needs is kept out of
         # the person's tables (`_`).
         return {"src": src, "dst": dst, "_identity": list(moved_identity),
-                "_dirs_created": made, "_dirs_created_ids": made_ids}
+                "_dirs_created": made, "_dirs_created_ids": made_ids,
+                **({"_sha256": copied_hash} if copied_hash else {})}
 
     def move_back(self, row):
         """The undo of a move: the file goes back where it was, only while it
@@ -864,6 +896,32 @@ class Broker:
         if (not isinstance(identity, list) or len(identity) != 4
                 or any(type(value) is not int for value in identity)):
             raise permissions.PermissionError("ERR_FS_AUTHORITY_INVALID")
+        self.check(row["src"], "write")
+        self.check(row["dst"], "write")
+        def identity_at(path):
+            try:
+                with io.parent(path) as (parent, name):
+                    return self._identity_at(parent, name)
+            except FileNotFoundError:
+                return None
+        source, target = identity_at(row["dst"]), identity_at(row["src"])
+        same_target = target == tuple(identity)
+        if target is not None and not same_target and row.get("_sha256"):
+            with io.parent(row["src"]) as (parent, name):
+                fd = io.open_file(parent, name)
+                try:
+                    same_target = (io.digest(fd, lambda: self.check(row["src"], "write"))
+                                   == row["_sha256"] and self._identity_at(parent, name) == target)
+                finally:
+                    os.close(fd)
+        if same_target:
+            if source == tuple(identity):
+                with io.parent(row["dst"]) as (parent, name):
+                    self._unlink_same(row["dst"], parent, name, identity)
+            elif source is not None:
+                raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+            return {"src": row["dst"], "dst": row["src"], "restored": True,
+                    "already_restored": True}
         back = self.move({"src": row["dst"], "dst": row["src"], "expected_identity": identity})
         return {"src": back["src"], "dst": back["dst"], "restored": True}
 
@@ -881,6 +939,35 @@ class Broker:
             return io.identity(io.regular(fd))
         finally:
             os.close(fd)
+
+    def _finish_linked_move(self, src, dst, before):
+        """Finish only the exact two-name interval of a recorded move.
+
+        Ordinary hardlinks remain refused by ``io.regular``. Here both named
+        entries must be the frozen regular file, with exactly these two links;
+        a third link or any changed identity leaves both names untouched.
+        """
+        self.check(src, "write")
+        self.check(dst, "write")
+        try:
+            with io.parent(src) as (sparent, sname), io.parent(dst) as (dparent, dname):
+                def pair():
+                    infos = [os.stat(name, dir_fd=parent, follow_symlinks=False)
+                             for parent, name in ((sparent, sname), (dparent, dname))]
+                    return all(stat.S_ISREG(info.st_mode) and info.st_nlink == 2
+                               and list(io.identity(info)) == before for info in infos)
+                if not pair():
+                    return False
+                with self.authority.mutation():
+                    self.check(src, "write")
+                    self.check(dst, "write")
+                    if not pair():
+                        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                    os.unlink(sname, dir_fd=sparent)
+                _settle(sparent)
+                return True
+        except FileNotFoundError:
+            return False
 
     def _unlink_same(self, path, parent, name, identity, *, late=False):
         """Remove ``name`` only while it is still the file ``identity`` names,
@@ -1185,13 +1272,14 @@ def move_failure(index, row, error):
 
 
 def batch_result(owner, manifest, args, turn_id, operation, results, failed):
+    attention = {"error_class": "publication_ambiguous"} if any(row.get("_unsure") for row in failed) else {}
     if operation == "move":
         from backends.files import local
         folders = sorted({folder for entry in results for folder in entry.get("_dirs_created") or []},
                          key=lambda folder: folder.count("/"), reverse=True)
         value = local._move_result(results, failed, dirs_created=folders)
         value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
-        return value
+        return {**value, **attention}
     value = {"ok": not failed, "ok_count": len(results), "fail_count": len(failed),
              "entries" if operation == "read" else "results": results, "failed": failed,
              "dirs_created": [folder for entry in results for folder in entry.get("dirs_created") or []]
@@ -1203,7 +1291,7 @@ def batch_result(owner, manifest, args, turn_id, operation, results, failed):
         value.update(document_parse.summarize(results, deduplicate=bool(args.get("deduplicate_content"))))
     if operation in {"copy", "write", "delete", "mkdir"}:
         value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
-    return value
+    return {**value, **attention}
 
 
 # One group of a server-only operation has at most this long, as one call to
@@ -1332,18 +1420,46 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, autho
         results, failed = [], []
         for index, spec in enumerate(specs):
             try:
+                if "_row_journal" in args:
+                    from reverse_patterns import recognize_file
+                    ordinal = args.get("_row_offset", 0) + index
+                    saved = args["_row_journal"].get(str(ordinal))
+                    if saved is not None and (saved["item"] != spec or saved["pattern"] != args["_row_pattern"]):
+                        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                    if saved is not None:
+                        value = recognize_file(broker, saved["pattern"], spec, saved["evidence"])
+                        if value is not None:
+                            results.append(value)
+                            continue
+                    elif not args.get("_row_observe"):
+                        evidence = recognize_file(broker, args["_row_pattern"], spec)
+                        saved = {"pattern": args["_row_pattern"], "evidence": evidence}
+                        broker.authority.checkpoint({"index": ordinal, "item": spec,
+                            "pattern": args["_row_pattern"], "evidence": evidence})
+                    if args.get("_row_observe"):
+                        continue
                 if operation == "move" and "refused" in spec:
                     failed.append(move_failure(index, spec, None))
                     continue
                 results.append(broker.copy(spec, source_fd=source_fd) if source_fd is not None
                                else getattr(broker, operation)(spec))
             except (OSError, ValueError, TypeError, LookupError) as exc:
-                if operation == "move":
-                    failed.append(move_failure(index, spec, exc))
-                    continue
-                failure = error_result(exc)
-                failed.append({"index": index, "error": failure["error"], "error_code": failure["error_code"],
-                               **({"path": spec} if operation == "mkdir" else {})})
+                uncertain = False
+                if "_row_journal" in args and saved is not None:
+                    try:
+                        value = recognize_file(broker, saved["pattern"], spec, saved["evidence"])
+                        if value is not None:
+                            results.append(value)
+                            continue
+                    except (OSError, ValueError, TypeError, LookupError):
+                        uncertain = True
+                failed.append(_failure(operation, index, spec, exc))
+                if uncertain:
+                    failed[-1]["_unsure"] = True
+                    failed.extend(_failure(operation, later, other, exc)
+                                  for later, other in enumerate(specs[index + 1:], index + 1))
+                    break
+                continue
         return batch_result(owner, manifest, args, turn_id, operation, results, failed)
     except (OSError, ValueError, TypeError, LookupError) as exc:
         return error_result(exc)
@@ -1380,7 +1496,95 @@ def undo_plan(operation, pattern, results):
     return []
 
 
+# One budget per invocation of the unchanged undo executor. A context-local
+# value also makes in-process tests and concurrent runtime calls independent.
+from contextvars import ContextVar
+_UNDO_DEADLINE = ContextVar("filesystem_undo_deadline", default=None)
+
+
+def begin_undo_budget():
+    from executor_helpers import granted_seconds
+    seconds = granted_seconds(30)
+    _UNDO_DEADLINE.set(time.monotonic() + max(0, seconds - min(5, seconds / 10)))
+
+
+def undo_seconds_remaining():
+    deadline = _UNDO_DEADLINE.get()
+    return max(0, deadline - time.monotonic()) if deadline is not None else 30.0
+
+
+def _undo_key(index, folder):
+    return "folder:" + folder if folder is not None else "row:" + str(index)
+
+
 def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, trusted_owner=None, timeout_s=30):
+    """Reverse recorded effects within the caller's remaining budget.
+
+    Completed keys are journalled once per operation, not once per row. A
+    missing receipt after a crash is reconciled by the native identity checks.
+    Unreached rows are counts, never thousands of synthetic failure records.
+    Each helper exchange retains its existing 30-second ceiling.
+    """
+    context = results["_filesystem"]
+    operation = permissions.served_operation(context["manifest"], context["args"])
+    try:
+        plan = undo_plan(operation, pattern, results)
+    except (OSError, ValueError, TypeError, LookupError) as exc:
+        return error_result(exc)
+    if plan is None:
+        plan = [(i, row, None, None) for i, row in enumerate(results.get("results") or [])]
+    completed = set((results.get("_undo_completed") or {}).get(pattern, []))
+    todo = [(i, row, folder, identity) for i, row, folder, identity in plan
+            if _undo_key(i, folder) not in completed]
+    deadline = time.monotonic() + max(0, timeout_s)
+    done, failed = [], []
+    left = {"time": 0, "refused": 0, "uncertain": 0}
+    cost = 0.0
+    for position, (index, entry, folder, identity) in enumerate(todo):
+        remaining = deadline - time.monotonic()
+        if remaining < max(0.05, cost):
+            left["time"] += len(todo) - position
+            break
+        item_entry = entry if folder is None else {
+            **entry, "_dirs_created": [folder], "_dirs_created_ids": [identity],
+            "dirs_created": [folder]}
+        item = {**results, "results": [item_entry]}
+        item.pop("_undo_completed", None)
+        started = time.monotonic()
+        try:
+            reply = None
+            if authority is None:
+                import server_filesystem_host as host
+                reply = host.undo(pattern, item, actor=actor, db_path=db_path,
+                                  timeout_s=min(30, remaining))
+                if reply is None and context.get("backend") in {"host", "mixed"}:
+                    raise permissions.PermissionError("ERR_FS_HOST_UNAVAILABLE")
+            if reply is None:
+                reply = _undo_stage_native(pattern, item, db_path=db_path, actor=actor,
+                    authority=authority, trusted_owner=trusted_owner, timeout_s=remaining)
+            if reply.get("ok", True):
+                completed.add(_undo_key(index, folder))
+            errors = reply.get("failed") or ([] if reply.get("ok", True) else [reply])
+            for error in errors:
+                code = error.get("error_code")
+                category = "time" if code in _TIME_CODES else "uncertain" if error.get("_unsure") else "refused"
+                left[category] += 1
+                if len(failed) < 5:
+                    failed.append({**error, "index": index})
+            done.extend(reply.get("results") or [])
+        except (OSError, ValueError, TypeError, LookupError) as exc:
+            error = error_result(exc)
+            left["time" if error.get("error_code") in _TIME_CODES else "refused"] += 1
+            if len(failed) < 5:
+                failed.append({"index": index, **error})
+        cost = max(cost, time.monotonic() - started)
+    pending = sum(left.values())
+    return {"ok": pending == 0, "ok_count": len(done), "fail_count": pending,
+            "results": done, "failed": failed, "_left_counts": left,
+            "_undo_progress": {"completed": sorted(completed), "pending_time": left["time"]}}
+
+
+def _undo_stage_native(pattern, results, *, db_path=None, actor=None, authority=None, trusted_owner=None, timeout_s=30):
     """Undo only recorded native effects, under the account's current rights."""
     import hashlib
     import re
@@ -1393,16 +1597,6 @@ def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, tr
         owner = trusted_owner
     if owner != context["owner"]:
         return error_result(permissions.PermissionError("ERR_FS_PERMISSION_REQUIRED"))
-    if authority is None:
-        try:
-            import server_filesystem_host as host
-            delegated = host.undo(pattern, results, actor=actor, db_path=db_path, timeout_s=timeout_s)
-            if delegated is not None:
-                return delegated
-            if context.get("backend") in {"host", "mixed"}:
-                raise permissions.PermissionError("ERR_FS_HOST_UNAVAILABLE")
-        except (OSError, ValueError, TypeError, LookupError) as exc:
-            return error_result(exc)
     broker = Broker(owner, context["manifest"], context["args"], context["turn_id"], db_path=db_path,
                     authority=authority, timeout_s=timeout_s)
     done, failed = [], []
@@ -1431,6 +1625,25 @@ def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, tr
         if not remove and not blob:
             continue
         try:
+            broker.check(path, "write")
+            # A crash may have committed the inverse before its journal
+            # receipt. Recognize that state before checking the old output.
+            if remove and not broker._present(path):
+                done.append({"path": path, "deleted": True, "already_restored": True})
+                continue
+            if blob and broker._present(path):
+                expected_blob = os.path.basename(blob)[:-4]
+                with io.parent(path) as (parent, name):
+                    fd = io.open_file(parent, name)
+                    try:
+                        identity = io.identity(io.regular(fd))
+                        restored = (io.digest(fd, lambda: broker.check(path, "write")) == expected_blob
+                                    and broker._identity_at(parent, name) == identity)
+                    finally:
+                        os.close(fd)
+                if restored:
+                    done.append({"path": path, "restored": True, "already_restored": True})
+                    continue
             # An undo does not overwrite a newer edit to a created/replaced file.
             expected_identity = None
             if entry.get("sha256"):
@@ -1472,3 +1685,8 @@ def undo_stage(pattern, results, *, db_path=None, actor=None, authority=None, tr
         except (OSError, ValueError, TypeError, LookupError) as exc:
             failed.append({"index": index, **error_result(exc)})
     return {"ok": not failed, "ok_count": len(done), "fail_count": len(failed), "results": done, "failed": failed}
+
+
+# A durable caller prepares a group once before its first visible effect. The
+# evidence is ordinary metadata, not write authority: every use checks today's
+# rights through the same broker as a normal call.

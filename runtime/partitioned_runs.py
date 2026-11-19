@@ -43,7 +43,7 @@ PARTITION_FIELD = "partition"
 # count, never served on its first values (§2.11).
 MAX_PARTITIONS = 256
 UNIONS = ("separate", "exact")
-KINDS = ("directory",)
+KINDS = ("directory", "independent_rows")
 
 _SECTION_FIELDS = frozenset({"arg", "list_arg", "kind", "union", "sums"})
 _REQUIRED_FIELDS = frozenset({"arg", "list_arg", "kind"})
@@ -104,6 +104,12 @@ def _directory_traversal(properties: Mapping[str, Any]) -> tuple[dict | None, li
     return traversal, []
 
 
+def _partition_accepts_effect(kind: str, effect: object) -> bool:
+    """The allowed effects of an already validated partition kind."""
+    return (effect == "read_only" if kind == "directory"
+            else effect in ("read_only", "reversible", "create_only", "mutating"))
+
+
 def validate_partition(manifest: Mapping[str, Any] | None) -> list[str]:
     """Findings on ``[execution.partition]``; an absent section has none."""
     raw = _partition_section(manifest)
@@ -129,9 +135,36 @@ def validate_partition(manifest: Mapping[str, Any] | None) -> list[str]:
     required = ({name for name in required if isinstance(name, str)}
                 if isinstance(required, list) else set())
 
+    kind = raw.get("kind")
+    if kind not in KINDS:
+        findings.append(f"execution.partition.kind must be one of {sorted(KINDS)}")
+        return findings
+    if not _partition_accepts_effect(kind, ((manifest or {}).get("execution") or {}).get("effect")):
+        findings.append("execution.partition requires effect = 'read_only'")
+    union = raw.get("union", "separate")
+    if union not in UNIONS:
+        findings.append(
+            f"execution.partition.union must be one of {sorted(UNIONS)}")
+    sums = raw.get("sums", [])
+    if (not isinstance(sums, list) or len(sums) > _MAX_SUMS
+            or len(set(map(str, sums))) != len(sums)
+            or any(not isinstance(name, str) or not _NAME_RE.fullmatch(name)
+                   for name in sums)):
+        findings.append(
+            "execution.partition.sums must list unique counter names")
+    if union == "exact" and not _has_equivalence_proof(manifest):
+        findings.append(
+            "execution.partition.union = 'exact' requires a test with "
+            "reference and equivalence_runs between 2 and 8")
     arg, list_arg = raw.get("arg"), raw.get("list_arg")
     single = properties.get(arg) if isinstance(arg, str) else None
     plural = properties.get(list_arg) if isinstance(list_arg, str) else None
+    if kind == "independent_rows":
+        if arg != list_arg or not isinstance(plural, Mapping) or plural.get("type") != "array":
+            findings.append("independent rows require arg = list_arg naming an array")
+        if union != "exact":
+            findings.append("independent rows require a controlled exact equivalence test")
+        return findings
     if (not isinstance(single, Mapping) or single.get("type") != "string"
             or single.get("runtime_resolved") is True):
         findings.append(
@@ -151,36 +184,14 @@ def validate_partition(manifest: Mapping[str, Any] | None) -> list[str]:
         # required by itself.
         findings.append(
             "execution.partition arg and list_arg cannot be in args.required")
-    if raw.get("kind") not in KINDS:
-        findings.append(
-            f"execution.partition.kind must be one of {sorted(KINDS)}")
-    union = raw.get("union", "separate")
-    if union not in UNIONS:
-        findings.append(
-            f"execution.partition.union must be one of {sorted(UNIONS)}")
-    sums = raw.get("sums", [])
-    if (not isinstance(sums, list) or len(sums) > _MAX_SUMS
-            or len(set(map(str, sums))) != len(sums)
-            or any(not isinstance(name, str) or not _NAME_RE.fullmatch(name)
-                   for name in sums)):
-        findings.append(
-            "execution.partition.sums must list unique counter names")
-    execution = (manifest or {}).get("execution") or {}
-    if execution.get("effect") != "read_only":
-        # A partition of a tool that changes things needs disjoint targets
-        # proven to the scheduler (ADR 0196): not offered yet.
-        findings.append("execution.partition requires effect = 'read_only'")
-    if union == "exact" and not _has_equivalence_proof(manifest):
-        findings.append(
-            "execution.partition.union = 'exact' requires a test with "
-            "partition_equivalence = true")
     return findings
 
 
 def _has_equivalence_proof(manifest: Mapping[str, Any] | None) -> bool:
     tests = (manifest or {}).get("tests")
     return any(isinstance(test, Mapping)
-               and test.get("partition_equivalence") is True
+               and isinstance(test.get("reference"), str) and bool(test["reference"].strip())
+               and type(test.get("equivalence_runs")) is int and 2 <= test["equivalence_runs"] <= 8
                for test in (tests if isinstance(tests, list) else []))
 
 
@@ -210,12 +221,14 @@ def policy_of(executor: object) -> dict | None:
     if getattr(executor, "execution_policy_declared", False) is not True:
         return None
     policy = getattr(executor, "execution_policy", None)
-    if not isinstance(policy, Mapping) or policy.get("effect") != "read_only":
+    if not isinstance(policy, Mapping):
         return None
     partition = policy.get("partition")
     if (not isinstance(partition, Mapping)
             or not _REQUIRED_FIELDS <= set(partition)
             or partition.get("kind") not in KINDS):
+        return None
+    if not _partition_accepts_effect(partition["kind"], policy.get("effect")):
         return None
     result = {
         "arg": str(partition["arg"]),
@@ -473,17 +486,16 @@ def _part(policy: Mapping[str, Any], partition: str, observation: object) -> _Pa
         answer.get("ok") is False and not own_error and bool(lost))
 
     summary: dict[str, Any] = {PARTITION_FIELD: partition, "ok": worked}
-    if not worked:
+    summary.update({key: answer[key] for key in _ERROR_KEYS if answer.get(key) not in (None, "")})
+    if _whole_number(answer.get("ok_count")):
+        summary["ok"] = answer.get("ok") is True and not lost and not answer.get("fail_count")
+    for name in policy.get("sums") or ():
+        if _whole_number(answer.get(name)):
+            summary[name] = answer[name]
+    if not worked and rows_key is None:
         summary["count"] = 0
-        cause = {key: answer[key] for key in _ERROR_KEYS
-                 if answer.get(key) not in (None, "")}
-        summary.update(cause)
-        lost_item = {PARTITION_FIELD: partition, **cause}
-        if policy.get("kind") == "directory":
-            # The folder is the item that was lost: the notices that name
-            # lost items already know how to show a path.
-            lost_item["path"] = partition
-        return _Part(summary, None, (), (lost_item,))
+        return _Part(summary, None, (), ({PARTITION_FIELD: partition, "path": partition,
+                     **{key: summary[key] for key in _ERROR_KEYS if key in summary}},))
 
     rows = tuple(
         {**row, PARTITION_FIELD: partition} if isinstance(row, Mapping)
@@ -491,13 +503,10 @@ def _part(policy: Mapping[str, Any], partition: str, observation: object) -> _Pa
         for row in (answer.get(rows_key) if rows_key else ()))
     summary["count"] = len(rows)
     if lost:
-        summary["fail_count"] = len(lost)
+        summary.setdefault("fail_count", len(lost))
     for key in _TRUNCATION_KEYS:
         if key in answer:
             summary[key] = answer[key]
-    for name in policy.get("sums") or ():
-        if _whole_number(answer.get(name)):
-            summary[name] = answer[name]
     return _Part(
         summary, rows_key, rows,
         tuple({**item, PARTITION_FIELD: partition} for item in lost),
@@ -526,7 +535,11 @@ def _finish(policy: Mapping[str, Any], parts: Sequence[_Part]) -> dict:
         "partitions_ok": len(worked),
         "partitions_failed": len(summaries) - len(worked),
     }
-    if out["ok"] and failed:
+    if any("ok_count" in summary for summary in summaries):
+        out["ok"] = bool(summaries) and all(summary["ok"] for summary in summaries) and not failed
+        out.update(next(({key: summary[key] for key in _ERROR_KEYS if key in summary}
+                         for summary in summaries if any(key in summary for key in _ERROR_KEYS)), {}))
+    if rows and failed:
         out["partial"] = True
 
     cut = [summary for summary in worked if summary.get("truncated") is True]
@@ -550,7 +563,7 @@ def _finish(policy: Mapping[str, Any], parts: Sequence[_Part]) -> dict:
             out["truncated_intentional"] = True
 
     for name in policy.get("sums") or ():
-        values = [summary[name] for summary in worked
+        values = [summary[name] for summary in summaries
                   if _whole_number(summary.get(name))]
         if values:
             out[name] = sum(values)
@@ -574,6 +587,7 @@ def assemble(policy: Mapping[str, Any],
 
 def combine(policy: Mapping[str, Any], results: Sequence[Mapping[str, Any]], *,
             order: Sequence[str] = (),
+            sizes: Mapping[str, int] | None = None,
             unanswered: Mapping[str, Any] | None = None) -> dict:
     """Join results already in this shape, as the units of a long job return.
 
@@ -604,14 +618,15 @@ def combine(policy: Mapping[str, Any], results: Sequence[Mapping[str, Any]], *,
             if not isinstance(partition, str) or partition in parts:
                 continue
             parts[partition] = _Part(
-                dict(summary), rows_key if summary.get("ok") else None,
+                dict(summary), rows_key,
                 tuple(rows_by.get(partition, ())),
                 tuple(failed_by.get(partition, ())),
                 result.get("entry_field_roles"))
     if unanswered is not None:
         for partition in order:
             if partition not in parts:
-                parts[partition] = _part(policy, partition, {"ok": False, **unanswered})
+                parts[partition] = _part(policy, partition, {"ok": False, **unanswered,
+                    **({"ok_count": 0, "fail_count": sizes[partition]} if sizes and partition in sizes else {})})
     wanted = [partition for partition in order if partition in parts]
     wanted += [partition for partition in parts if partition not in wanted]
     return _finish(policy, [parts[partition] for partition in wanted])
@@ -912,7 +927,7 @@ def run(executor: object, args: object, invoke: Callable[[dict], dict], *,
     here and groups one global answer, without partitioning the invocation.
     """
     policy = policy_of(executor)
-    if policy is None or not isinstance(args, Mapping):
+    if policy is None or policy["kind"] == "independent_rows" or not isinstance(args, Mapping):
         return invoke(args)
     try:
         resolution = resolve(policy, args, list_children=list_children)

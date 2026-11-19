@@ -7922,7 +7922,7 @@ def _what_the_question_adds(steps, idx: int, source, catalog) -> str:
 _PARTITION_QUESTION_LIMIT = 600  # Kept equal to get_approval by a contract test.
 
 
-def _partition_question_text(template, resolved, history):
+def _partition_question_text(template, resolved, history, *, fixed_note=""):
     """Finish a partitioned question only once its counts and files exist.
 
     This is presentation, after resolution: it changes no gate argument other
@@ -7934,23 +7934,22 @@ def _partition_question_text(template, resolved, history):
     from messages import get as message
 
     reference = re.search(r"\$\{step(\d+)\.@by_partition\}", str(template or ""))
-    if not reference or not isinstance(resolved, str):
+    if not isinstance(resolved, str) or not reference and not fixed_note:
         return resolved
-    source = int(reference.group(1)) - 1
-    if not 0 <= source < len(history):
-        return resolved
-    result = history[source].result
-    if not isinstance(result, dict):
-        return resolved
+    source = int(reference.group(1)) - 1 if reference else -1
+    result = history[source].result if 0 <= source < len(history) else None
+    result = result if isinstance(result, dict) else {}
     from .executor import _find_list_of_dicts
 
     rows = next((result[key] for key in ("entries", "results", "items")
                  if isinstance(result.get(key), list) and result[key]),
                 _find_list_of_dicts(result))
     unbounded = counts_text(rows)
-    if not unbounded:
+    if not unbounded and not fixed_note:
         return resolved
-    fixed = " ".join(resolved.replace(unbounded, "", 1).split())
+    fixed = " ".join((resolved.replace(unbounded, "", 1) if unbounded else resolved).split())
+    if fixed_note:
+        fixed += " " + fixed_note
 
     # Exactly the successful producer TurnLog will attach. A planned filename,
     # an unsuccessful write, or a file that does not exist is not a delivery.
@@ -7972,9 +7971,14 @@ def _partition_question_text(template, resolved, history):
             fixed += " " + message("MSG_PARTITION_QUESTION_SHEET", name=sheet["basename"])
         break
     fixed = " ".join(fixed.split())
-    bounded = counts_text(rows, max_chars=_PARTITION_QUESTION_LIMIT - len(fixed) - 1,
-                          field_roles=result.get("entry_field_roles"))
-    return fixed + " " + bounded
+    if len(fixed) > _PARTITION_QUESTION_LIMIT:
+        raise ValueError(message("MSG_MUTATION_QUESTION_TOO_LONG"))
+    try:
+        bounded = counts_text(rows, max_chars=_PARTITION_QUESTION_LIMIT - len(fixed) - 1,
+                              field_roles=result.get("entry_field_roles"))
+    except ValueError:
+        raise ValueError(message("MSG_MUTATION_QUESTION_TOO_LONG")) from None
+    return " ".join(part for part in (fixed, bounded) if part)
 
 
 def _insert_mass_mutation_gate(framework, query: str, runtime_ctx, *,
@@ -8140,7 +8144,7 @@ def _request_turn(runtime_ctx) -> str:
 
 
 def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
-                                  framework: Framework | None = None) -> None:
+                                  framework: Framework | None = None, *, catalog) -> None:
     """gate-resume (20/6/2026): se un gate get_approval ha messo in PAUSA la
     pipeline (run.gate_dialog_id), sovrascrive l'on_complete del dialog
     (gate_dispatch → resume_engine_gate) col contesto di ripresa. On-approve il
@@ -8409,8 +8413,12 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             "gate_approve_value": oc.get("approve_value", "approve"),
             "gate_on_reject": oc.get("on_reject"),
         }
+        import lre_answers
+        frozen = lre_answers.freeze_row_consent(framework, run, rc, query, catalog=catalog)
+        if frozen is not None:
+            st["on_complete"].update(type=lre_answers.RESUME_REST, frozen_rows=frozen)
         _dp.save_pending(sender, did, st)
-        log.info("[gate_resume] dialog %s → resume_engine_gate", did)
+        log.info("[gate_resume] dialog %s → %s", did, st["on_complete"]["type"])
     except Exception as ex:  # noqa: BLE001 — best-effort, non blocca il turno
         log.warning("[gate_resume] inject failed: %r", ex)
 
@@ -8649,7 +8657,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if durable is not None:
             return durable
         _inject_gate_resume_if_paused(
-            run, query, runtime_ctx, framework=_technical_lre,
+            run, query, runtime_ctx, framework=_technical_lre, catalog=catalog,
         )
         return DispatchResult(
             final_text=run.final_text,
@@ -8846,7 +8854,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                          getattr(_last, "tool", None), str(_lerr))
             else:
                 _inject_gate_resume_if_paused(
-                    run, query, runtime_ctx, framework=fp_hit.framework)
+                    run, query, runtime_ctx, framework=fp_hit.framework, catalog=catalog)
                 # Promozione 0b→0a (classe 12/6/2026): il piano è arrivato via
                 # cosine da un'ALTRA query canonica → registra l'hash di QUESTA
                 # (vedi _maybe_record_fastpath). L'hit 0a NON registra: la riga
@@ -8940,7 +8948,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # Served for real: only now the champion counts as in use.
                 _ap.mark_served(ap_hit.autopath_id)
                 _inject_gate_resume_if_paused(
-                    run, query, runtime_ctx, framework=ap_hit.framework)
+                    run, query, runtime_ctx, framework=ap_hit.framework, catalog=catalog)
                 # Record observation per future feedback hooks. Skip se il piano
                 # non è cacheabile (single-executor / valore numerico baked dalla
                 # query): L1 non deve avere valori baked (Roberto 15/6).
@@ -9158,7 +9166,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     durable, run = _execute_with_lre_boundary(framework)
     if durable is not None:
         return durable
-    _inject_gate_resume_if_paused(run, query, runtime_ctx, framework=framework)
+    _inject_gate_resume_if_paused(run, query, runtime_ctx, framework=framework, catalog=catalog)
 
     # Record observation (per future feedback). Skip se non cacheabile
     # (single-executor / valore numerico baked): L1 non deve avere valori baked.
@@ -9219,7 +9227,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # request.  Recovery can otherwise repeat the read and replace the
         # failed send/write with a harmless description, erasing both the
         # attempted action and its failure from the canonical turn record.
-        _localized_partial = False
+        _localized_partial = any(isinstance(s.result, dict) and s.result.get("_list_partial_notice") for s in run.steps or [])
         _saw_success = False
         for _step in run.steps or []:
             _result = _step.result if isinstance(_step.result, dict) else {}
@@ -9291,7 +9299,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # richiesta d'input, NON un errore. §2.11.
                 if getattr(run2, "gate_dialog_id", ""):
                     _inject_gate_resume_if_paused(
-                        run2, query, runtime_ctx, framework=framework_alt)
+                        run2, query, runtime_ctx, framework=framework_alt, catalog=catalog)
                     return DispatchResult(
                         final_text=run2.final_text, final_kind=run2.final_kind,
                         match_source="recovery",

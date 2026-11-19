@@ -27,6 +27,109 @@ from logging_setup import get_logger
 log = get_logger(__name__)
 
 
+def file_recovery_pattern(executor, manifest, args):
+    import filesystem_permissions as permissions
+    operation = permissions.served_operation(manifest, args)
+    pattern = {"move": "swap_src_dst", "delete": "restore_blob_backup",
+               "mkdir": "delete_created_dirs"}.get(operation)
+    declared = getattr(executor, "reverse_pattern", None)
+    if pattern is None or pattern not in (declared if isinstance(declared, list) else [declared]):
+        raise ValueError("undo type cannot recognize this interrupted effect")
+    return pattern
+
+
+def recognize_file(broker, pattern, item, evidence=None):
+    """Recognize by undo type: None is pending, ambiguous evidence raises.
+    Matching names alone never proves an effect.
+    """
+    import os
+    import stat
+    import filesystem_io as io
+    import filesystem_permissions as permissions
+
+    def identity(path, directory=False):
+        broker.check(path, "write", **({"directory": True} if directory else {}))
+        try:
+            with io.parent(path) as (parent, name):
+                if directory:
+                    info = os.stat(name, dir_fd=parent, follow_symlinks=False)
+                    if not stat.S_ISDIR(info.st_mode):
+                        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                    return [info.st_dev, info.st_ino]
+                return list(broker._identity_at(parent, name))
+        except FileNotFoundError:
+            return None
+
+    def digest(path):
+        with io.parent(path) as (parent, name):
+            fd = io.open_file(parent, name)
+            try:
+                return io.digest(fd, lambda: broker.check(path, "write"))
+            finally:
+                os.close(fd)
+
+    if pattern not in {"swap_src_dst", "restore_blob_backup", "delete_created_dirs"}:
+        raise permissions.PermissionError("ERR_FS_BROKER_UNSUPPORTED")
+    moving, directory = pattern == "swap_src_dst", pattern == "delete_created_dirs"
+    src = item["src"] if moving else item
+    if evidence is None:
+        before = identity(src, directory)
+        row = {"before": before, "absent_dirs": []}
+        if moving and (before is None or identity(item["dst"]) is not None):
+            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+        parent = os.path.dirname(item["dst"]) if moving else src if directory else None
+        while parent and identity(parent, True) is None:
+            row["absent_dirs"].append(parent)
+            parent = os.path.dirname(parent)
+        if moving:
+            row["sha256"] = digest(src)
+        elif not directory:
+            with io.parent(src) as (parent, name):
+                fd = io.open_file(parent, name)
+                try:
+                    row["blob_path"] = io.backup(fd, broker.turn_id, lambda: broker.check(src, "write"))
+                    if list(io.identity(io.regular(fd))) != before:
+                        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+                finally:
+                    os.close(fd)
+        return row
+    before = evidence["before"]
+    try:
+        current = identity(src, directory)
+    except permissions.PermissionError as exc:
+        if not moving or str(exc) != "ERR_FS_LINK_REFUSED" or not broker._finish_linked_move(src, item["dst"], before):
+            raise
+        current = identity(src)
+    if moving:
+        destination = identity(item["dst"])
+        if current is None and destination == before:
+            value = {"src": src, "dst": item["dst"], "moved": True, "_identity": destination,
+                     "_sha256": evidence["sha256"], "_reconciled": True}
+        elif current == before and destination is None:
+            return None
+        else:
+            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+    elif directory:
+        if current is None and before is None:
+            return None
+        if before is not None and current != before:
+            raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+        value = {"path": src, "created": before is None, "dirs_created": []}
+    elif current is None:
+        value = {"path": src, "deleted": True, "blob_path": evidence["blob_path"], "restore_mode": "create"}
+    elif current == before:
+        return None
+    else:
+        raise permissions.PermissionError("ERR_FS_SOURCE_CHANGED")
+    # D2: folders absent before this request belong to it. Removal still
+    # requires their exact identity and an empty folder in the ordinary undo.
+    folders = [(path, identity(path, True)) for path in evidence["absent_dirs"]]
+    folders = [(path, own) for path, own in folders if own is not None]
+    value["_dirs_created" if moving else "dirs_created"] = [path for path, _ in folders]
+    value["_dirs_created_ids"] = [own for _, own in folders]
+    return value
+
+
 # ---- Pattern: swap_src_dst -----------------------------------------------
 # Inverso di un'operazione che ha registrato pair {src, dst} nei results.
 # Es. move_files: i pair vengono ribaltati (dst -> src).
@@ -710,8 +813,8 @@ def apply_pattern(name: str, plan: dict, results: dict, *, catalog=None) -> dict
     if fn is None:
         return {"ok": False, "error": f"unknown reverse_pattern: {name!r}; valid: {sorted(PATTERNS.keys())}"}
     if (results or {}).get("_filesystem"):
-        from server_filesystem import undo_stage
-        return undo_stage(name, results)
+        from server_filesystem import undo_stage, undo_seconds_remaining
+        return undo_stage(name, results, timeout_s=undo_seconds_remaining())
     try:
         if getattr(fn, "_metnos_catalog_required", False):
             return fn(plan or {}, results or {}, catalog=catalog)

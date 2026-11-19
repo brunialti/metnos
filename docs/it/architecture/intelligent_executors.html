@@ -105,6 +105,18 @@
   <tr><td>Autorit&agrave;</td><td>Non la amplia</td><td>Opera entro manifest, policy, consenso e sandbox</td></tr>
  </table>
 
+ <p>Uno strumento che dichiara righe indipendenti nel manifesto firmato pu&ograve;
+ eseguire una lista lunga in blocchi consecutivi di 100, uno alla volta,
+ attraverso la chiamata ordinaria. Ordine e duplicati restano invariati.
+ Lo stesso costruttore serve chiamate dirette, partizioni e blocchi.
+ Per le modifiche si conserva l'elenco esatto approvato e si registra
+ la prova prima di ogni effetto. Ripresa e annullamento riconoscono gli
+ effetti per tipo di annullamento, con i permessi correnti; un effetto
+ incerto richiede attenzione e non viene ripetuto o annullato per somiglianza.
+ L'annullamento ferma prima il lavoro e riguarda l'intera richiesta,
+ conservando il residuo se esaurisce il proprio tempo.
+ <a href="../system/lre.html#resto-della-richiesta">Continuazione e annullamento</a>.</p>
+
  <div class="note"><strong>Il limite di tempo del ciclo non interrompe
  automaticamente un'azione gi&agrave; iniziata.</strong> Serve a impedire nuovi
  tentativi. L'adattatore deve assegnare un proprio timeout a ogni operazione,

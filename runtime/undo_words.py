@@ -120,9 +120,16 @@ def tally(observation: dict, lang: str | None = None) -> tuple[dict, list[str]]:
                 counts[_came_back(pattern, row)] += 1
             if not done and isinstance(result.get("ok_count"), int) and result["ok_count"] > 0:
                 counts[_ITEMS] += result["ok_count"]   # a reverse that only counts
-            for row in _rows(result.get("failed")):
-                left.append(_left_row(row, lang))
-                said = True
+            remaining = result.get("_left_counts") or {}
+            if remaining.get("time") or sum(remaining.values()) > _LEFT_SHOWN:
+                for cause, count in remaining.items():
+                    if count:
+                        left.append(_say("MSG_UNDO_LEFT_" + cause.upper(), lang, count=count))
+                        said = True
+            else:
+                for row in _rows(result.get("failed")):
+                    left.append(_left_row(row, lang))
+                    said = True
         if not stages:
             # A tool's own reverse reports counts only.
             counts[_ITEMS] += int(detail.get("ok_count") or 0)
@@ -141,10 +148,14 @@ def describe(observation: dict, lang: str | None = None) -> str:
     stayed = "; ".join(left[:_LEFT_SHOWN])
     if len(left) > _LEFT_SHOWN:
         stayed += " " + _say("MSG_UNDO_LEFT_MORE", lang, count=len(left) - _LEFT_SHOWN)
+    resumable = any((stage.get("result") or {}).get("_left_counts", {}).get("time")
+                    for detail in _rows(observation.get("details"))
+                    for stage in _rows(detail.get("stages")))
+    again = " " + _say("MSG_UNDO_CONTINUE", lang) if resumable else ""
     if done and stayed:
-        return _say("MSG_UNDO_REQUEST_PARTIAL", lang, done=done, left=stayed)
+        return _say("MSG_UNDO_REQUEST_PARTIAL", lang, done=done, left=stayed) + again
     if done:
         return _say("MSG_UNDO_REQUEST_DONE", lang, done=done)
     if stayed:
-        return _say("MSG_UNDO_REQUEST_NONE", lang, left=stayed)
+        return _say("MSG_UNDO_REQUEST_NONE", lang, left=stayed) + again
     return _say("MSG_UNDO_ALREADY", lang)

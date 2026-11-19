@@ -62,7 +62,7 @@ _AT_THE_PAGE_S = 300
 _MAX_QUERY = 600
 _MAX_TEMPLATE = 4000
 _MAX_ARGS_JSON = 64 * 1024
-_MAX_PLAN_JSON = 256 * 1024
+_MAX_PLAN_JSON = 1024 * 1024
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS origins (
@@ -462,6 +462,39 @@ def _removals_never_asked(framework) -> frozenset:
     return frozenset(unasked)
 
 
+def freeze_row_consent(framework, run, context, query, *, catalog):
+    """Keep the approved plan and observations in the existing owner-bound dialog."""
+    from durable_workloads.direct_invocation import _literal_args, row_policy
+    from frozen_plan_consent import executor_binding
+    catalog = {item.name: item for item in catalog}
+    bindings = {step.tool: executor_binding(catalog[step.tool])
+                for step in (framework.steps if framework is not None else ())
+                if step.tool in catalog and row_policy(catalog[step.tool])}
+    if not bindings:
+        return None
+    saved = {**framework.to_dict(), "_row_bindings": bindings,
+             "_rows_replay": [[step.tool, step.result] for step in run.steps[:-1]]}
+    from engine.executor import _resolve_from_step, _resolve_stepref, _resolve_runtime_placeholders
+    for step in saved["steps"][len(run.steps):]:
+        if step["tool"] not in bindings:
+            continue
+        try:
+            tool = catalog[step["tool"]]
+            args = _resolve_from_step(step["args"], run.steps[:-1], consumer_schema=tool.args_schema)
+            args = _resolve_runtime_placeholders(_resolve_stepref(args, run.steps[:-1], tool.args_schema), context)
+            args = {key: value for key, value in args.items() if not key.startswith("_")}
+            _literal_args(tool, args)  # Future observations or fillers cannot acquire this yes.
+            step["args"] = args
+        except Exception:
+            saved["_row_freeze_failed"] = True
+    encoded = json.dumps(saved, ensure_ascii=False)
+    if len(encoded.encode()) > _MAX_PLAN_JSON:
+        encoded = json.dumps({"_row_freeze_failed": True})
+    return {**{key: str(context.get(key) or "") for key in
+               ("owner_user_id", "actor", "channel", "turn_id", "conversation_id", "target_device")},
+            "query": query, "tool": "", "args_json": "{}", "plan_json": encoded}
+
+
 def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = False,
                      turn_id: str):
     """Run the plan the request was admitted with, the long step answered by
@@ -487,21 +520,39 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
             f"turn:{turn_id}", owner_user_id=owner,
             conversation_id=entry["conversation_id"], channel=channel),
         "target_device": entry["target_device"], "_gate_approved": approved,
+        "_rows_continuation": True,
     }
     # The question is part of the plan on both runs, so the steps keep their
     # numbers: after the consent it lets the plan through instead of asking.
+    saved = json.loads(entry["plan_json"])
+    if saved.pop("_row_freeze_failed", False):
+        raise LookupError("the approved rows could not be frozen; no row was executed")
+    from frozen_plan_consent import executor_binding
+    current = {item.name: executor_binding(item) for item in catalog}
+    if any(current.get(name) != binding for name, binding in saved.pop("_row_bindings", {}).items()):
+        raise LookupError("approved contract changed; no row was executed")
+    replay = saved.pop("_rows_replay", replay)
+    context["_gate_approved"] = saved.pop("_rows_approved", False) or approved
     framework = _ask_before_removing(
-        Framework.from_dict(json.loads(entry["plan_json"])), entry,
+        Framework.from_dict(saved), entry,
         {**context, "_gate_approved": False}, catalog)
     unasked = _removals_never_asked(framework)
     waiting = list(replay)
     answered = []
+    observed = []
 
     def _not_again(tool):
         return {"ok": False, "error_class": "continuation_failed",
                 "error": message("MSG_ORCH_CONTINUATION_FAILED", detail=tool)}
 
     def _invoke(tool: str, args: dict) -> dict:
+        if waiting and tool != entry["tool"]:
+            name, observation = waiting.pop(0)
+            if name != tool:
+                waiting.clear()
+                return _not_again(tool)
+            observed.append((tool, dict(observation)))
+            return dict(observation)
         if tool == entry["tool"]:
             # The job ran it, once: its result is the step's result.
             if answered:
@@ -510,35 +561,38 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
             # Shown as the tool declares, as when a chat turn runs it.
             shown = next((getattr(item, "presentation", None) for item in catalog
                           if getattr(item, "name", None) == tool), None)
+            observed.append((tool, dict(result)))
             return {**result, "_presentation_contract": shown} if shown else dict(result)
         if tool in unasked:
             # The question could not be put before this step: it does not run.
             return {"ok": False, "error_class": "continuation_failed",
                     "error": message("MSG_LRE_REST_NEEDS_YOU")}
-        if waiting:
-            name, observation = waiting.pop(0)
-            if name != tool:
-                waiting.clear()
-                return _not_again(tool)
-            return dict(observation)
-        return agent_runtime.invoke_tool_by_name(
+        from lre_submission import submit_rows
+        executor = next((item for item in catalog if getattr(item, "name", None) == tool), None)
+        handed = submit_rows(executor, args, context, framework, observed, entry["query"])
+        if handed is not None:
+            return handed
+        value = agent_runtime.invoke_tool_by_name(
             tool, args, catalog=catalog, actor=context["actor"], channel=channel,
             owner_user_id=owner, target_device=entry["target_device"] or None,
             turn_id=turn_id, source_request_id=context["source_request_id"],
             request_text=entry["query"])
+        observed.append((tool, value))
+        return value
 
     return Executor(invoke_executor=_invoke, llm_call_fast=_fill,
                     vaglio_guard=guard_check, catalog=catalog).run(
-        framework, query=entry["query"], runtime_ctx=context)
+        framework, query=entry["query"], runtime_ctx=context), catalog
 
 
-def _consent_waits(entry: dict, run, *, turn_id: str) -> bool:
+def _consent_waits(entry: dict, run, *, turn_id: str, catalog) -> bool:
     """The rest stopped at a question: its answer resumes this very plan.
 
     What the steps before the question observed travels with the question,
     as a resumed chat turn carries its prior steps; the long step's result
     stays in the job, where it is read again."""
     import dialog_pending
+    from engine.types import Framework
 
     asked = run.steps[-1].result if run.steps else {}
     proposal = next(iter(asked.get("expandable_caps") or []), {})
@@ -554,6 +608,8 @@ def _consent_waits(entry: dict, run, *, turn_id: str) -> bool:
         "workload_id": entry["workload_id"],
         "turn_id": turn_id,
         "gate_approve_value": before.get("approve_value", "approve"),
+        "frozen_rows": freeze_row_consent(Framework.from_dict(json.loads(entry["plan_json"])),
+                                         run, entry, entry["query"], catalog=catalog),
         "replay": [[step.tool, step.result] for step in run.steps[:-1]
                    if step.tool != entry["tool"]],
     }
@@ -573,16 +629,14 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
     # Every effect of the rest, before or after a consent, is part of the
     # request: one «undo» reverses them together with the request's own.
     undo.continue_request(turn_id, entry["turn_id"])
-    run = _rest_of_request(entry, result, replay=replay, approved=approved,
+    run, catalog = _rest_of_request(entry, result, replay=replay, approved=approved,
                            turn_id=turn_id)
     kind, text = run.final_kind or "answer", str(run.final_text or "")
     if kind == "ask":
-        # The consent of the runtime is asked and its answer resumes the
-        # plan. Any other question (a form of a tool, a choice) has no way to
-        # resume from here yet: it is not asked, and that is said.
+        # Only the runtime's consent can resume the frozen plan from here.
         consent = (run.steps and run.steps[-1].tool == "get_approval"
                    and getattr(run, "gate_dialog_id", ""))
-        if not (consent and _consent_waits(entry, run, turn_id=turn_id)):
+        if not (consent and _consent_waits(entry, run, turn_id=turn_id, catalog=catalog)):
             _withdraw_question(entry, run)
             kind, text = "error", message("MSG_LRE_REST_NEEDS_YOU")
     unreplayed = None
@@ -689,6 +743,7 @@ def _joined_partitions(entry: dict, store) -> dict | None:
             payload.pop("partial_reason", None)
     return partitioned_runs.with_partial_reason(partitioned_runs.combine(
         _partition_policy(entry["tool"], payloads), payloads, order=order,
+        sizes={row["partition"]: len(row["rows"]) for row in listed[0]["entries"] if "rows" in row},
         unanswered={"error_class": "resource_unavailable", "error_code": code,
                     "error": message(code)}))
 
@@ -697,6 +752,7 @@ def _job_results(entry: dict, store) -> list[dict]:
     """What the long step of a request gave: one result when the job has an
     answer. A tool asked for several partitions committed one result for
     each, joined here into the one the step would have given in a turn."""
+    args = json.loads(entry["args_json"] or "{}")
     joined = _joined_partitions(entry, store)
     if joined is not None:
         return [joined]
@@ -713,9 +769,14 @@ def resume_after_consent(on_complete: dict, values: dict):
     if next(iter((values or {}).values()), None) != approve:
         return None
     owner = str(on_complete.get("owner_user_id") or "")
-    entry = origin(str(on_complete.get("workload_id") or ""), owner_user_id=owner)
+    entry = on_complete.get("frozen_rows") or origin(
+        str(on_complete.get("workload_id") or ""), owner_user_id=owner)
     if not entry or not entry.get("plan_json"):
         raise LookupError("the request of this question is no longer kept")
+    if entry["owner_user_id"] != owner:
+        raise LookupError("approved plan owner changed")
+    if on_complete.get("frozen_rows"):
+        return _answer_with_the_rest(entry, {}, approved=True)
     with _job_store() as store:
         results = _job_results(entry, store)
     if len(results) != 1:

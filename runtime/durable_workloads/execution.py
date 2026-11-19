@@ -889,16 +889,33 @@ class DurableExecutionBridge:
                 if usage_sink is not None:
                     usage_sink.complete_local_capture()
                 raise
-            if self._executor_invoker is None:
+            from .direct_invocation import row_policy
+            policy = row_policy(executor)
+            block = args[policy["list_arg"]][0] if policy else None
+            if policy:
+                if set(block) != {"partition", "rows"} or device_id is not None:
+                    raise ValueError("invalid frozen row block")
+                args = {**args, policy["list_arg"]: block["rows"]}
+
+            def invoke():
+                if self._executor_invoker is not None:
+                    return self._executor_invoker(executor, args, context, timeout, device_id, autonomy)
                 # The default path carries the usage sink, so a refusal at the
                 # scheduler boundary still proves transport was never entered.
                 return self._invoke_executor(
                     executor, args, context, timeout, device_id, autonomy,
                     usage_sink=usage_sink,
                 )
-            return self._executor_invoker(
-                executor, args, context, timeout, device_id, autonomy,
-            )
+            if policy and executor.execution_policy["effect"] != "read_only":
+                from undo import row_execution
+                with row_execution(context, executor, args, self.store):
+                    value = invoke()
+            else:
+                value = invoke()
+            if policy:
+                from partitioned_runs import assemble
+                return assemble(policy, [(block["partition"], value)])
+            return value
         if contract.kind == RunnerKind.WORKLOAD.value:
             if self._workload_invoker is None:
                 raise self._failure(

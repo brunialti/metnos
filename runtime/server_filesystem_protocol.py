@@ -356,7 +356,7 @@ def _check_message(message):
 
 
 def _callback_allowed(request, kind, action=None):
-    if kind == "checkpoint" and request["action"] != "transfer":
+    if kind == "checkpoint" and request["action"] not in {"transfer", "execute"}:
         return False
     if request["action"] in {"probe", "known_folders", "operations"}:
         return False
@@ -371,6 +371,19 @@ def _callback_allowed(request, kind, action=None):
 
 
 def _checkpoint_row(request, row):
+    if request["action"] == "execute" and "_row_journal" in request["args"]:
+        args = request["args"]
+        if (not isinstance(row, dict) or set(row) != {"index", "item", "evidence", "pattern"}
+                or row["index"] != args.get("_row_offset", 0)
+                or row["pattern"] != args.get("_row_pattern") or not isinstance(row["evidence"], dict)):
+            raise _error()
+        import server_filesystem as files
+        operation = permissions.served_operation(request['manifest'], args)
+        specs = files.move_rows(args) if operation == 'move' else files.dir_paths(args) \
+            if operation == 'mkdir' else files.paths(args)
+        if specs != [row['item']]:
+            raise _error()
+        return
     _transfer_row(row)
     if request["action"] != "transfer":
         raise _error()

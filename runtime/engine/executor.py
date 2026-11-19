@@ -2999,8 +2999,30 @@ class Executor:
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
             if question_template:
                 from .dispatch import _partition_question_text
+                preview = ""
+                # A folder-creation step may precede the approved move. Only
+                # inspect actions before the next question and rows already
+                # resolved from observations; never execute a step to preview it.
+                if runtime_ctx and not runtime_ctx.get("target_device"):
+                    import server_filesystem
+                    for following in framework.steps[i + 1:]:
+                        if following.tool == "get_approval":
+                            break
+                        target = self._catalog_map.get(following.tool)
+                        if target is None:
+                            continue
+                        preview_args = _resolve_from_step(dict(following.args or {}), result.steps,
+                            consumer_schema=self._schema_map.get(following.tool))
+                        preview_args = _resolve_stepref(preview_args, result.steps,
+                            self._schema_map.get(following.tool))
+                        preview = server_filesystem.fixed_refusal_preview(
+                            runtime_ctx.get("owner_user_id") or runtime_ctx.get("actor") or "host",
+                            server_filesystem.manifest_for(target), preview_args)
+                        if preview:
+                            break
+                options = {"fixed_note": preview} if preview else {}
                 args["prompt"] = _partition_question_text(
-                    question_template, args.get("prompt"), result.steps)
+                    question_template, args.get("prompt"), result.steps, **options)
             # Resolver EXEC-ONLY (backend/self_recipient/calendar): dipendono da
             # runtime ctx/creds → override deterministico LLM-invisibile. Registro
             # ArgTransform scope="exec-only" (ADR 0155/0163/0136; razionali
@@ -3327,7 +3349,12 @@ class Executor:
                     # failures, and remote executors simply never observe it.
                     from executor_progress import bind as _bind_executor_progress
                     with _bind_executor_progress(progress):
-                        r = self.invoke(_exec_tool, args)
+                        from lre_submission import submit_rows
+                        r = (None if (runtime_ctx or {}).get("_rows_continuation") else submit_rows(
+                            self._catalog_map.get(_exec_tool), args, runtime_ctx or {}, framework,
+                            [(item.tool, item.result) for item in result.steps], query))
+                        if r is None:
+                            r = self.invoke(_exec_tool, args)
                 except Exception as ex:
                     if type(ex).__name__ == "TimeoutExpired":
                         # §11/§2.8: messaggio CHIARO invece del grezzo
@@ -3359,6 +3386,8 @@ class Executor:
                 except Exception as ex:
                     log.warning("remediate_args_cb raised %r", ex)
 
+            from list_outcomes import normalize as _normalize_list_outcome
+            r = _normalize_list_outcome(r)
             # Cattura scope-arg: ultimo valore usato → default per il giro dopo
             # (§7.9, no LLM). Vedi args_resolver.remember_scope_args.
             if isinstance(r, dict) and r.get("ok"):
@@ -3450,9 +3479,11 @@ class Executor:
                     log.warning("vaglio raised %r — fail-open", ex)
 
             # Stop on hard error (no recovery attempted)
-            if not sr.ok:
+            if not sr.ok or (r.get("partial") is True and r.get("fail_count", 0) > 0):
                 result.aborted_reason = f"step_{i+1}_error"
                 result.final_kind = "error"
+                if r.get("_list_partial_notice"):
+                    result.final_text = r["_list_partial_notice"] + "\n\n" + _msg("MSG_LIST_STOPS_PLAN")
                 break
 
         # A hard stop preserves the historical commit boundary.  Already
@@ -3476,4 +3507,11 @@ class Executor:
                 framework, result.steps, query, self.llm_fast,
                 presentation=(runtime_ctx or {}).get("presentation"),
                 empty_mutation_skipped=empty_mutation_skipped)
+        if result.final_kind == "answer":
+            notices = list(dict.fromkeys(
+                row.result["_list_partial_notice"] for row in result.steps
+                if isinstance(row.result, dict) and row.result.get("_list_partial_notice")))
+            for notice in reversed(notices):
+                if not result.final_text.startswith(notice):
+                    result.final_text = notice + "\n\n" + result.final_text
         return result

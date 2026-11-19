@@ -3156,6 +3156,11 @@ def _undo_pending(executor, args, *, turn_id, actor, channel, device=""):
     futuri). `device` = id remoto quando l'op gira su un device: l'undo deve
     ribaltare sullo STESSO host (§2.9). Fail-open: l'undo non blocca il turno.
     Ritorna op_id o None."""
+    from undo import _ROWS
+    if _ROWS.get() is not None:
+        if not getattr(executor, "revertible", False):
+            raise ValueError("durable mutation has no undo contract")
+        return _ROWS.get()["op_id"]
     if not getattr(executor, "revertible", False):
         return None
     try:
@@ -3208,6 +3213,9 @@ def _undo_done(op_id, obs, *, executor=None):
     ``no_effect`` chiude il pending e non viene scambiato per un crash."""
     if not op_id or not isinstance(obs, dict):
         return False
+    from undo import _ROWS
+    if _ROWS.get() is not None and obs.get("error_class") == "publication_ambiguous":
+        return False  # Keep the intention: the interrupted rows still need recognition.
     try:
         _undo_contract = getattr(executor, "undo", None) or {}
         _outcome_contract = str(
@@ -3221,6 +3229,8 @@ def _undo_done(op_id, obs, *, executor=None):
             log.error("[undo] ricevuta per-esecuzione non valida")
         return True
     except Exception as _ue:
+        if _ROWS.get() is not None:
+            raise
         log.warning("[undo] append_done fallita (fail-open): %r", _ue)
         return False
 
@@ -3643,10 +3653,17 @@ def _invoke_executor_impl(executor, args, timeout_s=30, *, autonomy="supervised"
     # never receives a wider filesystem bind. Existing scopes keep their path.
     import server_filesystem as _files
     _fs_manifest = _files.manifest_for(executor)
+    from undo import _ROWS
+    if _ROWS.get() is not None:
+        # Internal context after validation; never supplied by a model or passed to tool code.
+        from reverse_patterns import file_recovery_pattern
+        args = {**args, "_row_journal": _ROWS.get()["plan"]["rows"],
+                "_row_pattern": file_recovery_pattern(executor, _fs_manifest, args)}
+        _ROWS.get()["plan"]["filesystem"] = _fs_manifest
     import devices as _fs_devices
     _fs_owner = owner_user_id or _fs_devices.owner_id_for_actor(actor or "host")
     try:
-        _fs_extension = _files.needs_extension(_fs_owner, _fs_manifest, args)
+        _fs_extension = _ROWS.get() is not None or _files.needs_extension(_fs_owner, _fs_manifest, args)
         # A search whose root the tool's own sandbox does not show is served
         # by the closed list operation, under the same areas and grants.
         _fs_search = (not _fs_extension
@@ -4042,6 +4059,8 @@ def _invoke_executor_impl_optional_context(
         if admitted is not None:
             return admitted
     observation = _invoke_executor_impl(executor, args, **kwargs)
+    from list_outcomes import normalize as normalize_list_outcome
+    observation = normalize_list_outcome(observation)
     if isinstance(observation, dict) and observation.get("details") and any(
             (cap.get("name") if isinstance(cap, dict) else str(cap)) == "system:undo"
             for cap in getattr(executor, "capabilities", None) or ()):

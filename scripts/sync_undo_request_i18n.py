@@ -17,6 +17,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'MSG_UNDO_LEFT_TIME': (
+        '{count} elementi non raggiunti entro il tempo disponibile',
+        '{count} items not reached within the available time'),
+    'MSG_UNDO_LEFT_REFUSED': (
+        '{count} elementi rifiutati dai controlli',
+        '{count} items refused by the checks'),
+    'MSG_UNDO_LEFT_UNCERTAIN': (
+        '{count} elementi da verificare dopo un’interruzione',
+        '{count} items to verify after an interruption'),
+    'MSG_UNDO_CONTINUE': (
+        'Un altro «annulla» prosegue la stessa richiesta dagli elementi rimasti.',
+        'Another “undo” continues the same request from the remaining items.'),
     # The whole sentence: everything came back.
     'MSG_UNDO_REQUEST_DONE': (
         'Annullato: {done}.',
