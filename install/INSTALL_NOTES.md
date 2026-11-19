@@ -565,6 +565,9 @@ Rules that already hold:
 | Durable and image workspaces | unbound scratch, kept for audit | a clean report and absence in every admitted revision |
 | Import and quality audits | the last status row of each skill | completed observations only |
 
+The undo inventory recognizes native `undo_progress` receipts, including their boundary and
+uncertain actor data. A final successful `undone` also completes a previous progress receipt.
+
 Frozen plans, transaction receipts and unknown history entries still stop the history inventory.
 
 ## 8. Validation

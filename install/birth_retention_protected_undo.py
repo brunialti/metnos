@@ -26,6 +26,7 @@ from install.birth_retention_sqlite import _iso, _utc
 
 
 def _recovered(records):
+    records = [record for record in records if record["type"] != "undo_progress"]
     by_type = {record["type"]: record for record in records}
     reverse = by_type.get("undone", {}).get("reverse_results", {})
     return (len(by_type) == len(records) and set(by_type) == {"pending", "done", "undone"}
@@ -157,6 +158,7 @@ class _ProtectedUndoOwner(_PrivateFiles):
                 raise RetentionError("retention_inventory_incomplete", "unbound protected undo operation")
             kinds = [record["type"] for record in operation.records]
             if (kinds == ["pending"] or len(set(kinds)) != len(kinds)
+                    or ("undo_progress" in kinds and "undone" not in kinds)
                     or ("undone" in kinds and not _recovered(operation.records))
                     or any(record.get("reason") == "invalid_execution_receipt" for record in operation.records)):
                 actors_in_flight.add(actor)

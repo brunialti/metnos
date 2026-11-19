@@ -444,7 +444,7 @@ def _ask_before_removing(framework, entry: dict, context: dict, catalog=None):
     return framework
 
 
-def _removals_never_asked(framework) -> frozenset:
+def _removals_never_asked(framework) -> dict:
     """The steps that delete or move with no question before them in the plan.
 
     The gate is put in best-effort, as in a chat turn: a failure there leaves
@@ -452,14 +452,15 @@ def _removals_never_asked(framework) -> frozenset:
     did not come before is not run at all."""
     from engine.dispatch import _MASS_MUTATION_VERBS
 
-    asked, unasked = False, set()
+    asked, unasked = False, {}
     for step in framework.steps:
         tool = str(step.tool or "")
         if tool == "get_approval":
             asked = True
-        elif not asked and tool.split("_", 1)[0] in _MASS_MUTATION_VERBS:
-            unasked.add(tool)
-    return frozenset(unasked)
+        elif tool.split("_", 1)[0] in _MASS_MUTATION_VERBS:
+            unasked.setdefault(tool, []).append(not asked)
+            asked = False  # One question names one removal, never the rest of the plan.
+    return unasked
 
 
 def row_snapshot(value, owner, references, *, restore=False):
@@ -573,12 +574,16 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
     waiting = list(replay)
     answered = []
     observed = []
+    consent_used = False
 
     def _not_again(tool):
         return {"ok": False, "error_class": "continuation_failed",
                 "error": message("MSG_ORCH_CONTINUATION_FAILED", detail=tool)}
 
     def _invoke(tool: str, args: dict) -> dict:
+        nonlocal consent_used
+        removals = unasked.get(tool, [])
+        forbidden = removals.pop(0) if removals else False
         if waiting and tool != entry["tool"]:
             name, observation = waiting.pop(0)
             if name != tool:
@@ -596,10 +601,14 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
                           if getattr(item, "name", None) == tool), None)
             observed.append((tool, dict(result)))
             return {**result, "_presentation_contract": shown} if shown else dict(result)
-        if tool in unasked:
+        if forbidden:
             # The question could not be put before this step: it does not run.
             return {"ok": False, "error_class": "continuation_failed",
                     "error": message("MSG_LRE_REST_NEEDS_YOU")}
+        if tool == "get_approval":
+            if consent_used:
+                args.pop("_pre_approved", None)
+            consent_used = True
         from lre_submission import submit_rows
         executor = next((item for item in catalog if getattr(item, "name", None) == tool), None)
         handed = submit_rows(executor, args, context, framework, observed, entry["query"])
@@ -664,7 +673,7 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
     turn_id = uuid.uuid4().hex[:16]
     # Every effect of the rest, before or after a consent, is part of the
     # request: one «undo» reverses them together with the request's own.
-    undo.continue_request(turn_id, entry["turn_id"])
+    undo.continue_request(turn_id, undo.request_of_workload(entry.get("workload_id")) or entry["turn_id"])
     run, catalog = _rest_of_request(entry, result, replay=replay, approved=approved,
                            turn_id=turn_id)
     kind, text = run.final_kind or "answer", str(run.final_text or "")
@@ -698,6 +707,12 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
             text = "\n\n".join(part for part in (
                 _answer_text({**entry, "final_template": "${step1.@table}"}, found),
                 message("MSG_LRE_REST_FAILED"), text) if part)
+    from durable_workloads.direct_invocation import row_policy
+    tool = next((tool for tool in catalog if tool.name == entry["tool"] and row_policy(tool)), None)
+    if tool and tool.execution_policy["effect"] != "read_only" and type(result.get("ok_count")) is int:
+        receipt = message("MSG_LIST_PARTIAL", done=result["ok_count"],
+                          total=result["ok_count"] + result.get("fail_count", 0))
+        text = "\n\n".join((receipt, text)) if not text.startswith(receipt) else text
     return _write_turn(entry, text=text, kind=kind, result=unreplayed, lost=lost,
                        run=run, turn_id=turn_id, parent=parent, started=started)
 

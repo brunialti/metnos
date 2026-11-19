@@ -307,6 +307,13 @@ e la sua forma a blocchi devono entrare in 8 MiB. Se l'elenco non può essere
 preparato, la risposta indica quanti elementi sono stati trovati e non chiede
 conferma.</p>
 
+<p>Ogni spostamento o cancellazione successivi richiedono una domanda che
+nomini l'azione e gli elementi interessati; un solo sì non autorizza altre
+azioni. La risposta apre con i conteggi delle modifiche eseguite, anche se
+un passo successivo fallisce. L'annullamento comprende i blocchi della stessa
+richiesta; ciò che non può essere annullato resta disponibile per un nuovo
+tentativo.</p>
+
 <p>Le cartelle <code>duplicate_to_delete</code> sono ricavate dalle copie da
 spostare: una copia in <code>Foto/2019/viaggio</code> va in
 <code>Foto/2019/duplicate_to_delete/viaggio</code>; una copia direttamente in

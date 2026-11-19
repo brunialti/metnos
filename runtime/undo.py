@@ -121,6 +121,14 @@ def execution_undo_outcome(results: object, *, contract: str = "") -> str:
 _ROWS = ContextVar("undo_rows", default=None)
 
 
+def request_of_workload(workload_id, *, operations=None):
+    """The request recorded before admission, shared by HTTP and worker processes."""
+    if not workload_id:
+        return ""
+    operations = operations if operations is not None else UndoLog()._aggregate_ops()
+    return _request_unit(operations.get(workload_id + "-boundary", {}).get("pending", {}))
+
+
 @contextmanager
 def row_execution(context, executor, args, store):
     """One job lock is also the barrier used before reversing its request."""
@@ -133,14 +141,16 @@ def row_execution(context, executor, args, store):
         if store.get_workload(context.owner_user_id, context.workload_id).state.value in {"cancel_requested", "cancelled"}:
             raise RuntimeError("durable job cancelled")
         op_id = hashlib.sha256((context.workload_id + ":" + context.unit_key).encode()).hexdigest()
-        old = journal._aggregate_ops().get(op_id, {}).get("pending")
+        operations = journal._aggregate_ops()
+        old = operations.get(op_id, {}).get("pending")
+        request = request_of_workload(context.workload_id, operations=operations)
         origin = lre_answers.origin(context.workload_id, owner_user_id=context.owner_user_id)
-        if not origin:
+        if not origin or not request:
             raise ValueError("durable request origin missing")
         pending = old or {"op_id": op_id, "turn_id": "durable-" + context.unit_key,
             "executor": executor.name, "args": args, "actor": origin.get("actor", context.owner_user_id),
             "channel": origin.get("channel", "durable_workload"),
-            "request_turn_id": request_of(origin["turn_id"]) or origin["turn_id"],
+            "request_turn_id": request,
             "plan": {"workload_id": context.workload_id, "owner": context.owner_user_id, "rows": {}}}
         checkpoint_pending(pending, journal)
         token = _ROWS.set(pending)
@@ -316,7 +326,7 @@ class UndoLog:
         progress = {stage["pattern"]: stage["result"]["_undo_progress"]
                     for stage in stages if isinstance(stage.get("result"), dict)
                     and "_undo_progress" in stage["result"]}
-        pending = any(stage.get("pending_time", 0) for stage in progress.values())
+        pending = bool(reverse_results.get("fail_count")) or any(stage.get("pending_time", 0) for stage in progress.values())
         self._append({"type": "undo_progress" if pending else "undone",
                       "op_id": op_id, "ts": time.time(), "reverse_results": reverse_results,
                       **({"completed": {name: value["completed"] for name, value in progress.items()}}

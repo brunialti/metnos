@@ -15,11 +15,11 @@ class _UndoOwner(_JsonlOwner):
     temporary_prefix = _TEMP_PREFIX
 
     def _record_key(self, record):
-        if (record.get("type") not in {"pending", "done", "closed", "undone"}
+        if (record.get("type") not in {"pending", "done", "closed", "undo_progress", "undone"}
                 or type(record.get("op_id")) is not str or not record["op_id"]):
             raise ValueError("undo record")
         _time(record.get("ts"))
-        field = {"pending": "plan", "done": "results", "undone": "reverse_results"}.get(record["type"])
+        field = {"pending": "plan", "done": "results", "undo_progress": "reverse_results", "undone": "reverse_results"}.get(record["type"])
         if field is not None and type(record.get(field)) is not dict:
             raise ValueError("undo payload")
         if record["type"] == "closed" and record.get("outcome") not in {"no_effect", "irreversible"}:
@@ -35,7 +35,7 @@ class _UndoOwner(_JsonlOwner):
         for op_id, (items, version) in grouped.items():
             op = {item["type"]: item for item in items}
             pending = op.get("pending")
-            completion = op.get("undone") or op.get("closed") or op.get("done")
+            completion = op.get("undone") or op.get("undo_progress") or op.get("closed") or op.get("done")
             if pending and completion:
                 actor = pending.get("actor") or "host"
                 if type(actor) is not str or len(actor) > 4096:
@@ -57,6 +57,8 @@ class _UndoOwner(_JsonlOwner):
                 if ("done" not in op or type(count) is not int or count <= 0 or type(failed) is not int
                         or failed != 0 or reverse.get("failed")):
                     roots = (RootKind.OPEN_AUDIT,)
+            elif "undo_progress" in op:
+                roots = (RootKind.OPEN_AUDIT,)
             elif op.get("closed", {}).get("reason") == "invalid_execution_receipt":
                 roots = (RootKind.OPEN_AUDIT,)
             elif "closed" not in op:

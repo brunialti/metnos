@@ -291,6 +291,12 @@ it fits the 1 MiB limit; a referenced result and its block representation
 must fit within 8 MiB. If the list cannot be prepared, the answer states
 how many items were found and does not request confirmation.</p>
 
+<p>Each subsequent move or deletion requires a question naming the action
+and the affected items; one approval does not authorize other actions.
+The answer starts with counts of completed changes, even if a later step
+fails. Undo includes the blocks of the same request; changes that could
+not be undone remain available for another attempt.</p>
+
 <p>The <code>duplicate_to_delete</code> folders are derived from the copies to
 move: a copy in <code>Photos/2019/trip</code> goes into
 <code>Photos/2019/duplicate_to_delete/trip</code>; a copy directly in
