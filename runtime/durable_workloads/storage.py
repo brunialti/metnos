@@ -5575,7 +5575,7 @@ class DurableWorkloadStore:
         )
 
     def committed_tool_results(
-        self, owner_user_id: str, workload_id: str, *, tool: str, limit: int = 2,
+        self, owner_user_id: str, workload_id: str, *, tool: str, limit: int = 2, references: bool = False,
     ) -> list[dict]:
         """The committed results of one tool in a job, for the owner who asked.
 
@@ -5589,7 +5589,7 @@ class DurableWorkloadStore:
             raise DurableStoreError("committed tool results must be bounded")
         rows = self._connection.execute(
             """
-            SELECT result.payload_json
+            SELECT result.payload_json, result.id AS result_id, result.digest, result.schema_version
             FROM workloads workload
             JOIN stages stage
               ON stage.owner_user_id=workload.owner_user_id
@@ -5606,7 +5606,8 @@ class DurableWorkloadStore:
             ORDER BY unit.id LIMIT ?
             """, (tool, owner, workload_id, int(limit)),
         ).fetchall()
-        return [json.loads(row["payload_json"]) for row in rows]
+        return ([{key: row[key] for key in ("result_id", "digest", "schema_version")} for row in rows]
+                if references else [json.loads(row["payload_json"]) for row in rows])
 
     def committed_stage_results(
         self, owner_user_id: str, workload_id: str, *, stage_key: str,

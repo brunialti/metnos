@@ -755,6 +755,7 @@ class DurableExecutionBridge:
             resource_claims=lease.resource_claims,
             deadline_at=instant_text(stage_deadline, name="execution deadline"),
             language=contract.prompt_language,
+            output_schema_names=contract.output_schema_names,
         )
 
     def _remaining_timeout(self, context: ExecutionContext) -> float:

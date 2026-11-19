@@ -458,11 +458,17 @@ def _inventory_stage() -> dict[str, Any]:
     }
 
 
+def row_blocks(values):
+    from server_filesystem import MAX_ITEMS
+    return [{"partition": str(start).zfill(8), "rows": values[start:start + MAX_ITEMS]}
+            for start in range(0, len(values), MAX_ITEMS)]
+
+
 def build_direct_candidate(
     executor: object,
     finalized_args: Mapping[str, Any],
     target_device: str | None,
-    *, policy=None, partitions=(), max_concurrency=1,
+    *, policy=None, partitions=(), max_concurrency=1, row_references=(), owner_user_id=None,
 ) -> tuple[dict[str, Any], dict[str, Any]]:
     """Build a canonicalizable two-stage plan without executing anything."""
 
@@ -471,21 +477,26 @@ def build_direct_candidate(
     if type(max_concurrency) is not int or not 1 <= max_concurrency <= 256:
         raise DirectInvocationUnsupported("unit concurrency is invalid")
     rows = []
-    bindings = _literal_args(executor, finalized_args)
+    if row_references:
+        from .storage import DurableWorkloadStore
+        if policy != row_policy(executor) or not policy or policy["kind"] != "independent_rows":
+            raise DirectInvocationUnsupported("references require independent rows")
+        with DurableWorkloadStore.open() as store:
+            if store.read_committed_entries(owner_user_id, row_references) != finalized_args[policy["list_arg"]]:
+                row_references = ()
+    bindings = _literal_args(executor, {**finalized_args, policy["list_arg"]: []} if row_references else finalized_args)
     if policy:
         properties, _ = _argument_schema(executor)
         if (policy["arg"] not in properties or policy["list_arg"] not in properties
                 or properties[policy["list_arg"]].get("type") != "array"):
             raise DirectInvocationUnsupported("partition arguments are not declared")
         if policy["kind"] == "independent_rows":
-            from server_filesystem import MAX_ITEMS
             if policy != row_policy(executor) or max_concurrency != 1:
                 raise DirectInvocationUnsupported("row contract or concurrency is invalid")
             values = finalized_args[policy["list_arg"]]
             if not isinstance(values, list) or not 1 <= len(values) <= 102400:
                 raise DirectInvocationUnsupported("row list is invalid")
-            rows = [{"partition": str(start).zfill(8), "rows": values[start:start + MAX_ITEMS]}
-                    for start in range(0, len(values), MAX_ITEMS)]
+            rows = row_blocks(values)
             finalized_args = {key: value for key, value in finalized_args.items() if key != policy["list_arg"]}
             del bindings[policy["list_arg"]]
         else:
@@ -495,8 +506,11 @@ def build_direct_candidate(
                     or {policy["arg"], policy["list_arg"]} & set(finalized_args)):
                 raise DirectInvocationUnsupported("partition list is invalid")
             rows = [{"partition": value} for value in values]
-    rows = json.loads(canonical_json(rows, max_bytes=MAX_PLAN_JSON_BYTES))
+    from .schema import MAX_RESULT_JSON_BYTES
+    rows = json.loads(canonical_json({"entries": rows}, max_bytes=MAX_RESULT_JSON_BYTES if row_references else MAX_PLAN_JSON_BYTES))["entries"]
     placement = _placement(executor, finalized_args, target_device)
+    if policy and policy["kind"] == "independent_rows" and placement["target"] != "server":
+        raise DirectInvocationUnsupported("row execution is server only")
     effect = _durable_effect(executor)
     attempts = 3 if effect == DurableEffect.PURE.value else 1
     timeout_s = min(86_400, int(executor.timeout_s))
@@ -535,6 +549,9 @@ def build_direct_candidate(
             "depends_on": ["inventory"], "runner": {"kind": "internal", "name": "literal_entries"},
             "input_bindings": {"entries": {"ref": "literal", "value": rows}},
             "output_schema": {"schema_version": "metnos.output-schema-ref/1", "name": "metnos.partition-list/1"}}
+        if row_references:
+            listing.update(runner={"kind": "internal", "name": "committed_entries"},
+                           input_bindings={"references": {"ref": "literal", "value": row_references}})
         stages.append(listing)
         direct_stage.update(type="map", depends_on=["partitions"],
             cardinality={"mode": "per_dependency", "max_units": len(rows), "entry_identity_field": "partition"})

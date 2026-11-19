@@ -462,9 +462,28 @@ def _removals_never_asked(framework) -> frozenset:
     return frozenset(unasked)
 
 
+def row_snapshot(value, owner, references, *, restore=False):
+    """Replace only the exact committed list; verify its owner and digest on every reading."""
+    if not references:
+        return value
+    with _job_store() as store:
+        rows = store.read_committed_entries(owner, references)
+    marker = {"_committed_entries": references}
+
+    def replace(item):
+        if item == (marker if restore else rows):
+            return rows if restore else marker
+        if isinstance(item, dict):
+            return {key: replace(part) for key, part in item.items()}
+        if isinstance(item, (list, tuple)):
+            return [replace(part) for part in item]
+        return item
+    return replace(value)
+
+
 def freeze_row_consent(framework, run, context, query, *, catalog):
     """Keep the approved plan and observations in the existing owner-bound dialog."""
-    from durable_workloads.direct_invocation import _literal_args, row_policy
+    from durable_workloads.direct_invocation import build_direct_candidate, row_policy
     from frozen_plan_consent import executor_binding
     catalog = {item.name: item for item in catalog}
     bindings = {step.tool: executor_binding(catalog[step.tool])
@@ -475,21 +494,33 @@ def freeze_row_consent(framework, run, context, query, *, catalog):
     saved = {**framework.to_dict(), "_row_bindings": bindings,
              "_rows_replay": [[step.tool, step.result] for step in run.steps[:-1]]}
     from engine.executor import _resolve_from_step, _resolve_stepref, _resolve_runtime_placeholders
-    for step in saved["steps"][len(run.steps):]:
-        if step["tool"] not in bindings:
-            continue
-        try:
+    count = max((len(step.result.get("entries", [])) for step in run.steps[:-1]), default=0)
+    try:
+        with _job_store() as store:
+            references = store.committed_tool_results(context["owner_user_id"], context.get("workload_id", ""),
+                tool=context.get("tool", ""), references=True) if context.get("workload_id") and context.get("tool") else []
+        for step in saved["steps"][len(run.steps):]:
+            if step["tool"] not in bindings:
+                continue
             tool = catalog[step["tool"]]
             args = _resolve_from_step(step["args"], run.steps[:-1], consumer_schema=tool.args_schema)
             args = _resolve_runtime_placeholders(_resolve_stepref(args, run.steps[:-1], tool.args_schema), context)
             args = {key: value for key, value in args.items() if not key.startswith("_")}
-            _literal_args(tool, args)  # Future observations or fillers cannot acquire this yes.
+            count = len(args.get(row_policy(tool)["list_arg"], []))
+            build_direct_candidate(tool, args, context.get("target_device") or None, policy=row_policy(tool),
+                                   row_references=references, owner_user_id=context["owner_user_id"])
             step["args"] = args
-        except Exception:
-            saved["_row_freeze_failed"] = True
-    encoded = json.dumps(saved, ensure_ascii=False)
-    if len(encoded.encode()) > _MAX_PLAN_JSON:
-        encoded = json.dumps({"_row_freeze_failed": True})
+        saved = row_snapshot(saved, context["owner_user_id"], references)
+        saved["_row_references"] = references
+        encoded = json.dumps(saved, ensure_ascii=False)
+        if len(encoded.encode()) > _MAX_PLAN_JSON:
+            raise ValueError("approved plan is too large")
+    except Exception as exc:
+        from messages import get as message
+        log.warning("row_consent_refused reason=%s", exc)
+        _withdraw_question(context, run)
+        run.final_kind, run.final_text = "error", message("MSG_ROWS_NOT_PREPARED", count=count)
+        return None
     return {**{key: str(context.get(key) or "") for key in
                ("owner_user_id", "actor", "channel", "turn_id", "conversation_id", "target_device")},
             "query": query, "tool": "", "args_json": "{}", "plan_json": encoded}
@@ -519,7 +550,7 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
         "source_request_id": agent_runtime._opaque_source_request_id(
             f"turn:{turn_id}", owner_user_id=owner,
             conversation_id=entry["conversation_id"], channel=channel),
-        "target_device": entry["target_device"], "_gate_approved": approved,
+        "target_device": entry["target_device"] or None, "_gate_approved": approved,
         "_rows_continuation": True,
     }
     # The question is part of the plan on both runs, so the steps keep their
@@ -531,6 +562,8 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
     current = {item.name: executor_binding(item) for item in catalog}
     if any(current.get(name) != binding for name, binding in saved.pop("_row_bindings", {}).items()):
         raise LookupError("approved contract changed; no row was executed")
+    context["_row_references"] = saved.pop("_row_references", [])
+    saved = row_snapshot(saved, owner, context["_row_references"], restore=True)
     replay = saved.pop("_rows_replay", replay)
     context["_gate_approved"] = saved.pop("_rows_approved", False) or approved
     framework = _ask_before_removing(
@@ -601,6 +634,10 @@ def _consent_waits(entry: dict, run, *, turn_id: str, catalog) -> bool:
         sender, run.gate_dialog_id, owner_user_id=entry["owner_user_id"])
     if not state:
         return False
+    frozen = freeze_row_consent(Framework.from_dict(json.loads(entry["plan_json"])),
+                               run, entry, entry["query"], catalog=catalog)
+    if run.final_kind == "error":
+        return False
     before = state.get("on_complete") or {}
     state["on_complete"] = {
         "type": RESUME_REST,
@@ -608,10 +645,9 @@ def _consent_waits(entry: dict, run, *, turn_id: str, catalog) -> bool:
         "workload_id": entry["workload_id"],
         "turn_id": turn_id,
         "gate_approve_value": before.get("approve_value", "approve"),
-        "frozen_rows": freeze_row_consent(Framework.from_dict(json.loads(entry["plan_json"])),
-                                         run, entry, entry["query"], catalog=catalog),
-        "replay": [[step.tool, step.result] for step in run.steps[:-1]
-                   if step.tool != entry["tool"]],
+        "frozen_rows": frozen,
+        "replay": [] if frozen else [[step.tool, step.result] for step in run.steps[:-1]
+                                    if step.tool != entry["tool"]],
     }
     dialog_pending.save_pending(sender, run.gate_dialog_id, state)
     return True
@@ -638,7 +674,7 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
                    and getattr(run, "gate_dialog_id", ""))
         if not (consent and _consent_waits(entry, run, turn_id=turn_id, catalog=catalog)):
             _withdraw_question(entry, run)
-            kind, text = "error", message("MSG_LRE_REST_NEEDS_YOU")
+            kind, text = "error", run.final_text if run.final_kind == "error" else message("MSG_LRE_REST_NEEDS_YOU")
     unreplayed = None
     if kind == "error":
         # What the job found is never lost because a later step failed: it

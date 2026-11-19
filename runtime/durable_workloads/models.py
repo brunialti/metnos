@@ -319,6 +319,7 @@ class ExecutionContext:
     # runner contract is checked. Not persisted, sent to a device, or accepted
     # from invocation arguments; they never change the frozen job contract.
     concurrency_targets: tuple[str, ...] = ()
+    output_schema_names: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)

@@ -8415,6 +8415,8 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
         }
         import lre_answers
         frozen = lre_answers.freeze_row_consent(framework, run, rc, query, catalog=catalog)
+        if run.final_kind == "error":
+            return
         if frozen is not None:
             st["on_complete"].update(type=lre_answers.RESUME_REST, frozen_rows=frozen)
         _dp.save_pending(sender, did, st)

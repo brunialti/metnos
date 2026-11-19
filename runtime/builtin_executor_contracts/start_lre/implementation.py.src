@@ -436,18 +436,23 @@ def submit_rows(executor, args, context, framework, replay, query):
     args = {key: value for key, value in args.items() if not key.startswith("_")}
     try:
         _require_ready()
+    except RuntimeError as exc:
+        log.warning("row_service_unavailable reason=%s", exc)
+        return _automatic_error("ERR_LRE_SUBMISSION_FAILED", error_class="service_unavailable")
+    try:
         owner = context["owner_user_id"]
         if not lre_answers.rest_can_follow(owner_user_id=owner, channel=context["channel"]):
             raise RuntimeError("origin unavailable")
-        candidate, inventory, stage = _direct_or_partitioned(executor, args, context.get("target_device"), None)
-        if stage["placement"]["target"] != "server":
-            raise DirectInvocationUnsupported("row execution is server only")
+        references = context.get("_row_references", [])
+        candidate, inventory = build_direct_candidate(executor, args, context.get("target_device"),
+            policy=policy, row_references=references, owner_user_id=owner)
+        frozen_args = lre_answers.row_snapshot(args, owner, references)
         from frozen_plan_consent import executor_binding
-        frozen = digest_json("approved-independent-rows", {"owner": owner, "args": args,
+        frozen = digest_json("approved-independent-rows", {"owner": owner, "args": frozen_args,
             "contract": executor_binding(executor), "turn": context["turn_id"]}, max_bytes=MAX_PLAN_JSON_BYTES)
         redacted = {"runner_name": executor.name, "arguments_digest": frozen}
-        kept_plan = {**framework.to_dict(), "_rows_replay": replay,
-                     "_rows_approved": bool(context.get("_gate_approved"))}
+        kept_plan = lre_answers.row_snapshot({**framework.to_dict(), "_rows_replay": replay,
+            "_rows_approved": bool(context.get("_gate_approved")), "_row_references": references}, owner, references)
         key = "rows_" + frozen
         with DurableWorkloadStore.open() as store:
             with feature_configuration_lock(path=store.database_path.with_name(store.database_path.name + ".submissions")):
@@ -467,8 +472,8 @@ def submit_rows(executor, args, context, framework, replay, query):
                     redacted_request=redacted, admission_boundary=_admission_boundary)
                 return _receipt(store, result)
     except Exception as exc:
-        log.warning("row_submission_failed type=%s", type(exc).__name__)
-        return _automatic_error("ERR_LRE_SUBMISSION_FAILED", error_class="operation_failed")
+        log.warning("row_submission_failed type=%s reason=%s", type(exc).__name__, exc)
+        return _automatic_error("ERR_ROWS_NOT_ADMISSIBLE", error_class="request_rejected")
 
 
 def submit_automatic_lre(

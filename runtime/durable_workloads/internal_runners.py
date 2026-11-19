@@ -124,7 +124,11 @@ def committed_entries(store):
 
     def read(args: Mapping[str, Any], context: ExecutionContext) -> dict[str, object]:
         try:
-            return {"entries": store.read_committed_entries(context.owner_user_id, args.get("references"))}
+            entries = store.read_committed_entries(context.owner_user_id, args.get("references"))
+            if "metnos.partition-list/1" in getattr(context, "output_schema_names", ()):
+                from .direct_invocation import row_blocks
+                entries = row_blocks(entries)
+            return {"entries": entries}
         except (DurableStoreError, SchemaValidationError):
             return _invalid_output()
 

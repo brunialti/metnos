@@ -283,6 +283,14 @@ on separate folders, and on the grouped whole set pass through the same
 long-job admission. The portable suite checks that every long-running tool
 has an admissible contract before installation.</p>
 
+<p>Operations on independent lists continue in sequential blocks under the
+usual permissions and whole-request undo. Approval covers the exact rows
+already observed: stored results are checked by owner and digest without
+repeating the search. A filtered or reordered list stays in the plan when
+it fits the 1 MiB limit; a referenced result and its block representation
+must fit within 8 MiB. If the list cannot be prepared, the answer states
+how many items were found and does not request confirmation.</p>
+
 <p>The <code>duplicate_to_delete</code> folders are derived from the copies to
 move: a copy in <code>Photos/2019/trip</code> goes into
 <code>Photos/2019/duplicate_to_delete/trip</code>; a copy directly in

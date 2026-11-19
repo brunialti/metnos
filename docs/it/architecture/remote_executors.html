@@ -298,6 +298,15 @@ su una cartella, su cartelle separate e sull'insieme raggruppato attraversano
 la stessa ammissione dei lavori lunghi. La batteria portatile controlla che
 ogni strumento lungo abbia un contratto ammesso prima dell'installazione.</p>
 
+<p>Le operazioni su elenchi indipendenti proseguono in blocchi sequenziali
+con i normali permessi e l'annullamento della richiesta. Il sì riguarda le
+righe esatte già osservate: i risultati conservati sono verificati per
+proprietario e impronta, senza ripetere la ricerca. Un elenco filtrato o
+riordinato resta nel piano se entra nel limite di 1 MiB; un risultato citato
+e la sua forma a blocchi devono entrare in 8 MiB. Se l'elenco non può essere
+preparato, la risposta indica quanti elementi sono stati trovati e non chiede
+conferma.</p>
+
 <p>Le cartelle <code>duplicate_to_delete</code> sono ricavate dalle copie da
 spostare: una copia in <code>Foto/2019/viaggio</code> va in
 <code>Foto/2019/duplicate_to_delete/viaggio</code>; una copia direttamente in
