@@ -16,6 +16,7 @@ import logging
 import os
 import re
 import time
+from contextvars import ContextVar
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
@@ -46,6 +47,32 @@ import detection_lexicon_seed_reconciliation as _reconciliation_lex
 from vocab import SINGULAR_EXECUTOR_NAMES as _SINGULAR_EXECUTORS
 
 log = logging.getLogger(__name__)
+
+_PLANNING_MEASURE = ContextVar("planning_measure_scope", default=None)
+
+
+class _MeasureObserverFailed(BaseException):
+    """An observer failure must escape ordinary engine exception handlers."""
+
+
+def _require_execution():
+    if _PLANNING_MEASURE.get() is not None:
+        raise _MeasureObserverFailed()
+
+
+def _measure(operation, *args):
+    scope = _PLANNING_MEASURE.get()
+    if scope is None:
+        return
+    try:
+        current, state, observe, finish = scope
+        if current.get() is not state:
+            raise _MeasureObserverFailed()
+        (finish if operation == "finish" else observe)(*args)
+        if operation == "finish" or current.get() is not state:
+            raise _MeasureObserverFailed()
+    except Exception:
+        raise _MeasureObserverFailed() from None
 
 
 def _explicit_start_lre_framework(
@@ -2258,7 +2285,7 @@ def _required_action_not_planned(framework: Framework, query: str, intent,
     capability.
     """
     from messages import get as _msg_get
-    if record_gap:
+    if record_gap and _PLANNING_MEASURE.get() is None:
         try:
             from .terminator import record_missing_actions
             planned = {tuple(parts[:2]) for parts in (
@@ -7498,7 +7525,8 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
     import os as _os
     from . import is_v3
     _v3 = is_v3()
-    _count = _os.environ.get("METNOS_GUARD_FIRE_COUNT", "1") == "1"
+    _count = (_os.environ.get("METNOS_GUARD_FIRE_COUNT", "1") == "1"
+              and _PLANNING_MEASURE.get() is None)
     if _count:
         try:
             from . import guard_stats as _gs
@@ -7512,7 +7540,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
                 _before = framework.to_dict()
             except Exception:
                 _before = None
-            framework = _g.fn(framework, intent, query, catalog)
+            try:
+                framework = _g.fn(framework, intent, query, catalog)
+            finally:
+                _measure("observe", _g.name, framework)
             try:
                 _fired = (_before is not None
                           and framework.to_dict() != _before)
@@ -7523,7 +7554,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
             except Exception:
                 pass
         else:
-            framework = _g.fn(framework, intent, query, catalog)
+            try:
+                framework = _g.fn(framework, intent, query, catalog)
+            finally:
+                _measure("observe", _g.name, framework)
     if _count and _gs is not None:
         try:
             _gs.end_plan()
@@ -7548,13 +7582,16 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     _site_url = (runtime_ctx or {}).get("site_invocation_url")
     if _site_url:
         framework = _bind_site_invocation(framework, _site_url)
+        _measure("observe", "_bind_site_invocation", framework)
     _mail_names = (runtime_ctx or {}).get("mail_invocations")
     framework = _apply_deterministic_structure_guards(
         framework, intent, query, catalog)
     if _site_url:
         framework = _bind_site_invocation(framework, _site_url)
+        _measure("observe", "_bind_site_invocation", framework)
     if _mail_names:
         framework = _bind_mail_invocation(framework, _mail_names, catalog)
+        _measure("observe", "_bind_mail_invocation", framework)
     if any(step.tool == "act_sites" for step in framework.steps):
         # Argument names only: what the site pilot will receive, for diagnosis.
         log.info("[site_plan] %s", [
@@ -7567,6 +7604,7 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
             from output_policy import normalize_terminal
             framework, _op_info = normalize_terminal(
                 framework, intent, query, catalog=catalog)
+            _measure("observe", "normalize_terminal", framework)
             if _op_info.get("action") not in ("", "noop"):
                 log.info("[output_policy] mode=%s action=%s producer-kind=%s",
                          _op_info.get("mode"), _op_info.get("action"),
@@ -7576,16 +7614,20 @@ def _finalize_framework_for_run(framework: Framework, intent, query: str,
     # Clausola «ordina/raggruppa per X» (§7.9): garantita a valle del
     # proposer — l'LLM non è tenuto a tradurla, la traduzione è codice.
     framework = _apply_ordering_clause(framework, query, catalog)
+    _measure("observe", "_apply_ordering_clause", framework)
     # consent-gate (20/6): turno schedulato + pipeline outbound (send_*) →
     # get_approval prima del send. Dopo l'ordinamento, prima dell'esecuzione.
     framework = _insert_consent_gate_if_scheduled(framework, query, runtime_ctx)
+    _measure("observe", "_insert_consent_gate_if_scheduled", framework)
     # Data-egress gate: un capability manifest puo' dichiarare quali argomenti
     # vengono inviati a un servizio esterno. Se valorizzati, consenso JIT.
     framework = _insert_outbound_data_gate(
         framework, query, runtime_ctx, catalog)
+    _measure("observe", "_insert_outbound_data_gate", framework)
     # mass-mutation gate (6/7): delete/move di massa → conferma umana.
     framework = _insert_mass_mutation_gate(framework, query, runtime_ctx,
                                            catalog=catalog)
+    _measure("observe", "_insert_mass_mutation_gate", framework)
     return framework
 
 
@@ -8526,6 +8568,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # pre-stadi (decontaminazione/pool) non sollevano su None e lo short-circuit
     # upload-default sotto può fidarsi che `query` sia una stringa.
     query = query or ""
+    _measure("observe", "intent_extracted", intent)
     # De-contaminazione oggetti-clausola (v3, 19/6): a 7-8 clausole l'LLM ancora
     # una clausola all'oggetto di una vicina (foto→files dopo «file»). Corregge
     # via object_hint_mapping (funzione canonica) PRIMA di tutto. Gated is_v3().
@@ -8536,7 +8579,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # 4/11/2026: its "https" turned «crea un foglio» into create urls).
         clause_text = str((runtime_ctx or {}).get("user_query_raw") or query)
         _decontaminate_clause_objects(intent, clause_text)
+        _measure("observe", "_decontaminate_clause_objects", intent)
         _fix_unroutable_verbs(intent, clause_text, catalog)
+        _measure("observe", "_fix_unroutable_verbs", intent)
     # gate-resume (20/6): sulla RIPRESA dopo approvazione (runtime_ctx
     # _gate_approved) il gate e' gia' consentito → togli la clausola
     # (get, approval) dall'intent cosi' il proposer compone la pipeline PULITA a
@@ -8552,11 +8597,13 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             intent.actions = _acts0
         except Exception:  # noqa: BLE001 — intent immutabile: best-effort
             pass
+        _measure("observe", "gate_resume_actions", intent)
     # D2-c (18/6): normalizza le clausole store dell'intent (store-sink →
     # entries) PRIMA di pool/cache/proposer, cosi' la sig compound-aware e il
     # routing vedono le actions gia' corrette. Deterministico, no-op se non
     # compound o senza store-sink.
     _normalize_store_clauses(intent, query, catalog)
+    _measure("observe", "_normalize_store_clauses", intent)
     # Pool reduction via prefilter (ADR 0164 fix): invece di passare TUTTO
     # il catalog (~80 tool, prompt 400+ righe) a Mētis, prefiltriamo per
     # intent semantic match. Top-K (default 12) coprono >90% intent canonici
@@ -8597,8 +8644,10 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # Also covers direct technical/upload routes which skip finalization.
         # A typed refusal escapes to run_turn's terminal boundary, before any
         # form, durable admission, confirmation or executor can be invoked.
+        _measure("observe", "pre_execution", framework_to_run)
         framework_to_run = _partition_plan_to_served_form(
             framework_to_run, catalog, query=query)
+        _measure("observe", "normalize_partition_plan", framework_to_run)
 
         prohibited = _prohibited_plan_verbs(framework_to_run, query)
         if prohibited:
@@ -8634,6 +8683,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 framework=framework_to_run, error_class="missing_input",
                 needs_inputs_obs=record_kind), None
 
+        _measure("finish", framework_to_run, intent, catalog)
         durable = _admit_finalized_long_work(
             framework_to_run, admit_long_work_cb, started_at=t_start,
         )
@@ -8764,7 +8814,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # (parità col path legacy ADR 0092 che skippava il fast_path). Evita anche
     # di servire un piano cachato no-upload a un turno upload (e viceversa).
     response_only = intent.kind in {"conversation", "metnos_help"}
-    if is_fastpath_enabled() and not seed_state and not response_only:
+    if (is_fastpath_enabled() and not seed_state and not response_only
+            and _PLANNING_MEASURE.get() is None):
         fp_hit = _fp.lookup(query)
         if fp_hit is not None:
             # VALIDITÀ DEL MONDO a hit-time (ADR 0182, sussume la morte C1):
@@ -8876,7 +8927,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
 
     # ── Layer 1: Autopath ────────────────────────────────────────────────
     # Seed-state (ADR 0177 M1): salta anche L1 con seed (vedi L0 sopra).
-    if is_autopath_enabled() and intent.is_complete() and not seed_state and not response_only:
+    if (is_autopath_enabled() and intent.is_complete() and not seed_state
+            and not response_only and _PLANNING_MEASURE.get() is None):
         ap_hit = _ap.lookup(query, intent)
         if ap_hit is not None:
             # VALIDITÀ DEL MONDO a hit-time (ADR 0182, gemello di L0): firme
@@ -8986,7 +9038,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     terminator = get_terminator()
 
     excluded = set()
-    if intent.is_complete():
+    if intent.is_complete() and _PLANNING_MEASURE.get() is None:
         excluded = _ap.excluded_framework_hashes(intent)
 
     framework = proposer.propose(
@@ -8994,7 +9046,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         excluded_hashes=excluded,
         llm_call=llm_call_wise, lang=lang, catalog=catalog,
         prior_steps=seed_state or ())
+    _measure("observe", "proposer.propose", framework)
     if framework is None:
+        _measure("finish", framework, intent, catalog)
         # Proposer failed → terminator
         resp = terminator.explain(query=query, intent=intent,
                                     failed_run=None, error_class="wrong_args")
@@ -9032,10 +9086,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             excluded_hashes=excluded | {_failed_hash},
             llm_call=llm_call_wise, lang=lang, catalog=catalog,
             exclude_tools=("get_inputs",), prior_steps=seed_state or ())
+        _measure("observe", "get_inputs_misroute:reproposal", _framework_gi)
         # Solo se la ri-proposta NON è a sua volta una get_inputs-misroute
         # (difesa: re-propose potrebbe fallire o degenerare).
         if _framework_gi is not None and not _is_get_inputs_misroute(_framework_gi):
             framework = _framework_gi
+        _measure("observe", "get_inputs_misroute:selection", framework)
 
     # Guard decomposizione incompleta (§7.3/§4.3, universale): query multi-azione
     # in cui il planner ha SALTATO un verbo RICHIESTO — producer (find/read/get/
@@ -9067,10 +9123,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 delattr(intent, "_repropose_cover")
             except Exception:
                 pass
+        _measure("observe", "dropped_required_verbs:reproposal", _fw2)
         # Accetta la ri-proposta solo se copre PIÙ verbi (meno droppati).
         if _fw2 is not None and len(_dropped_required_verbs(
                 _fw2, query, intent, catalog)) < len(_dropped):
             framework = _fw2
+        _measure("observe", "dropped_required_verbs:selection", framework)
 
     # Guard DETERMINISTICI di struttura (§7.9): (1) align — ri-allinea i
     # tool-fratelli con object NON richiesto (es. find_pulls_github per clausola
@@ -9080,10 +9138,15 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # va presa qui. Serve a sapere che cosa ciascuna guardia ripara davvero —
     # l'observation da sola registra un piano già sano.
     from .planning_repair import guard_with_partition_repair
+
+    def _guard_repair_candidate(candidate):
+        _measure("observe", "guard_with_partition_repair:candidate", candidate)
+        return _apply_deterministic_structure_guards(
+            candidate, intent, query, catalog)
+
     framework, _framework_raw = guard_with_partition_repair(
         framework,
-        apply_guards=lambda candidate: _apply_deterministic_structure_guards(
-            candidate, intent, query, catalog),
+        apply_guards=_guard_repair_candidate,
         proposal_kwargs=dict(
             query=query, pool=pool_names, excluded_hashes=excluded,
             lang=lang, catalog=catalog, prior_steps=seed_state or ()),
@@ -9104,6 +9167,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 excluded_hashes=excluded | {failed_hash},
                 llm_call=llm_call_wise, lang=lang, catalog=catalog,
                 prior_steps=seed_state or ())
+            _measure("observe", "validator:reproposal", framework2)
             if framework2 is not None:
                 # Le guardie DETERMINISTICHE (§7.9) devono essere l'ULTIMA parola:
                 # il re-propose del validator produce un piano FRESCO che le
@@ -9125,6 +9189,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     log.info("[L2 validator] ri-proposta SCARTATA: %d errori "
                              "contro %d del piano originale",
                              len(_errs2), len(vres.errors))
+            _measure("observe", "validator:selection", framework)
 
     # Preparazione UNIVERSALE pre-esecuzione (funzione condivisa, 10/7):
     # guards (idempotenti — 2ª passata no-op sul path normale) → output_policy
@@ -9144,6 +9209,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                                         compute_framework_hash(framework)},
             llm_call=llm_call_wise, lang=lang, catalog=catalog,
             prior_steps=seed_state or ())
+        _measure("observe", "accepted_rejection:reproposal", _other)
         if _other is not None:
             _other = _finalize_framework_for_run(
                 _apply_deterministic_structure_guards(
@@ -9151,6 +9217,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 intent, query, catalog, runtime_ctx)
             if not _accepted_rejection(_other, query):
                 framework = _other
+        _measure("observe", "accepted_rejection:selection", framework)
 
     # Last word before any executor: never replace an explicit side effect
     # with a harmless lookup.  Re-proposal and deterministic guards have

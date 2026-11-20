@@ -2546,7 +2546,48 @@ async def admin_device_test_invoke(request: web.Request) -> web.Response:
                               "result": result})
 
 
+async def admin_plans_measure(request: web.Request) -> web.Response:
+    from http_routes_agent import (
+        _resolve_session_user_id, _reserve_turn, _run_turn_reserved,
+        _turn_busy_response, _turn_pool,
+    )
+    from http_turn_pool import TurnPoolBusy
+    from planning_measure import MeasureBusy, MeasureError, run
+
+    try:
+        body = await request.json()
+    except (ValueError, TypeError):
+        return web.json_response({"error": "invalid_measure_request"}, status=400)
+    if (not isinstance(body, dict) or set(body) != {"query", "memory"}
+            or not isinstance(body["query"], str) or not body["query"].strip()
+            or body["memory"] != "off"):
+        return web.json_response({"error": "invalid_measure_request"}, status=400)
+    provider = app_get(request.app, CATALOG_PROVIDER)
+    if _turn_pool(request) is None or not callable(provider):
+        return web.json_response({"error": "measure_unavailable"}, status=503)
+    owner = await _resolve_session_user_id(request)
+
+    def worker():
+        catalog = provider()
+        if not isinstance(catalog, list) or not catalog:
+            raise MeasureError("catalog_unavailable")
+        return run(query=body["query"], owner_user_id=owner, catalog=catalog)
+
+    try:
+        reservation = await _reserve_turn(request, owner)
+    except TurnPoolBusy:
+        return _turn_busy_response()
+    try:
+        report = await _run_turn_reserved(request, reservation, worker)
+    except MeasureBusy:
+        return _turn_busy_response()
+    except Exception:
+        return web.json_response({"error": "planning_measure_failed"}, status=503)
+    return web.json_response(report, headers={"Cache-Control": "no-store"})
+
+
 ROUTES = (
+    ("POST", "/admin/plans/measure",             admin_plans_measure),
     ("GET",  "/admin/virt",                      admin_virt),
     ("POST", r"/admin/virt/{family:llm|vlm}/save", admin_virt_save),
     ("POST", r"/admin/virt/{family:llm|vlm}/reset", admin_virt_reset),

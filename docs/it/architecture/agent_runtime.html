@@ -36,6 +36,7 @@ direttore d'orchestra di un turno, non un executor universale.</p>
   <li><a href="#percorso">Il percorso completo</a></li>
   <li><a href="#scelta">Come viene scelto il percorso</a></li>
   <li><a href="#piano">Com'è fatto un piano</a></li>
+  <li><a href="#misura">Osservare un piano prima degli effetti</a></li>
   <li><a href="#dati">Come passano i dati</a></li>
   <li><a href="#controlli">Controlli, conferme e credenziali</a></li>
   <li><a href="#pause">Pause, riprese e lavori lunghi</a></li>
@@ -143,6 +144,22 @@ riferimento a un passo futuro o una combinazione incoerente. Le guardie comuni
 possono anche inserire un produttore indispensabile, riallineare dipendenze note
 o chiedere una nuova proposta quando manca un'azione esplicitamente richiesta.
 Non aggiungono capacità estranee al catalogo.</p>
+
+<h2 id="misura">Osservare un piano prima degli effetti</h2>
+
+<p>La misura dei piani in preparazione usa lo stesso percorso di estrazione,
+proposta e guardie, con una nuova proposta L3 e memoria dei piani disattivata.
+Conserva fotografie strutturate delle azioni e del piano, mascherando i valori
+privati. Si arresta prima dell'ammissione persistente, delle conferme e degli
+executor, anche quando il piano non contiene un lavoro lungo.</p>
+
+<p>Il rapporto distingue forma ammessa, rifiutata e non applicabile senza passi
+lunghi; un rifiuto anticipato può impedire di raggiungere quel verdetto.
+L'ammissione persistente resta non verificata, perché richiederebbe registrazione
+o lettura delle cartelle. Un guasto dell'osservatore deve fermare la misura senza
+avviare il piano; l'osservatore resta inattivo nei turni ordinari. Log e
+inizializzazioni delle preferenze restano possibili. La baseline sul servizio
+sarà raccolta dopo verifica e rilascio di questo ingresso di misura.</p>
 
 <h2 id="dati">Come passano i dati</h2>
 

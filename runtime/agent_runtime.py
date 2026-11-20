@@ -7424,6 +7424,7 @@ def _run_engine(
 
     # Invoke executor callback wrapped — Executor v2 chiama via tool name
     def _invoke(tool_name: str, args: dict) -> dict:
+        _dispatch._require_execution()
         if (tool_name == "set_credentials"
                 and args.get("credential_kind") in (None, "site")):
             binding = _site_credential_binding_from_url(args.get("binding"))
@@ -7498,6 +7499,7 @@ def _run_engine(
 
     def _submit(tool_name: str, args: dict):
         """Async twin used only after the engine and scheduler both admit it."""
+        _dispatch._require_execution()
         exec_obj = _catalog_by_name.get(tool_name)
         if exec_obj is None or tool_name in _BUILTIN_TOOL_HANDLERS:
             raise ValueError(f"tool '{tool_name}' is not async-admissible")
@@ -7665,6 +7667,7 @@ def _run_engine(
         import partitioned_runs
 
         def _call(tool, arguments):
+            _dispatch._require_execution()
             allowed, reason = guard_check(
                 tool, arguments, executor=_catalog_by_name.get(tool))
             if not allowed:
@@ -7679,6 +7682,7 @@ def _run_engine(
         return partitioned_runs.children_lister(policy, _call, excluded_files=excluded_files)
 
     def _admit_long_work(framework):
+        _dispatch._require_execution()
         import lre_answers
         admitted = submit_automatic_lre(
             framework,
@@ -7706,7 +7710,8 @@ def _run_engine(
     # A pure request to save credentials for one explicit site only needs the
     # protected form. No planner call or secret value is needed to open it.
     _site_binding = _site_credential_target(_site_query)
-    if (_is_credentials_store_only_intent(intent) and _site_binding
+    if (_dispatch._PLANNING_MEASURE.get() is None
+            and _is_credentials_store_only_intent(intent) and _site_binding
             and "set_credentials" in _catalog_by_name
             and not seed_state and not resume_steps and not pre_approved_gate):
         args = {"binding": _site_binding, "credential_kind": "site"}

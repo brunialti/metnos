@@ -36,6 +36,7 @@ conductor of a turn, not a universal executor.</p>
   <li><a href="#path">The complete path</a></li>
   <li><a href="#choice">How Metnos chooses a path</a></li>
   <li><a href="#plan">What a plan looks like</a></li>
+  <li><a href="#measurement">Observing a plan before effects</a></li>
   <li><a href="#data">How data moves between steps</a></li>
   <li><a href="#controls">Controls, confirmation, and credentials</a></li>
   <li><a href="#pauses">Pauses, resumptions, and long-running work</a></li>
@@ -141,6 +142,23 @@ to future steps, and inconsistent combinations. Shared guards may also insert an
 indispensable producer, align known dependencies, or request a new proposal when
 an explicitly requested action is missing. They do not add capabilities outside
 the catalog.</p>
+
+<h2 id="measurement">Observing a plan before effects</h2>
+
+<p>The planning measurement under preparation uses the same extraction,
+proposal, and guard path, with a fresh L3 proposal and plan memory disabled.
+It retains structured snapshots of actions and plans, masking private values.
+It stops before persistent admission, confirmations, and executors, including
+when the plan contains no long-running work.</p>
+
+<p>The report distinguishes an accepted shape, a rejected shape, and a verdict
+that does not apply without long-running steps; an early refusal may prevent
+that verdict from being reached. Persistent admission remains unverified because
+it would require registration or listing directories. An observer failure must
+stop the measurement without starting the plan; the observer stays inactive in
+ordinary turns. Logging and preference initialisation remain possible. The
+service baseline will be collected after this measurement entry has been
+verified and released.</p>
 
 <h2 id="data">How data moves between steps</h2>
 

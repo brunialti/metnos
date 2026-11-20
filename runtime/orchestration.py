@@ -185,6 +185,8 @@ def invoke_get_inputs_internal(*,
        final_message_hint, expandable_caps: [{kind: "get_inputs_response", ...,
        sender_for_state: sender_id}]}
     """
+    if (_dispatch := sys.modules.get("engine.dispatch")) is not None:
+        _dispatch._require_execution()
     if not isinstance(title, str) or not title.strip():
         return {"ok": False, "error": _msg("MSG_ORCH_TITLE_MISSING")}
     if not isinstance(dialog, list) or not dialog:

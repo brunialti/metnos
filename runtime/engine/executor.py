@@ -25,6 +25,7 @@ import logging
 import os
 import re
 import sqlite3
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import Any, Callable, Optional
@@ -2722,6 +2723,8 @@ class Executor:
             runtime_ctx: Optional[dict] = None,
             remediate_args_cb: Optional[Callable] = None,
             progress=None) -> RunResult:
+        if (_dispatch := sys.modules.get("engine.dispatch")) is not None:
+            _dispatch._require_execution()
         result = RunResult()
         _paged_tables.set((runtime_ctx or {}).get("channel") == "http")
         # Seed-state (ADR 0177 M1): le history pre-esistenti (es. foto allegate
