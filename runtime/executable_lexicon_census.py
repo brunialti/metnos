@@ -1264,7 +1264,7 @@ VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
         "prepared-set binding field identities",
     "559a9b449fda73b74b6cceaf3e4b5330b9d5502dcf3aeded5a666715bd41ddc2":
         "prepared authority-set V2 field identities",
-    "99be44286b7882dc6418ee5a625b82dc1c578bb66e68463020e3438764cc7a4f":
+    "0a9e7b4afd49a546592eb6fe65054f8fc197415c7f840d49f7db25306af6dcc0":
         "closed language-neutral failure causes a tool declares (error_class)",
     "58fc63700cac154309ecf73a0b7e5b0eb6e39e549ffc8ba41801c028a22628ba":
         "closed reasons for which a durable notice is not delivered",
