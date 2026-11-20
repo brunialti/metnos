@@ -13,7 +13,7 @@ from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
 import executor_birth_admin_preflight as preflight
 import executor_birth_distribution_assembler as assembler
-import executor_birth_legacy_state as legacy
+import executor_birth_legacy_state_journal as legacy
 
 
 def test_g6_probe_executable_comes_from_service_catalog(monkeypatch):

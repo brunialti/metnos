@@ -886,7 +886,9 @@ def _install_legacy_state_journal(fixture: _ActivationFixture) -> str:
         PosixAccountRecordV1, PosixAccountSnapshotV1,
     )
     from executor_birth_host_layout import SERVICE_ACCOUNT_POLICY_V1
-    import executor_birth_legacy_state as legacy
+    import executor_birth_legacy_state_journal as legacy_journal
+    import executor_birth_legacy_state_policy as legacy_policy
+    import executor_birth_legacy_state_request as legacy_request
 
     # Like the synthetic context/set/receipt above, this nominal historical
     # account is only input to pure constructors, never an account lookup or
@@ -896,30 +898,30 @@ def _install_legacy_state_journal(fixture: _ActivationFixture) -> str:
         policy.name, fixture.account.uid, fixture.account.gid,
         policy.home.as_posix(), policy.shell.as_posix(),
     ), (fixture.account.gid,))
-    request = legacy.build_legacy_state_request_v1(
+    request = legacy_request.build_legacy_state_request_v1(
         account, _raw_digest(fixture.manifest),
     )
-    observation = legacy.LegacyStateObservationV1(tuple(
-        legacy.LegacyPathObservationV1(
-            PurePosixPath(relative), legacy.LegacyNodeKindV1.directory,
+    observation = legacy_policy.LegacyStateObservationV1(tuple(
+        legacy_policy.LegacyPathObservationV1(
+            PurePosixPath(relative), legacy_policy.LegacyNodeKindV1.directory,
             fixture.account.uid, fixture.account.gid, 0o700, 2, None, None,
         ) for relative in ("contract-authoring", "contract-authoring/v1")
     ))
-    planned = legacy.plan_legacy_state_v1(request)
-    inventoried = legacy.record_legacy_state_inventoried_v1(
+    planned = legacy_journal.plan_legacy_state_v1(request)
+    inventoried = legacy_journal.record_legacy_state_inventoried_v1(
         planned, request, observation,
     )
-    adopted = legacy.record_authoring_adopted_v1(
+    adopted = legacy_journal.record_authoring_adopted_v1(
         inventoried, request, observation, observation,
     )
-    ready = legacy.record_legacy_state_ready_v1(adopted, request, observation)
+    ready = legacy_journal.record_legacy_state_ready_v1(adopted, request, observation)
     root = OWNERSHIP_ROOT / "legacy-state-adoption-v1"
     root.mkdir(mode=0o700)
     _write_control(root / "journal.lock", b"", 0o600)
     for record in (planned, inventoried, adopted, ready):
         _write_control(
             root / f"record-{record.sequence:03d}.json",
-            legacy.encode_legacy_state_record_v1(record),
+            legacy_journal.encode_legacy_state_record_v1(record),
         )
     return ready.record_sha256
 

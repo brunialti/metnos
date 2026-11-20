@@ -146,7 +146,6 @@ def _distribution(tmp_path, name="current"):
         "runtime/executor_birth_host_path_policy.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_host_provisioning_evidence.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_host_provisioning_journal.py": ("runtime_code", b"VALUE = 1\n"),
-        "runtime/executor_birth_legacy_state.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_legacy_state_journal.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_legacy_state_policy.py": ("runtime_code", b"VALUE = 1\n"),
         "runtime/executor_birth_legacy_state_preflight_projection.py": ("runtime_code", b"VALUE = 1\n"),

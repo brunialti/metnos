@@ -9,7 +9,7 @@ import struct
 
 import pytest
 
-import executor_birth_legacy_state as legacy
+import executor_birth_legacy_state_policy as legacy
 import executor_birth_legacy_state_request as legacy_request
 import executor_birth_account_identity as account_identity
 import executor_birth_host_layout as host_layout
@@ -22,7 +22,7 @@ from executor_birth_authoring import authoring_paths
 LINUX_ONLY = pytest.mark.skipif(os.name != "posix", reason="real POSIX state observation")
 
 
-def _request(root: Path) -> legacy.LegacyStateRequestV1:
+def _request(root: Path) -> legacy_request.LegacyStateRequestV1:
     root.chmod(0o700)
     return legacy_request._build_legacy_state_request_for_test_v1(
         PurePosixPath(root.as_posix()), os.getuid(), os.getgid(),
@@ -246,12 +246,12 @@ def test_trust_anchor_catalog_remains_in_parity_with_host_owner() -> None:
     )
 
 
-def _canonical_request() -> legacy.LegacyStateRequestV1:
+def _canonical_request() -> legacy_request.LegacyStateRequestV1:
     record = account_identity.PosixAccountRecordV1(
         "metnos", 41, 42, "/var/lib/metnos-service", "/usr/sbin/nologin",
     )
     snapshot = account_identity.PosixAccountSnapshotV1(record, (42,))
-    return legacy.build_legacy_state_request_v1(
+    return legacy_request.build_legacy_state_request_v1(
         snapshot, "sha256:" + "a" * 64,
     )
 

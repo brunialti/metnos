@@ -155,7 +155,6 @@ def payload_bound_distribution_v2():
         "runtime/executor_birth_host_path_policy.py": "runtime_code",
         "runtime/executor_birth_host_provisioning_evidence.py": "runtime_code",
         "runtime/executor_birth_host_provisioning_journal.py": "runtime_code",
-        "runtime/executor_birth_legacy_state.py": "runtime_code",
         "runtime/executor_birth_legacy_state_journal.py": "runtime_code",
         "runtime/executor_birth_legacy_state_policy.py": "runtime_code",
         "runtime/executor_birth_legacy_state_preflight_projection.py": "runtime_code",

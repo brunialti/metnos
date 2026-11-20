@@ -897,7 +897,6 @@ _REQUIRED_MANIFEST_PATHS = {
     "runtime/executor_birth_host_path_policy.py": "runtime_code",
     "runtime/executor_birth_host_provisioning_evidence.py": "runtime_code",
     "runtime/executor_birth_host_provisioning_journal.py": "runtime_code",
-    "runtime/executor_birth_legacy_state.py": "runtime_code",
     "runtime/executor_birth_legacy_state_journal.py": "runtime_code",
     "runtime/executor_birth_legacy_state_policy.py": "runtime_code",
     "runtime/executor_birth_legacy_state_preflight_projection.py": "runtime_code",
@@ -914,7 +913,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:1b461f1c319590d13ac76e631d9010a72a8df7d1ae38d28e864d815f20f3ff4f"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:2bd0263b7b5213a6f29e8c3f93cc2d71f0b9b61f75047e3fbef040fe30789981"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

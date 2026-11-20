@@ -73,7 +73,6 @@ def _source_tree(tmp_path: Path):
         "runtime/executor_birth_host_path_policy.py": b"PATH_POLICY = 1\n",
         "runtime/executor_birth_host_provisioning_evidence.py": b"EVIDENCE = 1\n",
         "runtime/executor_birth_host_provisioning_journal.py": b"JOURNAL = 1\n",
-        "runtime/executor_birth_legacy_state.py": b"LEGACY = 1\n",
         "runtime/executor_birth_legacy_state_journal.py": b"LEGACY_FSM = 1\n",
         "runtime/executor_birth_legacy_state_policy.py": b"LEGACY_POLICY = 1\n",
         "runtime/executor_birth_legacy_state_preflight_projection.py": b"LEGACY_PROJECTION = 1\n",

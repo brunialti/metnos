@@ -172,9 +172,6 @@ def _files(root: Path):
         "runtime/executor_birth_host_provisioning_journal.py": (
             "runtime_code", b"JOURNAL = 1\n",
         ),
-        "runtime/executor_birth_legacy_state.py": (
-            "runtime_code", b"LEGACY = 1\n",
-        ),
         "runtime/executor_birth_legacy_state_journal.py": (
             "runtime_code", b"LEGACY_FSM = 1\n",
         ),
