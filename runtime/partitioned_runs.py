@@ -576,7 +576,12 @@ def _finish(policy: Mapping[str, Any], parts: Sequence[_Part]) -> dict:
             out[name] = sum(values)
     # A sum over fewer partitions than asked, or over cut ones, is a lower
     # bound: it is never shown as the total.
-    out["totals_complete"] = not failed and not cut
+    out["totals_complete"] = not cut and (not failed or all(
+        part.rows_key is not None and not part.summary.get("truncated")
+        and part.summary.get("ok_count") == len(part.rows)
+        and part.summary.get("fail_count") == len(part.failed)
+        and not any(part.summary.get(key) for key in _ERROR_KEYS)
+        for part in parts))
 
     roles = [part.roles for part in parts if part.roles is not None]
     if roles and all(role == roles[0] for role in roles):

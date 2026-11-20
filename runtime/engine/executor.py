@@ -3488,7 +3488,7 @@ class Executor:
                             and not any(r.get(key) for key in ("error_class", "error_code", "error"))):
                         result.final_kind = "answer"
                     result.final_text = r["_list_partial_notice"]
-                    if i + 1 < len(framework.steps):
+                    if any(step.tool != "final_answer" for step in framework.steps[i + 1:]):
                         result.final_text += "\n\n" + _msg("MSG_LIST_STOPS_PLAN")
                 break
 
