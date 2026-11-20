@@ -742,8 +742,8 @@ def notice(result: object) -> str:
         cell(names[line[PARTITION_FIELD]]),
         line.get("count", 0) if line.get("ok") is True else "–",
         line.get("fail_count", 0) if moving else cell(outcome(line))) for line in lines]
-    table[2:2] = [message("MSG_PARTITION_PARENT_ROW", name=cell(labels([parent])[parent]), n=count)
-                  for parent, count in sorted((result.get("excluded_files") or {}).items())]
+    table += [message("MSG_PARTITION_PARENT_ROW", name=cell(labels([parent])[parent]), n=count)
+              for parent, count in sorted((result.get("excluded_files") or {}).items())]
     table.append("| %s | %s | %s |" % (message("MSG_PARTITION_TOTAL"), sum(line.get("count", 0) for line in lines),
                  sum(line.get("fail_count", 0) for line in lines) + sum((result.get("excluded_files") or {}).values()) if moving else ""))
     head = message(

@@ -3071,6 +3071,9 @@ def _detect_unbacked_artifact_claim(
     a directory cannot substantiate a claim that a report or spreadsheet was
     saved.  The rule is domain-neutral and uses only durable artifact classes.
     """
+    # Observed target identities are data, not claims about creating artifacts.
+    for identity in _mutation_receipt_context(steps):
+        final_message = (final_message or "").replace(identity, "")
     if not final_message or not _runtime_safety_lexicon.matches(
             _runtime_safety_lexicon.ARTIFACT_COMPLETION,
             final_message,

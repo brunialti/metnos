@@ -32,6 +32,7 @@ import json
 import sqlite3
 import time
 import uuid
+from collections import Counter
 from pathlib import Path
 
 from logging_setup import get_logger
@@ -797,11 +798,40 @@ def _joined_partitions(entry: dict, store) -> dict | None:
     for payload in payloads:
         if isinstance(payload, dict):
             payload.pop("partial_reason", None)
-    return partitioned_runs.with_partial_reason(partitioned_runs.combine(
+    joined = partitioned_runs.combine(
         _partition_policy(entry["tool"], payloads), payloads, order=order,
         sizes={row["partition"]: len(row["rows"]) for row in listed[0]["entries"] if "rows" in row},
         unanswered={"error_class": "resource_unavailable", "error_code": code,
-                    "error": message(code)}))
+                    "error": message(code)})
+    if any("rows" in block for block in listed[0]["entries"]):
+        # Blocks are execution units. Human folders come from the frozen observations.
+        saved = json.loads(entry.get("plan_json") or "{}")
+        saved = row_snapshot(saved, owner, saved.get("_row_references", []), restore=True)
+        folders = {row["path"]: row["partition"]
+                   for _, value in saved.get("_rows_replay", [])
+                   for row in value.get("entries", [])
+                   if isinstance(row, dict) and row.get("path") and row.get("partition")}
+        rows = joined.get("results", joined.get("entries", []))
+        done = Counter(row.get("src", row.get("path")) for row in rows if row.get("ok") is not False)
+        operation = next((part["operation"] for part in joined["partitions"] if part.get("operation")), None)
+        summaries = {}
+        for block in listed[0]["entries"]:
+            for row in block.get("rows", []):
+                path = row.get("path") if isinstance(row, dict) else None
+                if not path:
+                    continue
+                folder = folders.get(path) or row.get("partition") or str(Path(path).parent)
+                summary = summaries.setdefault(folder, {"partition": folder, "ok": True,
+                    "operation": operation, "count": 0, "fail_count": 0})
+                succeeded = done[path] > 0
+                summary["count" if succeeded else "fail_count"] += 1
+                done[path] -= succeeded
+        joined["partitions"] = list(summaries.values())
+        for row in rows + joined.get("failed", []):
+            if row.get("path") == row.get("partition"):
+                row.pop("path", None)
+            row.pop("partition", None)
+    return partitioned_runs.with_partial_reason(joined)
 
 
 def _job_results(entry: dict, store) -> list[dict]:

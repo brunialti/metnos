@@ -1297,6 +1297,8 @@ def _session_event_data(ev: dict, admin_key: str, *,
         data["message"], data["inline_forms"] = _dialog_presentation(
             ev["message"], admin_key, owner_user_id=owner_user_id,
             inline_dialog_ids=ev["inline_dialog_ids"])
+    if isinstance(data.get("message"), str):
+        data["message_html"] = _safe_final_html(data["message"])
     return data
 
 
@@ -2675,7 +2677,7 @@ def _dialog_completion_response(state: dict, admin_key: str) -> web.Response:
                 f"data-attachments-b64=\"{_att_b64}\" "
                 f"data-turn-meta-b64=\"{_meta_b64}\">"
                 f"<h2>{completed_title}</h2>"
-                f"<pre>{esc_text}</pre>"
+                f"<div data-completion-body>{_safe_final_html(msg_for_display)}</div>"
                 f"<p><a href=\"/\">{return_label}</a></p>"
                 "</div>"
             )
@@ -2697,6 +2699,7 @@ def _dialog_completion_response(state: dict, admin_key: str) -> web.Response:
         'parent.postMessage({type:"metnos.dialog.done",'
         'redirect_url:el?.dataset.redirectUrl||"",'
         'completion_text:el?.dataset.completionText||"",'
+        'completion_html:el?.querySelector("[data-completion-body]")?.innerHTML||"",'
         'turn_id:el?.dataset.turnId||"",'
         'attachments:decode(el?.dataset.attachmentsB64),'
         'turn_meta:decode(el?.dataset.turnMetaB64)},parent.location.origin);</script>'

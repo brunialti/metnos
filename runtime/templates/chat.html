@@ -1134,7 +1134,7 @@ function add(cls, text, meta, persist, attachments, galleryInfo, htmlMode, histo
               : null;
             removeDialogHistory(dialogId);
             d.remove();
-            if(!alreadySettled) add('bot', ctxt, completionMeta, true, atts, gInfo);
+            if(!alreadySettled) add('bot', ev.data.completion_html || ctxt, completionMeta, true, atts, gInfo, !!ev.data.completion_html);
           } else {
             settleDialog('completed');
           }
@@ -2183,7 +2183,7 @@ function subscribeSessionEvents(token){
       const gInfo = (info.gallery_url && info.n_total_matches)
         ? { gallery_url: info.gallery_url, n_total_matches: info.n_total_matches }
         : null;
-      if(!hasSettledTurnHistory(info.turn_id || '', '')) add('bot', testo, meta, true, atts, gInfo);
+      if(!hasSettledTurnHistory(info.turn_id || '', '')) add('bot', info.message_html || testo, meta, true, atts, gInfo, !!info.message_html);
     });
     sessionSse.addEventListener('session_revoked', (ev) => {
       let info = {};

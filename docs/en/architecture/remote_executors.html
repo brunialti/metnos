@@ -297,6 +297,11 @@ The answer starts with counts of completed changes, even if a later step
 fails. Undo includes the blocks of the same request; changes that could
 not be undone remain available for another attempt.</p>
 
+<p>The summary appears as a table even when the job finishes after
+confirmation: it shows the requested first-level folders in name order,
+followed by the parent folder and total. Counts come from approved rows
+and stored outcomes; internal block numbers are not displayed.</p>
+
 <p>The <code>duplicate_to_delete</code> folders are derived from the copies to
 move: a copy in <code>Photos/2019/trip</code> goes into
 <code>Photos/2019/duplicate_to_delete/trip</code>; a copy directly in
