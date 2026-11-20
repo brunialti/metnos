@@ -760,6 +760,38 @@ def notice(result: object) -> str:
     return "\n\n".join(parts)
 
 
+def notices(results: Sequence[object]) -> list[str]:
+    """Join complementary columns only for the same complete partition identities."""
+    groups = []
+    for result in results:
+        if not (text := notice(result)):
+            continue
+        parts = text.split("\n\n")
+        lines = [line for line in result["partitions"] if isinstance(line, Mapping) and isinstance(line.get(PARTITION_FIELD), str)]
+        names = labels([line[PARTITION_FIELD] for line in lines])
+        keys = sorted(names, key=lambda key: names[key].casefold()) + [("parent", p) for p in sorted(result.get("excluded_files") or {})] + [None]
+        failed = {line[PARTITION_FIELD] for line in lines if line.get("ok") is not True}
+        rows = [re.split(r"(?<!\\)\|", row)[1:-1] for row in parts[1].splitlines()]
+        for old_identity, old_keys, old_parts, old_rows, unavailable in groups:
+            if frozenset(names) != old_identity or set(rows[0][1:]) & set(old_rows[0][1:]):
+                continue
+            extra, width = dict(zip(keys, rows[2:])), len(rows[0]) - 1
+            for key, row in zip(old_keys, old_rows[2:]):
+                row.extend(extra[key][1:] if key in extra and key not in unavailable else [" – "] * width)
+            for key in (key for key in keys if key not in old_keys):
+                old_keys.insert(-1, key)
+                old_rows.insert(-1, [extra[key][0]] + [" – "] * (len(old_rows[0]) - 1) + extra[key][1:])
+            old_rows[0].extend(rows[0][1:])
+            old_rows[1].extend(rows[1][1:])
+            old_parts.extend(part for part in [parts[0], *parts[2:]] if part not in old_parts)
+            unavailable.update(failed)
+            break
+        else:
+            groups.append([frozenset(names), keys, parts, rows, failed])
+    return ["\n\n".join([parts[0], "\n".join("|" + "|".join(row) + "|" for row in rows), *parts[2:]])
+            for _, _, parts, rows, _ in groups]
+
+
 def with_partial_reason(result: dict) -> dict:
     """Say in words why a partitioned result is partial, where every step
     that reads it looks for the reason (`partial_reason`): a sheet written

@@ -5938,8 +5938,10 @@ class TurnLog:
         # line «done» is not a claim that a file was made) and assign it anew.
         if self.final_kind == "answer":
             import partitioned_runs as _partitions
-            for _s in self.steps:
-                _pn = _partitions.notice(_s.result)
+            _pns = _partitions.notices([_s.result for _s in self.steps])
+            for _old in (_n for _s in self.steps if (_n := _partitions.notice(_s.result)) and _n not in _pns):
+                self.final_message = (self.final_message or "").replace(_old, "").strip()
+            for _pn in _pns:
                 if _pn and "<missing:" not in _pn and _pn not in (self.final_message or ""):
                     self.final_message = ((self.final_message or "").rstrip()
                                           + "\n\n" + _pn).strip()
