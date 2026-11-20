@@ -56,7 +56,7 @@ EXECUTOR_RESULT_SCHEMA = "metnos.executor-result/1"
 TOOL_CAUSES = frozenset({
     "not_found", "permission_denied", "io_error", "invalid_args",
     "invalid_input", "resource_unavailable", "dependency_unavailable",
-    "unsupported", "timeout",
+    "unsupported", "timeout", "refused_folder", "refused_system_file",
 })
 ITEM_FAILED = "item_failed"
 

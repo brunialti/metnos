@@ -48,6 +48,11 @@ TRANSLATIONS = {
     "UI_DURABLE_CAUSE_UNSUPPORTED": (
         "Operazione non supportata", "Unsupported operation"),
     "UI_DURABLE_CAUSE_TIMEOUT": ("Tempo scaduto", "Timed out"),
+    "UI_DURABLE_CAUSE_REFUSED_FOLDER": ("È una cartella", "It is a folder"),
+    "UI_DURABLE_CAUSE_REFUSED_SYSTEM_FILE": ("È un file di sistema", "It is a system file"),
+    "MSG_LRE_REMOVAL_NOT_DONE": (
+        "Non ho eseguito la cancellazione: manca la tua conferma.",
+        "I did not delete anything: your confirmation is needed."),
     "UI_DURABLE_CAUSE_ITEM_FAILED": (
         "Elemento non riuscito, causa non indicata",
         "Item failed, cause not given"),

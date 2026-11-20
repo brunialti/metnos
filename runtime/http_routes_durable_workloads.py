@@ -76,6 +76,8 @@ _DURABLE_ERROR_MESSAGE_KEYS = {
     "unsupported": "UI_DURABLE_CAUSE_UNSUPPORTED",
     "timeout": "UI_DURABLE_CAUSE_TIMEOUT",
     "item_failed": "UI_DURABLE_CAUSE_ITEM_FAILED",
+    "refused_folder": "UI_DURABLE_CAUSE_REFUSED_FOLDER",
+    "refused_system_file": "UI_DURABLE_CAUSE_REFUSED_SYSTEM_FILE",
     "invalid_plan": "UI_DURABLE_ERROR_INVALID_PLAN",
     "inventory_unstable": "UI_DURABLE_ERROR_INVENTORY_UNSTABLE",
     "lease_lost": "UI_DURABLE_ERROR_LEASE_LOST",

@@ -3483,7 +3483,13 @@ class Executor:
                 result.aborted_reason = f"step_{i+1}_error"
                 result.final_kind = "error"
                 if r.get("_list_partial_notice"):
-                    result.final_text = r["_list_partial_notice"] + "\n\n" + _msg("MSG_LIST_STOPS_PLAN")
+                    if ((runtime_ctx or {}).get("_gate_approved") and r.get("fail_count") == len(r.get("failed", []))
+                            and all(row.get("error_code") == "ERR_REFUSE_MOVE" for row in r["failed"])
+                            and not any(r.get(key) for key in ("error_class", "error_code", "error"))):
+                        result.final_kind = "answer"
+                    result.final_text = r["_list_partial_notice"]
+                    if i + 1 < len(framework.steps):
+                        result.final_text += "\n\n" + _msg("MSG_LIST_STOPS_PLAN")
                 break
 
         # A hard stop preserves the historical commit boundary.  Already

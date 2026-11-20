@@ -4683,6 +4683,9 @@ class TurnLog:
             if not isinstance(existing_failed, list):
                 existing_failed = [existing_failed]
             mut["failed"] = existing_failed + top_level_failures
+        notice = mut.get("_list_partial_notice")
+        if notice and notice in (self.final_message or "") and not top_level_failures:
+            return
         not_found = mut.get("not_found") or []
         failed = mut.get("failed") or []
         not_found = list(not_found) if isinstance(not_found, list) else [not_found]

@@ -657,10 +657,10 @@ def labels(partitions: Sequence[str]) -> dict[str, str]:
     """What to call each partition: its path without what all of them share.
 
     Thirty-six folders of one archive are told apart by their last names; a
-    single partition, or partitions with nothing in common, keep their path."""
+    single partition keeps only its last name."""
     unique = list(dict.fromkeys(partitions))
     parts = {partition: _display_parts(partition) for partition in unique}
-    shared = 0
+    shared = max(0, len(parts[unique[0]]) - 1) if len(unique) == 1 else 0
     if len(unique) > 1:
         shortest = min(len(item) for item in parts.values())
         # The last name always stays: it is what tells one from the other.

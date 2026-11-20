@@ -17,6 +17,7 @@ TRANSLATIONS = {
     "ERR_UNDO_ROWS_DRAIN": ("Lavoro in arresto; annullamento non ancora eseguito. Ripeti «annulla».", "Job stopping; undo has not run yet. Request undo again."),
     "ERR_UNDO_ROWS_UNCERTAIN": ("Nel blocco interrotto: {done} effetti riconosciuti, {uncertain} da verificare. Annullamento sospeso; nessun effetto incerto è stato annullato.", "In the interrupted block: {done} effects recognized, {uncertain} need verification. Undo suspended; no uncertain effect was reversed."),
     "MSG_LIST_PARTIAL": ("Fatti {done} su {total}.", "Done {done} of {total}."),
+    "MSG_LIST_REFUSED_CAUSE": ("Non spostati: {count}, {cause}.", "Not moved: {count}, {cause}."),
     "MSG_LIST_STOPS_PLAN": ("I passi successivi non sono stati eseguiti.", "The following steps were not executed."),
     "MSG_LIST_CAUSE_TIME": ("{count} non raggiunti entro il tempo disponibile", "{count} not reached within the available time"),
     "MSG_LIST_CAUSE_PERMISSION": ("{count} senza il permesso necessario", "{count} without the required permission"),

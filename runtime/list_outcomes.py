@@ -15,7 +15,7 @@ def reasons(rows):
                     "CHANGED" if code == "ERR_FS_SOURCE_CHANGED" else
                     "FIXED" if code in {"unsafe_target", "ERR_REFUSE_MOVE"} else "OTHER")
         groups[row["error"] if code == "ERR_REFUSE_MOVE" and row.get("error") in fixed else category] += 1
-    return "; ".join(message("MSG_MUTATION_QUESTION_CAUSE", count=count, cause=name) if name in fixed
+    return "; ".join(message("MSG_LIST_REFUSED_CAUSE", count=count, cause=name) if name in fixed
                      else message("MSG_LIST_CAUSE_" + name, count=count)
                      for name, count in sorted(groups.items()))
 

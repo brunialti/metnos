@@ -1265,6 +1265,7 @@ _MOVE_CAUSES = {"ERR_FS_SOURCE_MISSING": "ERR_PATH_NOT_FOUND", "ERR_FS_DEST_EXIS
 def move_failure(index, row, error):
     """One row of a move not done, in the shape the tool gives it."""
     from backends.files import local
+    from messages import get as message
     if "refused" in row:
         code, text = row["refused"], row["error"]
     else:
@@ -1272,6 +1273,8 @@ def move_failure(index, row, error):
         code = _MOVE_CAUSES.get(failure["error_code"], failure["error_code"])
         text = local._move_cause(code, None) if code != failure["error_code"] else failure["error"]
     return {"index": index, **{key: row[key] for key in ("src", "dst") if key in row},
+            "error_class": next(("refused_" + cause for cause in ("folder", "system_file")
+                                 if code == "ERR_REFUSE_MOVE" and text == message("MSG_MOVE_CAUSE_" + cause.upper())), ""),
             "error_code": code, "error": text}
 
 

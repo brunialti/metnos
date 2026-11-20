@@ -115,6 +115,9 @@
  After an interruption it reverses recognized effects and retains uncertain
  ones for another attempt. Moves reuse the approved list's digest when the
  file's size and modification time match.
+ Refusals already declared in the confirmation keep their reason in the
+ outcome and, on their own, do not make the turn an error. A partial result
+ still stops subsequent steps; the answer says so only if there are any.
  <a href="../system/lre.html#rest-of-request">Continuation and undo</a>.</p>
 
  <div class="note"><strong>The loop's elapsed-time limit does not

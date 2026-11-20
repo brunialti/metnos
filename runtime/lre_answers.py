@@ -376,7 +376,9 @@ def _write_turn(entry: dict, *, text: str, kind: str, result: dict | None,
     )
     if entry["target_device"]:
         turn.target_device = entry["target_device"]
-    if lost and not turn._collect_failure_notices():
+    declared = any(s.chosen_tool == entry["tool"] and s.result.get("_list_partial_notice")
+                   and s.result["_list_partial_notice"] in text for s in steps)
+    if lost and not declared and not turn._collect_failure_notices():
         turn.final_message = "\n\n".join(part for part in (text, lost) if part)
     _apply_device_tag(turn)
     turn.write()
@@ -607,7 +609,7 @@ def _rest_of_request(entry: dict, result: dict, *, replay=(), approved: bool = F
             # The question could not be put before this step: it does not run.
             return {"ok": False, "error_class": "continuation_failed",
                     "error_code": "unasked_removal",
-                    "error": message("MSG_LRE_REST_NEEDS_YOU")}
+                    "error": message("MSG_LRE_REMOVAL_NOT_DONE")}
         if tool == "get_approval":
             if consent_used:
                 args.pop("_pre_approved", None)
@@ -704,11 +706,11 @@ def _answer_with_the_rest(entry: dict, result: dict, *, lost: str = "", replay=(
             unreplayed = result
         failed = next((step for step in reversed(run.steps) if not step.ok), None)
         if not text and failed is not None:
-            text = "«%s»: %s" % (failed.tool, failed.result.get("error")
-                                 or failed.result.get("error_class") or "")
+            text = failed.result.get("error") or message("MSG_LRE_REST_FAILED")
         if found is not None:
+            from partitioned_runs import notice, is_partitioned
             text = "\n\n".join(part for part in (
-                _answer_text({**entry, "final_template": "${step1.@table}"}, found),
+                notice(found) if is_partitioned(found) else _answer_text({**entry, "final_template": "${step1.@table}"}, found),
                 message("MSG_LRE_REST_NOT_DONE" if failed is not None and failed.result.get("error_code") == "unasked_removal"
                         else "MSG_LRE_REST_FAILED"), text) if part)
     from durable_workloads.direct_invocation import row_policy
