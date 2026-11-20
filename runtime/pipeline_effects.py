@@ -149,7 +149,7 @@ def pipeline_effect_counts(steps) -> dict | None:
         if not tool or tool == "final_answer" or tool.startswith("@"):
             continue
         res = _step_result(s)
-        if res is None or res.get("_duplicate") is True:
+        if res is None or res.get("_duplicate") is True or res.get("error_code") == "unasked_removal":
             continue
         if res.get("ok") is False:
             failures += 1

@@ -307,6 +307,17 @@ e la sua forma a blocchi devono entrare in 8 MiB. Se l'elenco non può essere
 preparato, la risposta indica quanti elementi sono stati trovati e non chiede
 conferma.</p>
 
+<p>Un elemento rifiutato per una causa dichiarata, come un file di sistema,
+è contato fra quelli non spostati; i blocchi successivi proseguono. Un guasto
+ferma il lavoro. La tabella di conferma indica gli elementi fuori per cartella
+e nel totale. I conteggi restano corretti anche quando la cartella di lavoro
+è un collegamento al percorso fisico.</p>
+
+<p>Dopo un'interruzione, l'annullamento riconosce separatamente i file già
+spostati e quelli mai toccati, senza ripetere gli effetti. Un file già
+ripristinato non viene spostato di nuovo. Se l'annullamento resta parziale,
+la risposta indica i nomi dei file e le cause.</p>
+
 <p>Ogni spostamento o cancellazione successivi richiedono una domanda che
 nomini l'azione e gli elementi interessati; un solo sì non autorizza altre
 azioni. La risposta apre con i conteggi delle modifiche eseguite, anche se

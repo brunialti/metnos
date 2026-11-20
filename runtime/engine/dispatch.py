@@ -7922,7 +7922,7 @@ def _what_the_question_adds(steps, idx: int, source, catalog) -> str:
 _PARTITION_QUESTION_LIMIT = 600  # Kept equal to get_approval by a contract test.
 
 
-def _partition_question_text(template, resolved, history, *, fixed_note=""):
+def _partition_question_text(template, resolved, history, *, fixed_note="", refused_files=None):
     """Finish a partitioned question only once its counts and files exist.
 
     This is presentation, after resolution: it changes no gate argument other
@@ -7975,7 +7975,7 @@ def _partition_question_text(template, resolved, history, *, fixed_note=""):
         raise ValueError(message("MSG_MUTATION_QUESTION_TOO_LONG"))
     try:
         bounded = counts_text(rows, max_chars=_PARTITION_QUESTION_LIMIT - len(fixed) - 2, excluded_files=result.get("excluded_files"),
-                              field_roles=result.get("entry_field_roles"))
+                              field_roles=result.get("entry_field_roles"), refused_files=refused_files)
     except ValueError:
         raise ValueError(message("MSG_MUTATION_QUESTION_TOO_LONG")) from None
     return "\n\n".join(part for part in (fixed, bounded) if part)

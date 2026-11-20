@@ -3074,6 +3074,18 @@ def _detect_unbacked_artifact_claim(
     # Observed target identities are data, not claims about creating artifacts.
     for identity in _mutation_receipt_context(steps):
         final_message = (final_message or "").replace(identity, "")
+    from partitioned_runs import labels
+    for step in steps:
+        result = getattr(step, "result", None)
+        if isinstance(result, dict):
+            names = labels([row["partition"] for row in result.get("partitions", [])
+                            if isinstance(row, dict) and isinstance(row.get("partition"), str)])
+            for identity in [*names, *names.values()]:
+                final_message = (final_message or "").replace(identity, "")
+            for row in result.get("results", []):
+                for key in ("src", "dst", "path"):
+                    if isinstance(row, dict) and isinstance(row.get(key), str) and row[key]:
+                        final_message = (final_message or "").replace(row[key], "")
     if not final_message or not _runtime_safety_lexicon.matches(
             _runtime_safety_lexicon.ARTIFACT_COMPLETION,
             final_message,

@@ -258,6 +258,8 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
         reply = {}
         sent = False
         try:
+            if args.get('_row_observe') and str(index) not in args.get('_row_journal', {}):
+                continue  # No checkpoint means the row was never touched.
             if operation == 'move' and 'refused' in spec:
                 failed.append(server.move_failure(index, spec, None))
                 continue

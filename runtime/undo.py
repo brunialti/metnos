@@ -147,7 +147,7 @@ def row_execution(context, executor, args, store):
         origin = lre_answers.origin(context.workload_id, owner_user_id=context.owner_user_id)
         if not origin or not request:
             raise ValueError("durable request origin missing")
-        pending = old or {"op_id": op_id, "turn_id": "durable-" + context.unit_key,
+        pending = old or {"op_id": op_id, "turn_id": "durable-" + op_id,
             "executor": executor.name, "args": args, "actor": origin.get("actor", context.owner_user_id),
             "channel": origin.get("channel", "durable_workload"),
             "request_turn_id": request,
@@ -193,7 +193,7 @@ def observe_rows(row, *, timeout_s=30):
                            for i, item in enumerate(args["entries"])]
     return files.execute(owner, proof["filesystem"], {**args,
         "_row_journal": proof["rows"], "_row_observe": True,
-        "_row_pattern": next(iter(proof["rows"].values()))["pattern"]}, row["turn_id"], timeout_s=timeout_s)
+        "_row_pattern": next(iter(proof["rows"].values()))["pattern"]}, "durable-" + row["op_id"], timeout_s=timeout_s)
 
 
 def stopped_row_counts(job):

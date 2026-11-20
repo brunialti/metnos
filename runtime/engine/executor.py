@@ -2999,7 +2999,7 @@ class Executor:
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
             if question_template:
                 from .dispatch import _partition_question_text
-                preview = ""
+                preview, refused = "", {}
                 # A folder-creation step may precede the approved move. Only
                 # inspect actions before the next question and rows already
                 # resolved from observations; never execute a step to preview it.
@@ -3015,12 +3015,12 @@ class Executor:
                             consumer_schema=self._schema_map.get(following.tool))
                         preview_args = _resolve_stepref(preview_args, result.steps,
                             self._schema_map.get(following.tool))
-                        preview = server_filesystem.fixed_refusal_preview(
+                        preview, refused = server_filesystem.fixed_refusal_preview(
                             runtime_ctx.get("owner_user_id") or runtime_ctx.get("actor") or "host",
                             server_filesystem.manifest_for(target), preview_args)
                         if preview:
                             break
-                options = {"fixed_note": preview} if preview else {}
+                options = {"fixed_note": preview, "refused_files": refused} if preview else {}
                 args["prompt"] = _partition_question_text(
                     question_template, args.get("prompt"), result.steps, **options)
             # Resolver EXEC-ONLY (backend/self_recipient/calendar): dipendono da

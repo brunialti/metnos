@@ -6,6 +6,7 @@ def reasons(rows):
     """Closed categories: no unbounded paths or internal exception strings."""
     from messages import get as message
     groups = Counter()
+    fixed = {message(key) for key in ("MSG_MOVE_CAUSE_FOLDER", "MSG_MOVE_CAUSE_SYSTEM_FILE")}
     for row in rows:
         code = str(row.get("error_code") or row.get("error_class") or "")
         category = ("TIME" if code in {"timeout", "remote_timeout", "ERR_FS_REQUEST_EXPIRED",
@@ -13,8 +14,9 @@ def reasons(rows):
                     "PERMISSION" if code in {"permission_denied", "ERR_FS_PERMISSION_REQUIRED"} else
                     "CHANGED" if code == "ERR_FS_SOURCE_CHANGED" else
                     "FIXED" if code in {"unsafe_target", "ERR_REFUSE_MOVE"} else "OTHER")
-        groups[category] += 1
-    return "; ".join(message("MSG_LIST_CAUSE_" + name, count=count)
+        groups[row["error"] if code == "ERR_REFUSE_MOVE" and row.get("error") in fixed else category] += 1
+    return "; ".join(message("MSG_MUTATION_QUESTION_CAUSE", count=count, cause=name) if name in fixed
+                     else message("MSG_LIST_CAUSE_" + name, count=count)
                      for name, count in sorted(groups.items()))
 
 

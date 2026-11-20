@@ -91,7 +91,7 @@ def _left_row(row: dict, lang: str | None) -> str:
     path = row.get("path") or row.get("dst") or row.get("src")
     cause = _cause(row, lang)
     if isinstance(path, str) and path:
-        return _say("MSG_UNDO_LEFT_ITEM", lang, path=path, cause=cause)
+        return _say("MSG_UNDO_LEFT_ITEM", lang, path=re.split(r"[\\/]", path.rstrip("/\\"))[-1], cause=cause)
     return _say("MSG_UNDO_LEFT_ACTION", lang, cause=cause)
 
 

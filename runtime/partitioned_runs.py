@@ -785,7 +785,7 @@ def with_partial_reason(result: dict) -> dict:
     return result
 
 
-def counts_text(rows: object, *, max_chars: int | None = None, field_roles: object = None, excluded_files=None) -> str:
+def counts_text(rows: object, *, max_chars: int | None = None, field_roles: object = None, excluded_files=None, refused_files=None) -> str:
     """How many of these rows belong to each partition, in the existing table.
 
     For a question that must say where something is about to happen (a
@@ -802,13 +802,13 @@ def counts_text(rows: object, *, max_chars: int | None = None, field_roles: obje
 
     names = labels(list(counts))
     counts = dict(sorted(counts.items(), key=lambda item: names[item[0]].casefold()))
-    tokens = ["| %s | %s | |" % (names[partition].replace("|", "\\|").replace("\n", " "), count)
+    tokens = ["| %s | %s | %s |" % (names[partition].replace("|", "\\|").replace("\n", " "), count, (refused_files or {}).get(partition, 0))
               for partition, count in counts.items()]
     parents = [message("MSG_PARTITION_PARENT_ROW", name=labels([parent])[parent].replace("|", "\\|").replace("\n", " "), n=count)
                for parent, count in sorted((excluded_files or {}).items())]
     def table(tokens):
         return message("MSG_PARTITION_COUNTS", items="\n".join(parents + tokens), total=sum(counts.values()),
-                       excluded=sum((excluded_files or {}).values()))
+                       excluded=sum((excluded_files or {}).values()) + sum((refused_files or {}).values()))
     full = table(tokens)
     if max_chars is None or len(full) <= max_chars:
         return full

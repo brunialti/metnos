@@ -2294,6 +2294,8 @@ async def dialog_form(request: web.Request) -> web.Response:
                      "X-Metnos-Dialog-State": lifecycle},
         )
     dialog_steps = [_resolve_i18n_step(s) for s in (state.get("dialog") or [])]
+    for step in dialog_steps:
+        step["prompt_html"] = _safe_final_html(step.get("prompt") or "")
     html = render_template(
         "dialog_form.html",
         dialog_id=dialog_id,

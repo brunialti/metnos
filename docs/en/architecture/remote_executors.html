@@ -291,6 +291,16 @@ it fits the 1 MiB limit; a referenced result and its block representation
 must fit within 8 MiB. If the list cannot be prepared, the answer states
 how many items were found and does not request confirmation.</p>
 
+<p>An item refused for a stated reason, such as a system file, is counted
+among those not moved; later blocks continue. A fault stops the job. The
+confirmation table shows excluded items by folder and in the total. Counts
+remain correct when the working folder links to the physical path.</p>
+
+<p>After an interruption, undo identifies moved and untouched files
+individually without repeating effects. A file already restored is not
+moved again. If undo remains partial, the answer gives file names and
+reasons.</p>
+
 <p>Each subsequent move or deletion requires a question naming the action
 and the affected items; one approval does not authorize other actions.
 The answer starts with counts of completed changes, even if a later step

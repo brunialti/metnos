@@ -260,13 +260,13 @@ def move_rows(args):
 def fixed_refusal_preview(owner, manifest, args):
     """Pure preparation shared with execution; no new permission decision."""
     if permissions.served_operation(manifest, args) != "move":
-        return ""
+        return "", {}
     rows = move_rows(settled(owner, "move", args))
     if not rows:
-        return ""
+        return "", {}
     refused = [row for row in rows if "refused" in row]
     if not refused:
-        return ""
+        return "", {}
     from collections import Counter
     from list_outcomes import reasons
     from messages import get as message
@@ -279,8 +279,10 @@ def fixed_refusal_preview(owner, manifest, args):
                      if row["refused"] != "ERR_REFUSE_MOVE"])
     if other:
         detail.append(other)
-    return message("MSG_MUTATION_QUESTION_FIXED", total=len(rows), refused=len(refused),
-                   reasons="; ".join(detail))
+    counts = Counter(item["partition"] for item, row in zip(args["entries"], rows)
+                     if "refused" in row and isinstance(item, dict) and item.get("partition"))
+    return (message("MSG_MUTATION_QUESTION_FIXED", total=len(rows), refused=len(refused),
+                    reasons="; ".join(detail)), dict(counts))
 
 
 def _settled_moves(owner, args):
@@ -1280,6 +1282,9 @@ def batch_result(owner, manifest, args, turn_id, operation, results, failed):
         folders = sorted({folder for entry in results for folder in entry.get("_dirs_created") or []},
                          key=lambda folder: folder.count("/"), reverse=True)
         value = local._move_result(results, failed, dirs_created=folders)
+        if failed and all(row.get("error_code") == "ERR_REFUSE_MOVE" for row in failed):
+            for key in ("error", "error_code", "error_class"):
+                value.pop(key, None)  # Declared row refusals, not a failed invocation.
         value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
         return {**value, **attention}
     value = {"ok": not failed, "ok_count": len(results), "fail_count": len(failed),

@@ -21,9 +21,9 @@
       {% set var_id = "f_" ~ step.var %}
       {% set kind = step.schema.kind %}
       <{% if kind == "browser_session" %}div{% else %}label for="{{ var_id }}"{% endif %} style="display:flex;flex-direction:column;gap:.2rem;">
-        <span><strong>{{ step.prompt|linkify }}</strong>
+        <div>{{ step.prompt_html|safe }}
           {% if step.optional %}<span class="muted">{{ msg("MSG_CHAT_DIALOG_OPTIONAL") }}</span>{% endif %}
-        </span>
+        </div>
 
         {% if kind == "text" or kind == "file_path" %}
           <input id="{{ var_id }}" name="{{ step.var }}" type="text"

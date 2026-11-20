@@ -812,7 +812,9 @@ def _joined_partitions(entry: dict, store) -> dict | None:
                    for row in value.get("entries", [])
                    if isinstance(row, dict) and row.get("path") and row.get("partition")}
         rows = joined.get("results", joined.get("entries", []))
-        done = Counter(row.get("src", row.get("path")) for row in rows if row.get("ok") is not False)
+        from server_filesystem import place
+        done = Counter(place(owner, row.get("src", row.get("path"))) for row in rows
+                       if row.get("ok") is not False and (row.get("src") or row.get("path")))
         operation = next((part["operation"] for part in joined["partitions"] if part.get("operation")), None)
         summaries = {}
         for block in listed[0]["entries"]:
@@ -823,9 +825,10 @@ def _joined_partitions(entry: dict, store) -> dict | None:
                 folder = folders.get(path) or row.get("partition") or str(Path(path).parent)
                 summary = summaries.setdefault(folder, {"partition": folder, "ok": True,
                     "operation": operation, "count": 0, "fail_count": 0})
-                succeeded = done[path] > 0
+                identity = place(owner, path)
+                succeeded = done[identity] > 0
                 summary["count" if succeeded else "fail_count"] += 1
-                done[path] -= succeeded
+                done[identity] -= succeeded
         joined["partitions"] = list(summaries.values())
         for row in rows + joined.get("failed", []):
             if row.get("path") == row.get("partition"):
