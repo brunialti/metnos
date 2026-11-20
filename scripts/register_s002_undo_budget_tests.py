@@ -20,6 +20,7 @@ GROUPS = {
         "tests/runtime/infra/test_s013_presentation.py",
         "tests/runtime/infra/test_s013_r13.py",
         "tests/runtime/infra/test_s013_r14.py",
+        "tests/runtime/infra/test_s013_r17.py",
         "tests/portable/test_s013_retention_progress.py",
         "tests/runtime/executors/test_independent_rows_equivalence.py",
         "tests/runtime/infra/test_s002_list_outcomes.py",

@@ -29,6 +29,9 @@ TRANSLATIONS = {
     'MSG_UNDO_CONTINUE': (
         'Un altro «annulla» prosegue la stessa richiesta dagli elementi rimasti.',
         'Another “undo” continues the same request from the remaining items.'),
+    'MSG_UNDO_FILES_ALL_BACK': (
+        'Tutti i file spostati sono tornati dov’erano.',
+        'All moved files are back where they were.'),
     # The whole sentence: everything came back.
     'MSG_UNDO_REQUEST_DONE': (
         'Annullato: {done}.',
@@ -88,8 +91,8 @@ TRANSLATIONS = {
         'and {count} more'),
     # Why it stayed.
     'MSG_UNDO_CAUSE_NOT_EMPTY': (
-        'la cartella non è più vuota: dentro c\'è qualcosa che la richiesta non ci aveva messo',
-        'the folder is no longer empty: it holds something the request did not put there'),
+        'la cartella contiene ancora file o cartelle',
+        'the folder still contains files or folders'),
     'MSG_UNDO_CAUSE_CHANGED': (
         'non è più quello che la richiesta aveva lasciato',
         'it is no longer what the request left there'),

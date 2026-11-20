@@ -148,10 +148,18 @@ def describe(observation: dict, lang: str | None = None) -> str:
     stayed = "; ".join(left[:_LEFT_SHOWN])
     if len(left) > _LEFT_SHOWN:
         stayed += " " + _say("MSG_UNDO_LEFT_MORE", lang, count=len(left) - _LEFT_SHOWN)
-    resumable = any(any((stage.get("result") or {}).get("_left_counts", {}).get(key) for key in ("time", "uncertain"))
+    details = _rows(observation.get("details"))
+    stages = [stage for detail in details for stage in _rows(detail.get("stages"))]
+    failed = [stage for stage in stages if not (stage.get("result") or {}).get("ok")]
+    folders_left = bool(failed) and all(detail.get("stages") for detail in details
+        if detail.get("status") in _NOT_ALL_BACK) and all(
+        stage.get("pattern") == "delete_created_dirs" for stage in failed)
+    files_back = folders_left and any(stage.get("pattern") == "swap_src_dst" for stage in stages)
+    resumable = folders_left or any(any((stage.get("result") or {}).get("_left_counts", {}).get(key) for key in ("time", "uncertain"))
                     for detail in _rows(observation.get("details"))
                     for stage in _rows(detail.get("stages")))
-    again = " " + _say("MSG_UNDO_CONTINUE", lang) if resumable else ""
+    again = (" " + _say("MSG_UNDO_FILES_ALL_BACK", lang) if files_back else "")
+    again += " " + _say("MSG_UNDO_CONTINUE", lang) if resumable else ""
     if done and stayed:
         return _say("MSG_UNDO_REQUEST_PARTIAL", lang, done=done, left=stayed) + again
     if done:

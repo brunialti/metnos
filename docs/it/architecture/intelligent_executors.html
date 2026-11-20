@@ -114,7 +114,9 @@
  effetti per tipo di annullamento, con i permessi correnti; un effetto
  incerto richiede attenzione e non viene ripetuto o annullato per somiglianza.
  L'annullamento ferma prima il lavoro e riguarda l'intera richiesta,
- conservando il residuo se esaurisce il proprio tempo.
+ conservando il residuo se esaurisce il proprio tempo. I blocchi si annullano
+ nell'ordine inverso d'esecuzione anche dopo un'osservazione degli effetti;
+ un nuovo tentativo non riconta i file gi&agrave; ripristinati.
  Dopo un'interruzione annulla gli effetti riconosciuti e conserva quelli
  incerti per un nuovo tentativo. Gli spostamenti riusano l'impronta dell'elenco
  approvato quando dimensione e data del file coincidono.

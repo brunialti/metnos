@@ -463,12 +463,13 @@ class UndoLog:
             for (pending, _completion, done) in completed_ops
             if _same_boundary(pending) and done is not None
         ]
-        same_turn.sort(key=lambda item: item[1]["ts"])
+        same_turn.sort(key=lambda item: item[0]["ts"])
         records = []
         for pending, done in same_turn:
             progress = ops[pending["op_id"]].get("undo_progress", {})
             results = done["results"]
-            if progress.get("completed") and not results.get("_filesystem", {}).get("args", {}).get("_row_observe"):
+            # Progress indices belong to this result, not a newer observation.
+            if progress.get("completed") and progress["ts"] >= done["ts"]:
                 results = {**results, "_undo_completed": progress["completed"]}
             records.append({**pending, "results": results})
         if not budget_started and any((row.get("results") or {}).get("_filesystem") for row in records):
