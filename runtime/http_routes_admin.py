@@ -2568,8 +2568,8 @@ async def admin_plans_measure(request: web.Request) -> web.Response:
     owner = await _resolve_session_user_id(request)
 
     def worker():
-        catalog = provider()
-        if not isinstance(catalog, list) or not catalog:
+        catalog = list(provider())
+        if not catalog:
             raise MeasureError("catalog_unavailable")
         return run(query=body["query"], owner_user_id=owner, catalog=catalog)
 
@@ -2581,8 +2581,13 @@ async def admin_plans_measure(request: web.Request) -> web.Response:
         report = await _run_turn_reserved(request, reservation, worker)
     except MeasureBusy:
         return _turn_busy_response()
-    except Exception:
-        return web.json_response({"error": "planning_measure_failed"}, status=503)
+    except Exception as error:
+        code = str(error) if isinstance(error, MeasureError) else "planning_measure_failed"
+        try:
+            log.warning("planning measure failed code=%s class=%s", code, type(error).__name__)
+        except Exception:
+            pass
+        return web.json_response({"error": code}, status=503)
     return web.json_response(report, headers={"Cache-Control": "no-store"})
 
 

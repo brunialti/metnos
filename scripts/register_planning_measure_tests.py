@@ -16,9 +16,10 @@ ROOT = Path(__file__).resolve().parents[1]
 MODULE = "runtime.planning_measure_20261120"
 GROUPS = {
     "module": (
-        "tests/portable/test_planning_measure.py",
-        "tests/portable/test_planning_measure_ports.py",
-        "tests/portable/test_planning_measure_http.py",
+        "tests/runtime/test_planning_measure.py",
+        "tests/runtime/test_planning_measure_ports.py",
+        "tests/runtime/test_planning_measure_http.py",
+        "tests/runtime/test_planning_measure_catalog.py",
         "tests/portable/test_planning_measure_client.py",
     ),
     "cluster": (
