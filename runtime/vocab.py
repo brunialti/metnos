@@ -1307,7 +1307,7 @@ def detect_implicit_actions(query: str,
     if not query or not isinstance(query, str):
         return []
     try:
-        from prefilter import tokenize, detect_canonical_verbs_all
+        from prefilter import tokenize, detect_canonical_verbs_all, _action_text
     except ImportError:
         return []
 
@@ -1325,7 +1325,7 @@ def detect_implicit_actions(query: str,
     # complemento esplicito). §7.3 generale: lookup tabellare bilingue.
     try:
         from detection_lexicon_seed_residual_nz import implicit_send_request
-        if implicit_send_request(query):
+        if implicit_send_request(_action_text(query)):
             detected_verbs_set.add("send")
     except Exception:  # noqa: BLE001 - il segnale mutante resta fail-closed
         pass

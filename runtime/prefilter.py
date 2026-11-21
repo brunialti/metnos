@@ -31,11 +31,29 @@ log = get_logger(__name__)
 _WORD_RE = re.compile(r"[^\W_]+", re.UNICODE)
 
 
+class _QueryTokens(set):
+    """Affinity words with a separate provenance-preserving action view."""
+
+
+_ACTION_VALUES_RE = re.compile(
+    r'''(?<!\w)(?:"[^"]*"|'[^']*'|`[^`]*`|“[^”]*”|‘[^’]*’|«[^»]*»)(?!\w)'''
+    r'''|\b\w+(?:[_.\\/-]\w+)+\b|[^\s<>"'`]+@[^\s<>"'`]+''')
+
+
+def _action_text(text):
+    """Mask structural values before splitting words, retaining source offsets."""
+    from tool_grammar import _strip_fs_paths
+    masked = _strip_fs_paths(text or "", preserve_offsets=True)
+    return _ACTION_VALUES_RE.sub(lambda match: " " * len(match.group()), masked)
+
+
 def tokenize(text):
     # File-system identifiers are arguments, not natural-language actions.
     # Reuse the same structural filter as provider-marker recognition.
     from tool_grammar import _strip_fs_paths
-    return set(_WORD_RE.findall(_strip_fs_paths(text or "").lower()))
+    tokens = _QueryTokens(_WORD_RE.findall(_strip_fs_paths(text or "").lower()))
+    tokens.action_tokens = set(_WORD_RE.findall(_action_text(text).lower()))
+    return tokens
 
 
 # Concept identifiers are protocol, not linguistic data.  Their payloads
@@ -224,7 +242,8 @@ def _action_surfaces() -> dict[str, set[str]]:
 def shared_verb_candidates(qtokens) -> set[str]:
     """Actions a token shares: recognition never picks among them, tools can."""
     surfaces = _action_surfaces()
-    return {verb for token in qtokens for verb in surfaces.get(token, ())
+    return {verb for token in getattr(qtokens, "action_tokens", qtokens)
+            for verb in surfaces.get(token, ())
             if len(surfaces[token]) > 1}
 
 try:
@@ -281,7 +300,7 @@ def detect_canonical_verb(qtokens, query: str | None = None):
     if is_direct_message_query(query):
         return "send"
     verb_table = _localized_verb_table()
-    for tok in sorted(qtokens):
+    for tok in sorted(getattr(qtokens, "action_tokens", qtokens)):
         v = verb_table.get(tok)
         if v:
             return v
@@ -313,7 +332,7 @@ def detect_canonical_verbs_all(qtokens) -> list[str]:
     """
     seen = []
     verb_table = _localized_verb_table()
-    for tok in sorted(qtokens):
+    for tok in sorted(getattr(qtokens, "action_tokens", qtokens)):
         v = verb_table.get(tok)
         if not v:
             # Try clitic stripping (mettili → metti, inviamelo → invia)
@@ -334,9 +353,7 @@ def canonical_verb_spans(text: str) -> list[tuple[str, int]]:
     than to an unordered bag of words. Unknown or ambiguous forms are left
     to the intent parser, as in ``detect_canonical_verbs_all``.
     """
-    from tool_grammar import _strip_fs_paths
-
-    masked = _strip_fs_paths(text or "", preserve_offsets=True)
+    masked = _action_text(text)
     table = _localized_verb_table()
     spans = []
     for match in _WORD_RE.finditer(masked):

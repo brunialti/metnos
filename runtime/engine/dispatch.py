@@ -2253,6 +2253,13 @@ def _prohibited_plan_verbs(framework: Framework, query: str) -> set[str]:
     direct_actors = (phrase_spans("syntax.direct_actor", query)
                      if native_ready_forms("syntax.direct_actor", require_manual=True) else [])
     forbidden: set[str] = set()
+    # A negated invocation forbids the referenced operation, without turning
+    # its identifier's fragments into actions in the person's request.
+    from naming_grammar import parse_name
+    for name, _, _ in explicit_invocations(query, tools, polarity="negated"):
+        parsed = parse_name(name)
+        if parsed:
+            forbidden.add(parsed.verb)
     # If the same action is both requested and prohibited, verb-only evidence
     # cannot prove that a proposed step targets the allowed object. Refuse
     # that plan rather than silently widening the negative clause's scope.
@@ -2814,7 +2821,7 @@ def _normalize_store_clauses(intent, query: str, catalog: Optional[list]) -> Non
         log.warning("normalize_store_clauses noop (best-effort): %r", ex)
 
 
-def _decontaminate_clause_objects(intent, query: str) -> None:
+def _decontaminate_clause_objects(intent, query: str, catalog: Optional[list]) -> None:
     """§7.9 v3 (de-contaminazione, 19/6): corregge l'OGGETTO di una clausola di
     `intent.actions` quando l'LLM l'ha CONTAMINATO da una clausola vicina.
 
@@ -2839,7 +2846,9 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
                    if isinstance(a, dict)]
         if len(actions) < 2:
             return
-        from compound_decomposer import split_query_chunks
+        from compound_decomposer import split_query_chunks, derive_tool_name
+        import naming_grammar
+        names = catalog_names(catalog)
         import prefilter as _pf
         hints = _pf.object_hint_mapping()
         if not hints:
@@ -2881,6 +2890,12 @@ def _decontaminate_clause_objects(intent, query: str) -> None:
             # corregge SOLO se il testo dà un oggetto univoco DIVERSO (contaminazione).
             # Mai se concordano o se ambiguo/None.
             if text_obj and o and text_obj != o:
+                # An object correction must stand on its own: never manufacture
+                # an unroutable pair for the next pass to repair with a new verb.
+                tool = derive_tool_name(v, text_obj, names)
+                parsed = naming_grammar.parse_name(tool) if tool else None
+                if not parsed or (parsed.obj != text_obj and text_obj != "entries"):
+                    continue
                 a["object"] = text_obj
                 changed = True
         if changed:
@@ -8578,7 +8593,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # to the planner's text is no clause of theirs (live Fineco 38ebbe35,
         # 4/11/2026: its "https" turned «crea un foglio» into create urls).
         clause_text = str((runtime_ctx or {}).get("user_query_raw") or query)
-        _decontaminate_clause_objects(intent, clause_text)
+        _decontaminate_clause_objects(intent, clause_text, catalog)
         _measure("observe", "_decontaminate_clause_objects", intent)
         _fix_unroutable_verbs(intent, clause_text, catalog)
         _measure("observe", "_fix_unroutable_verbs", intent)

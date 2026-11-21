@@ -48,8 +48,8 @@ def explicit_catalog_names(query: str, catalog: list) -> set[str]:
     return {name for name, _, _ in _explicit_tool_spans(query, available)}
 
 
-def explicit_invocations(query: str, names) -> list[tuple[str, int, int]]:
-    """Asserted invocation + optional function noun + exact catalog name.
+def explicit_invocations(query: str, names, *, polarity="asserted") -> list[tuple[str, int, int]]:
+    """Invocation of the requested polarity + optional noun + exact name.
 
     Merely mentioning a name does not fulfil an execution request. Only the
     reviewed localized syntax immediately before that name proves the link.
@@ -66,7 +66,7 @@ def explicit_invocations(query: str, names) -> list[tuple[str, int, int]]:
         noun = phrase_before("syntax.executor_reference", query, prefix_end)
         command = phrase_before("syntax.command_invocation", query,
                                 noun[0] if noun else prefix_end)
-        if command and polarity_state_at(query, command[0]) == "asserted":
+        if command and polarity_state_at(query, command[0]) == polarity:
             calls.append((name, command[0], end))
     return calls
 
