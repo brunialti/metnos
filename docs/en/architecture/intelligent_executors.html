@@ -65,6 +65,13 @@
  safe: proposal limits, validators, and postconditions must still be checked
  in code and tests.</p>
 
+ <p>Before execution, the requested action order is applied within the plan's
+ dependencies: a producer precedes its consumer, and a container keeps its
+ precedence over every subsequent proposer step. Administrative planning
+ measurement observes this route without executing steps. If the model produces
+ no plan, it returns the available events and final outcome code; it does not
+ claim that any work ran or was admitted.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">The intelligent executor loop</title>

@@ -162,14 +162,14 @@ def _plan(data: dict) -> dict:
 def _report(state: _State, plan: dict, *, shape: str, admission: str,
             gate: bool | None, boundary: dict | None = None) -> dict:
     report = {
-        "actions": _intent(state.initial_intent)["actions"],
-        "proposed_plan": _plan(state.proposed_plan),
+        "actions": _intent(state.initial_intent)["actions"] if state.initial_intent is not None else [],
+        "proposed_plan": _plan(state.proposed_plan) if state.proposed_plan is not None else None,
         "events": [{"name": event["name"],
                     **({"plan": _plan(event["plan"])} if "plan" in event
                        else {"intent": _intent(event["intent"])})}
                    for event in state.events],
-        "final_plan": _plan(plan), "shape": shape, "admission": admission,
-        "gate_before_long": gate, "origin": "L3", "memory": "off",
+        "final_plan": _plan(plan) if plan is not None else None, "shape": shape, "admission": admission,
+        "gate_before_long": gate, "origin": "L3" if state.initial_intent is not None else "non osservata", "memory": "off",
     }
     if boundary is not None:
         report["boundary"] = boundary
@@ -178,13 +178,17 @@ def _report(state: _State, plan: dict, *, shape: str, admission: str,
 
 def _early_report(state: _State, result) -> dict:
     """A real pre-execution refusal has no shape verdict, but retains its trace."""
-    if state.proposed_plan is None or state.initial_intent is None:
-        raise MeasureError("measure_origin_not_l3")
     if (not isinstance(result, dict) or result.get("steps") != []
             or result.get("durable_admission") is not None):
         raise MeasureError("measure_terminal_not_reached")
     keys = ("final_kind", "match_source", "error_class")
     boundary = tuple(result.get(key) for key in keys)
+    if state.proposed_plan is None:
+        return _report(state, None, shape="non raggiunta",
+                       admission="non verificata (richiede registrazione)", gate=None,
+                       boundary={key: _name(value) for key, value in zip(keys, boundary)})
+    if state.initial_intent is None:
+        raise MeasureError("measure_origin_not_l3")
     if boundary not in {
         ("error", "terminator", "capability_missing"),
         ("needs_inputs", "record_kind", "missing_input"),

@@ -66,6 +66,13 @@
  l'implementazione sia sicura: limiti, validazione delle proposte e
  postcondizioni devono essere verificati nel codice e nei test.</p>
 
+ <p>Prima dell'esecuzione, l'ordine delle azioni richieste si applica entro le
+ dipendenze del piano: chi produce un risultato precede chi lo usa e un
+ contenitore conserva la precedenza su tutti i passi successivi del proponente.
+ La misura amministrativa osserva questo percorso senza eseguire i passi.
+ Se il modello non produce un piano, restituisce gli eventi disponibili e il
+ codice dell'esito finale; non dichiara eseguito o ammesso alcun lavoro.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">Ciclo limitato di un executor intelligente</title>

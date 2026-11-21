@@ -3173,10 +3173,9 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
 
     Robusto agli helper trasformativi (filter/sort/describe/...): NON partecipano
     al match con le action (sono SOFT) e seguono il loro producer (rank = quello
-    dello step HARD precedente). Conservativo: NO-OP se uno step HARD (producer/
-    mutating) non matcha alcuna action distinta, o se il riordino creerebbe un
-    from_step in avanti (consumer prima del producer). No-op su mono-azione o
-    piano gia' in ordine. final_answer resta in coda."""
+    dello step HARD precedente). Riferimenti e contenitori precedono i consumer;
+    fra passi indipendenti decide il rank. Un ciclo conserva il piano originale.
+    No-op su mono-azione o piano gia' in ordine. final_answer resta in coda."""
     try:
         actions = [a for a in (getattr(intent, "actions", None) or [])
                    if isinstance(a, dict)]
@@ -3248,7 +3247,34 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
                 ranks[id(st)] = (last if last is not None else -1.0) + eps
         order_pairs = sorted(enumerate(execs),
                              key=lambda kv: (ranks[id(kv[1])], kv[0]))
-        sorted_execs = [execs[i] for i, _ in order_pairs]
+        def references(value):
+            if isinstance(value, dict):
+                return ({value["from_step"]} if type(value.get("from_step")) is int else set()) | set().union(
+                    *(references(v) for v in value.values()))
+            if isinstance(value, list):
+                return set().union(*(references(v) for v in value))
+            return {int(m.group(2)) for m in _STEPREF_RE.finditer(value)} if isinstance(value, str) else set()
+        positions = {id(st): i + 1 for i, st in enumerate(steps)}
+        by_pos = {positions[id(st)]: i for i, st in enumerate(execs)}
+        dependencies = {i: {by_pos[r] for r in references(st.args) if r in by_pos}
+                        for i, st in enumerate(execs)}
+        by_name = {ex.name: ex for ex in (catalog or [])}
+        for i, st in enumerate(execs):
+            nc = _ng.parse_name(st.tool or "")
+            props = getattr(by_name.get(st.tool), "args_schema", {}).get("properties", {})
+            if (nc and nc.verb == "create" and nc.obj == "dirs"
+                    and set(props) & set(st.args) & {"paths", "path_template"}):
+                # A container keeps precedence over every subsequent proposer step.
+                for j in range(i + 1, len(execs)):
+                    dependencies[j].add(i)
+        pending, sorted_execs = set(dependencies), []
+        while pending:
+            ready = next((i for i, _ in order_pairs
+                          if i in pending and not dependencies[i] & pending), None)
+            if ready is None:
+                return framework  # invalid cycle: leave the existing path intact
+            pending.remove(ready)
+            sorted_execs.append(execs[ready])
         if sorted_execs == execs:
             return framework  # gia' in ordine
         new_list = sorted_execs + finals
@@ -9063,12 +9089,12 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         prior_steps=seed_state or ())
     _measure("observe", "proposer.propose", framework)
     if framework is None:
-        _measure("finish", framework, intent, catalog)
         # Proposer failed → terminator
-        resp = terminator.explain(query=query, intent=intent,
+        if _PLANNING_MEASURE.get() is None:
+            resp = terminator.explain(query=query, intent=intent,
                                     failed_run=None, error_class="wrong_args")
         return DispatchResult(
-            final_text=resp.final_text, final_kind="error",
+            final_text=resp.final_text if _PLANNING_MEASURE.get() is None else "", final_kind="error",
             match_source="terminator", framework_hash="",
             elapsed_ms=int((time.time() - t_start) * 1000),
             error_class="propose_failed")
