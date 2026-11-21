@@ -13,8 +13,8 @@ public source.
 ## During development
 
 Select the changed boundary's test files and its directly affected integration
-tests. Pytest already supports file paths and `file.py::test_name` selectors;
-no additional runner or automatic dependency selector is needed.
+tests. For development, use pytest file paths and `file.py::test_name`
+selectors.
 
 For example, changes to boundary policy comparisons use these four families:
 
@@ -34,20 +34,30 @@ locally, rather than publishing each intermediate diagnostic edit. Record
 the tested commit, selection and result so unchanged checks are not repeated
 merely to increase the test count.
 
-## Before release
+## General suite and public verification
 
-The general portable suite can be run with:
+Run the general portable suite directly:
 
 ```sh
 python -m pytest -q -p no:cacheprovider --import-mode=importlib --confcutdir=tests/portable --ignore=tests/portable/rm0008_2a_acceptance tests/portable
 ```
 
-This local command is **not** the complete release check. Require the entire
+To check that every test can be collected using only the declared dependencies,
+create a fresh environment, install `tests/portable/requirements.txt`, and run:
+
+```sh
+python -m pytest --collect-only -q -p no:cacheprovider --import-mode=importlib --confcutdir=tests/portable tests/portable
+```
+
+The frozen acceptance activities have their own runners in
+`rm0008_2a_acceptance/`. Collection checks imports without running test bodies.
+Collection on Linux does not qualify imports specific to Windows.
+
+A focused local run does not replace the complete
 [portable certification workflow](../../.github/workflows/portable-contract-store.yml)
-to succeed on the exact published commit: Linux and Windows general suites,
+on the exact published commit. It includes Linux and Windows general suites,
 native identity and sandbox/service proofs, frozen acceptance activities and
-the final summary. The workflow remains mandatory for published increments;
-focused local results cannot substitute for it.
+the final summary.
 
 Keep real crash, concurrent-access, permissions and recovery checks. Run
 privileged service probes only in the workflow's disposable environment,
