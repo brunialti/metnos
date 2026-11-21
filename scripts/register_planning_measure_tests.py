@@ -20,7 +20,7 @@ GROUPS = {
         "tests/runtime/test_planning_measure_ports.py",
         "tests/runtime/test_planning_measure_http.py",
         "tests/runtime/test_planning_measure_catalog.py",
-        "tests/portable/test_planning_measure_client.py",
+        "tests/runtime/test_planning_measure_client.py",
     ),
     "cluster": (
         "tests/runtime/engine/test_guard_pipeline_contract.py",
