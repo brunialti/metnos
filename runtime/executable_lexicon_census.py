@@ -624,7 +624,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/planning_repair.py': ('5ffc90866185a59ce8f0ff3c2e188b2e823fb4f4193f51459b1b5c8bccc2a5be', (('comparison', 2), ('iteration', 1), ('regex', 2))),
     'list_outcomes.py': ('3f93ff3c9a4f080743d92b3c6f489ccac1320528ede5d8c49f3b506fd5f5aeb4', (('comparison', 3), ('iteration', 2), ('membership', 3))),
     'durable_workloads/internal_runners.py': ('103855524c1fc62d701cee5b6f055fe9723c52b5231d2bdcadef3cfb91a5c216', (('comparison', 1),)),
-    'planning_measure.py': ('e563b84be068c37a0813e1e6ad1bf82f594bc404112db881a3394a43fd6b35b7', (('comparison', 9), ('membership', 3), ('regex', 3))),
+    'planning_measure.py': ('8cd5ff11bb4adb84879d970967c64736da490333517c09d8c472c3b9413d45e6', (('comparison', 9), ('membership', 3), ('regex', 2))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

@@ -11,9 +11,6 @@ from uuid import uuid4
 CURRENT: ContextVar = ContextVar("planning_measure", default=None)
 _LOCK = Lock()
 _NAME = re.compile(r"[A-Za-z_][A-Za-z0-9_]{0,127}\Z")
-_REFERENCE = re.compile(
-    r"\$\{(?:step[0-9]+(?:\.[A-Za-z_][A-Za-z0-9_]*(?:\[\])?)*"
-    r"|(?:RUNTIME|FILLER):[A-Za-z_][A-Za-z0-9_]*)\}")
 _SYNTHETIC_COMPONENT = re.compile(r"zz_[A-Za-z0-9_.-]+\Z")
 
 
@@ -97,7 +94,7 @@ def _synthetic_path(value: str) -> bool:
 
 
 def _redact(value, *, reference: bool = False):
-    """Retain containers and reference syntax; mask all other scalar values."""
+    """Retain containers, booleans and engine references; mask private scalars."""
     if isinstance(value, dict):
         if any(not isinstance(key, str) for key in value):
             raise TypeError("argument names are not strings")
@@ -108,7 +105,7 @@ def _redact(value, *, reference: bool = False):
     if value is None:
         return None
     if type(value) is bool:
-        return "<boolean>"
+        return value
     if type(value) is int:
         return value if reference and value > 0 else "<integer>"
     if type(value) is float:
@@ -116,7 +113,10 @@ def _redact(value, *, reference: bool = False):
     if isinstance(value, str):
         if _synthetic_path(value):
             return value
-        matches = list(_REFERENCE.finditer(value))
+        from engine.executor import _FILLER_RE, _RUNTIME_RE, _STEPREF_RE, _STEPSREF_RE
+        matches = sorted(
+            (match for pattern in (_STEPREF_RE, _STEPSREF_RE, _RUNTIME_RE, _FILLER_RE)
+             for match in pattern.finditer(value)), key=lambda match: match.start())
         if matches:
             # Literal text surrounding references is still private.
             result, cursor = [], 0
