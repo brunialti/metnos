@@ -376,5 +376,20 @@ If either component supports device execution, the requested destination is
 preserved and remains subject to normal checks. Executor output cannot choose
 the destination.</p>
 
+<h2 id="release-tests">Tests before release</h2>
+
+<p>The local check selects tests from changed files and their readers,
+using both revisions. For a non-Python file without declared readers it
+looks for the file name or its parent directory written as a path in
+tests; a file at the repository root uses only its name.
+Test data stays within the same test root. A file without readers
+is documentation and does not require the full suite. The full suite is
+still required for changes to the selection policy, a missing base,
+unreadable Python source, or shared portable test helpers.
+Public checks still run the complete suite.</p>
+
+<p>Paths and prefixes declared as documentation select no tests, unless
+an explicit domain declares their readers.</p>
+
 </body>
 </html>

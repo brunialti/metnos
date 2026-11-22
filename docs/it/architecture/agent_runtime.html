@@ -394,5 +394,20 @@ runtime fa sì che quelle capacità vengano scelte, controllate, eseguite e
 raccontate nello stesso modo, qualunque sia il percorso che ha prodotto il
 piano.</p></div>
 
+<h2 id="prove-di-rilascio">Prove prima del rilascio</h2>
+
+<p>Il controllo locale sceglie le prove dai file cambiati e dai loro lettori,
+usando entrambe le versioni. Per un file non Python senza lettori dichiarati
+cerca il nome del file o il percorso della sua cartella nelle
+prove; per un file alla radice del progetto vale solo il nome.
+I dati delle prove restano nella stessa radice. In assenza di lettori
+il file è documentazione e non richiede la batteria completa. Questa resta
+necessaria quando cambia la politica di scelta, manca la base, un sorgente
+Python è illeggibile o cambia un aiuto condiviso dell'ambiente portatile.
+I controlli pubblici eseguono comunque l'intera batteria.</p>
+
+<p>I percorsi e i prefissi dichiarati come documentazione non selezionano
+prove, salvo che un dominio esplicito dichiari i loro lettori.</p>
+
 </body>
 </html>
