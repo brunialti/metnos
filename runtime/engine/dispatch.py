@@ -3520,6 +3520,14 @@ def _promote_count_cap(args: dict, schema: dict, clause: str) -> None:
         return
 
 
+def _applicable_clause_args(extracted: dict, schema: dict, args: dict) -> dict:
+    from from_step_projection import _context_requirement_applies
+    properties = schema.get("properties") or {}
+    return {name: value for name, value in extracted.items()
+            if _context_requirement_applies(
+                properties.get(name, {}).get("input_when", True), args, properties)}
+
+
 def _fill_clause_args(framework: Framework, intent, query: str,
                       catalog: Optional[list]) -> Framework:
     """§7.9 v3 (fase ARGS): riempie gli args DEDUCIBILI di ogni step dal testo
@@ -3558,7 +3566,7 @@ def _fill_clause_args(framework: Framework, intent, query: str,
                     extracted = {}
                 if extracted:
                     cur = dict(st.args or {})
-                    for k, v in extracted.items():
+                    for k, v in _applicable_clause_args(extracted, schema, st.args or {}).items():
                         # riempi i buchi E corregge il glob-universale del
                         # proposer: un `pattern='*'` non porta informazione,
                         # l'estrattore conosce il tipo-file richiesto.
@@ -3677,7 +3685,7 @@ def _fill_clause_args(framework: Framework, intent, query: str,
             if not extracted:
                 continue
             cur = dict(st.args or {})
-            for k, v in extracted.items():
+            for k, v in _applicable_clause_args(extracted, schema, st.args or {}).items():
                 if k not in cur or cur[k] in (None, "", [], {}):
                     cur[k] = v
             st.args = cur

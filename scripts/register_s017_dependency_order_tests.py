@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Register B2 dependency order and measure diagnostics; run only at release."""
+"""Register B2 order, B3 conditional clause arguments and measure diagnostics."""
 import argparse
 from pathlib import Path
 import sys
@@ -13,6 +13,7 @@ GROUPS = {
                 "tests/runtime/engine/test_guard_idempotence.py",
                 "tests/runtime/engine/test_ensure_extract_clause.py",
                 "tests/runtime/engine/test_guardia_conserva_gli_args.py",
+                "tests/runtime/engine/test_temporal_clause_binding.py",
                 "tests/runtime/engine/test_partition_plans.py",
                 "tests/runtime/engine/test_partition_destinations.py",
                 "tests/runtime/test_planning_measure.py",

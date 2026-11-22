@@ -93,6 +93,10 @@ def _synthetic_path(value: str) -> bool:
             and any(_SYNTHETIC_COMPONENT.fullmatch(part) for part in parts))
 
 
+def _literal(value: str) -> str:
+    return value if value and all(char in "/\\*" for char in value) else "<string>"
+
+
 def _redact(value, *, reference: bool = False):
     """Retain containers, booleans and engine references; mask private scalars."""
     if isinstance(value, dict):
@@ -118,17 +122,17 @@ def _redact(value, *, reference: bool = False):
             (match for pattern in (_STEPREF_RE, _STEPSREF_RE, _RUNTIME_RE, _FILLER_RE)
              for match in pattern.finditer(value)), key=lambda match: match.start())
         if matches:
-            # Literal text surrounding references is still private.
+            # Only separators/wildcards are public in literal reference gaps.
             result, cursor = [], 0
             for match in matches:
                 if match.start() > cursor:
-                    result.append("<string>")
+                    result.append(_literal(value[cursor:match.start()]))
                 result.append(match.group())
                 cursor = match.end()
             if cursor < len(value):
-                result.append("<string>")
+                result.append(_literal(value[cursor:]))
             return "".join(result)
-        return "<string>"
+        return _literal(value)
     raise TypeError("unsupported observed value")
 
 

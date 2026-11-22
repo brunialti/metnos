@@ -149,6 +149,7 @@ en = "Backend implementation. 'local' = local filesystem (default). 'google_work
 
 [args.properties.repo]
 type = "string"
+input_when = { arg = "client", values = ["github"] }
 
 [args.properties.repo.description]
 it = "Repository in forma \"proprietario/nome\". Vale solo con client='github'. Esempio: \"brunialti/metnos\"."

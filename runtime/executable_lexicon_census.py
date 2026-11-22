@@ -198,7 +198,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/__init__.py': ('fa4fbb1ff233bc4ea49e407983c0fb2ab97ad5032ff605da1979dc564ece5165', (('comparison', 1),)),
     'engine/autopath.py': ('b15a32c4c2d0e8feb6d094c497fabc019521314627d5d66111f1e876bae109c9', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
-    'engine/dispatch.py': ('d308595093e9bb2a5e04521656f3bf35102fbf67a5e93d7ca355a2807d677f85', (('comparison', 263), ('helper-argument', 56), ('iteration', 5), ('membership', 8), ('prefix-suffix', 3), ('regex', 3))),
+    'engine/dispatch.py': ('7a640ef6574fece1a453cbb2c2adacbaaa203b0ef3b2a759cb7cc010c70c4f2f', (('comparison', 263), ('helper-argument', 56), ('iteration', 5), ('membership', 8), ('prefix-suffix', 3), ('regex', 3))),
     'engine/executor.py': ('2917fe252a659fecda86486696c83e8481bb6ac3f019e8a3ac664865535959e7', (('comparison', 78), ('helper-argument', 14), ('iteration', 5), ('membership', 3), ('prefix-suffix', 2), ('regex', 3))),
     'engine/fastpath.py': ('fe9c37e09e6b884d136b28a244b7d51e72e3c29b53740d01cb61ad912950ffeb', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),
@@ -624,7 +624,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/planning_repair.py': ('5ffc90866185a59ce8f0ff3c2e188b2e823fb4f4193f51459b1b5c8bccc2a5be', (('comparison', 2), ('iteration', 1), ('regex', 2))),
     'list_outcomes.py': ('3f93ff3c9a4f080743d92b3c6f489ccac1320528ede5d8c49f3b506fd5f5aeb4', (('comparison', 3), ('iteration', 2), ('membership', 3))),
     'durable_workloads/internal_runners.py': ('103855524c1fc62d701cee5b6f055fe9723c52b5231d2bdcadef3cfb91a5c216', (('comparison', 1),)),
-    'planning_measure.py': ('8cd5ff11bb4adb84879d970967c64736da490333517c09d8c472c3b9413d45e6', (('comparison', 9), ('membership', 3), ('regex', 2))),
+    'planning_measure.py': ('06fc18985398bdb9d54e5171b37de7d24970a504eb11e2f0fb64f07d2c1ce60a', (('comparison', 9), ('membership', 3), ('regex', 2))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

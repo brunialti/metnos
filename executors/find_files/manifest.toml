@@ -120,6 +120,7 @@ en = "Text searched in the file name. Only with client='google_workspace'; the l
 
 [args.properties.repo]
 type = "string"
+input_when = { arg = "client", values = ["github"] }
 
 [args.properties.repo.description]
 it = "Repository in forma \"proprietario/nome\". Vale solo con client='github'. Esempio: \"brunialti/metnos\"."
