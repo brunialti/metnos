@@ -703,6 +703,16 @@ nessuna operazione &egrave; in corso. Se anche il nuovo processo resta in
 manutenzione, il guasto non &egrave; passeggero e il controllo si limita a
 segnalarlo.</p>
 
+<p>Il riavvio coordinato rilegge la quiete dopo le pubblicazioni e dopo aver
+liberato il catalogo, mantenendo l'esclusione del ciclo di vita. Se lo stato
+&egrave; occupato o ignoto, attende un secondo fra le letture fino a 180 secondi;
+allo scadere conserva l'errore e le attivazioni dovute, senza riavviare.
+Un candidato invariato pu&ograve; saldare il debito nel tentativo successivo.
+Il primo controllo resta immediato. Questa osservazione non chiude le nuove
+ammissioni: resta scoperto l'istante fra ultima lettura e segnale.
+Durata e numero delle nuove letture sono registrati separatamente dopo il
+tentativo; un guasto di questa registrazione non cambia l'esito.</p>
+
 <p>Le impostazioni dei modelli restano modificabili dalla pagina amministrativa
 anche in modalit&agrave; manutenzione. Valori non validi o modifiche basate su
 una versione superata non sovrascrivono il file; il ripristino conserva una

@@ -419,7 +419,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'skills_catalog.py': ('a901afca8939e0b4e47f8704782db06d14481c43f8d2fd0d108023531cf75b53', (('comparison', 2),)),
     'smoke.py': ('c64f15586e8d6060848b91bb121cabcc9892bab463d62776d0ebb31d1d601deb', (('comparison', 9), ('helper-argument', 2))),
     'speculation.py': ('5f38222f6f1ebe3ba3c450c40474c791951ba2e0c31f4711f59c0190336920b5', (('comparison', 1),)),
-    'stack_reconcile.py': ('f6a4faea9d03851ba2f06b8cc98b3a68a449f598c90f7a640de9c86a6e7db3f1', (('comparison', 51), ('helper-argument', 2), ('iteration', 1), ('membership', 6), ('regex', 4))),
+    'stack_reconcile.py': ('403f9fac5876fecf0355159c4bbb958a183fac4d6bb990b4e2f3359571754f68', (('comparison', 51), ('helper-argument', 2), ('iteration', 1), ('membership', 7), ('regex', 4))),
     'state_receipts.py': ('3f6c7c64e5073821c8d1a26afd8dcfd4666e53d8fd3c590156deedca111904a7', (('comparison', 2),)),
     'store.py': ('45927fda29a44168cbc00eb9ce4f6bd519edb4b3729723b68b1fe0ff349b8608', (('comparison', 1),)),
     'store_bootstrap.py': ('5ec6ad37a946c48c4fe51447ca84d58fc1b4ec910a5e8a6a5e536544e02cd7a7', (('helper-argument', 1),)),

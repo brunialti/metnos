@@ -626,6 +626,16 @@ restarts the HTTP server alone, once, as soon as no operation is running. If
 the new process is still in maintenance, the fault is not transient and the
 check only reports it.</p>
 
+<p>A coordinated restart reads quiescence again after publication and after
+releasing the catalog, while retaining lifecycle exclusion. Busy or unknown
+states wait one second between readings, up to 180 seconds; expiry preserves
+the error and pending activation without restarting. An unchanged candidate
+can settle this debt on the next attempt. The first check still refuses
+immediately. This observation does not close new admissions: the instant
+between the final reading and the signal remains exposed. Duration and reading
+count are recorded separately after the attempt; failure of this recording
+does not change the outcome.</p>
+
 <p>Model settings remain editable from administration even in maintenance mode.
 Invalid values or stale revisions do not overwrite the file; reset keeps a
 backup of the previous settings. A damaged file does not silently select a

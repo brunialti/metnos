@@ -1581,7 +1581,30 @@ class StackReconciler:
             # be able to read its own catalog while it boots.  The lifecycle
             # boundary stays held: it is what still serialises this restart.
             boundaries.release_catalog()
-            result = self.systemctl.run(scope, "restart", TARGET_UNIT, timeout_s=180)
+            quiescence_started = time.monotonic()
+            quiescence_reads = 0
+            quiescence_waited = None
+            try:
+                while True:
+                    quiescence_reads += 1
+                    try:
+                        self.require_quiescent()
+                        break
+                    except StackFailure as exc:
+                        remaining = 180 - (time.monotonic() - quiescence_started)
+                        if exc.code not in {"stack_busy", "quiescence_unknown"} or remaining <= 0:
+                            raise
+                        time.sleep(min(1, remaining))
+                quiescence_waited = time.monotonic() - quiescence_started
+                result = self.systemctl.run(scope, "restart", TARGET_UNIT, timeout_s=180)
+            finally:
+                with contextlib.suppress(Exception):
+                    _atomic_json(self.report_path.with_name("stack_reconcile_quiescence_wait.json"), {
+                        "recorded_at_unix": time.time(),
+                        "waited_s": (quiescence_waited if quiescence_waited is not None
+                                     else time.monotonic() - quiescence_started),
+                        "readings": quiescence_reads,
+                    })
             if result.returncode != 0:
                 raise StackFailure(
                     "target_restart_failed", "systemd rejected target restart",
