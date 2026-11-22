@@ -2558,8 +2558,9 @@ async def admin_plans_measure(request: web.Request) -> web.Response:
         body = await request.json()
     except (ValueError, TypeError):
         return web.json_response({"error": "invalid_measure_request"}, status=400)
-    if (not isinstance(body, dict) or set(body) != {"query", "memory"}
+    if (not isinstance(body, dict) or set(body) not in ({"query", "memory"}, {"query", "memory", "intent_scaffold"})
             or not isinstance(body["query"], str) or not body["query"].strip()
+            or ("intent_scaffold" in body and body["intent_scaffold"] is not True)
             or body["memory"] != "off"):
         return web.json_response({"error": "invalid_measure_request"}, status=400)
     provider = app_get(request.app, CATALOG_PROVIDER)
@@ -2571,7 +2572,8 @@ async def admin_plans_measure(request: web.Request) -> web.Response:
         catalog = list(provider())
         if not catalog:
             raise MeasureError("catalog_unavailable")
-        return run(query=body["query"], owner_user_id=owner, catalog=catalog)
+        return run(query=body["query"], owner_user_id=owner, catalog=catalog,
+                   **({"intent_scaffold": True} if body.get("intent_scaffold") else {}))
 
     try:
         reservation = await _reserve_turn(request, owner)

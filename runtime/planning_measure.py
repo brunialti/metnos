@@ -46,6 +46,7 @@ class _State:
     initial_intent: dict | None = None
     proposed_plan: dict | None = None
     report: dict | None = None
+    intent_reader: dict | None = None
 
 
 def _snapshot(value) -> dict:
@@ -177,6 +178,8 @@ def _report(state: _State, plan: dict, *, shape: str, admission: str,
     }
     if boundary is not None:
         report["boundary"] = boundary
+    if state.intent_reader is not None:
+        report["intent_reader"] = deepcopy(state.intent_reader)
     return report
 
 
@@ -264,7 +267,7 @@ def finish(framework, intent, executors) -> None:
     raise MeasureComplete(state.report)
 
 
-def run(query: str, owner_user_id: str, catalog: list) -> dict:
+def run(query: str, owner_user_id: str, catalog: list, *, intent_scaffold: bool = False) -> dict:
     """Run inside the ordinary turn worker; retain ownership until it finishes."""
     if (not isinstance(query, str) or not query.strip()
             or not isinstance(owner_user_id, str) or not owner_user_id
@@ -274,9 +277,13 @@ def run(query: str, owner_user_id: str, catalog: list) -> dict:
 
     if not _LOCK.acquire(blocking=False):
         raise MeasureBusy("measure_busy")
-    token = scope_token = None
+    token = scope_token = scaffold_token = None
     try:
         state = _State(owner_user_id)
+        if intent_scaffold:
+            from intent_extractor import SCAFFOLD_REQUEST
+            state.intent_reader = {"requested": "numbered_clauses", "prompts": []}
+            scaffold_token = SCAFFOLD_REQUEST.set(state.intent_reader)
         token = CURRENT.set(state)
         scope_token = _PLANNING_MEASURE.set((CURRENT, state, observe, finish))
         from agent_runtime import _run_engine
@@ -307,4 +314,6 @@ def run(query: str, owner_user_id: str, catalog: list) -> dict:
             _PLANNING_MEASURE.reset(scope_token)
         if token is not None:
             CURRENT.reset(token)
+        if scaffold_token is not None:
+            SCAFFOLD_REQUEST.reset(scaffold_token)
         _LOCK.release()

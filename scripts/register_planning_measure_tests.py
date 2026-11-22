@@ -30,6 +30,10 @@ GROUPS = {
         "tests/runtime/engine/test_orchestration.py",
         "tests/runtime/http/test_http_turn_pool.py",
         "tests/runtime/infra/test_llm_virtualization_boundaries.py",
+        "tests/runtime/engine/test_engine_intent_diagnostics.py",
+        "tests/runtime/engine/test_intent_reply_grammar.py",
+        "tests/runtime/engine/test_intent_meta_object.py",
+        "tests/runtime/engine/test_intent_fonte_aperta.py",
     ),
 }
 

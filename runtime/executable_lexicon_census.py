@@ -288,7 +288,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'http_auth.py': ('bca0f60f5ec4eee0dda69a9e4bae82673968bc67d7d7f2069c3c0ed4613ed9ed', (('comparison', 10), ('helper-argument', 5))),
     'http_cache.py': ('b8231d02ff7dc5f9f5aaeb551ebf861c93fcba5af6ce51010761c6713947c26e', (('comparison', 4),)),
     'http_render.py': ('8449bc91ca2bfe9d82a5e0cfc98c7392b3f92dac00697255f6efcbf87b5fad33', (('comparison', 2), ('helper-argument', 1))),
-    'http_routes_admin.py': ('62805dd061c732af05da6a4cc90508ab118980710b7eeacc0d26c7f22e6c03e0', (('comparison', 60), ('helper-argument', 17), ('literal-lookup', 1), ('regex', 1))),
+    'http_routes_admin.py': ('df7fff3e806c175be0ddaa1431fbbdc7a518000e9ee78de12bf57b26a3a9eabe', (('comparison', 60), ('helper-argument', 17), ('literal-lookup', 1), ('membership', 1), ('regex', 1))),
     'http_routes_agent.py': ('d2c931d6f1141aa0eb7a6fb0c379710d65d74643df9e9b520968bf238f37cfd2', (('comparison', 80), ('helper-argument', 19), ('iteration', 1), ('membership', 5), ('prefix-suffix', 1))),
     'http_routes_durable_workloads.py': ('1deeace6701f459dcb36ce21705f162c4d1c703c4749a195a908c41f88c58a8c', (('comparison', 2), ('helper-argument', 12), ('iteration', 3), ('literal-lookup', 1))),
     'http_routes_stack.py': ('8dced35285ba737e67128363e97dfc380f709c1bd6c9688dc4c0ca2e03377189', (('comparison', 1),)),
@@ -304,7 +304,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'index_schema_upgrade.py': ('0ef8a34c184d600cc7cc0493f785fd11dd3461330ab1386bc3918c3f874dfd96', (('comparison', 2),)),
     'index_schema_upgrade_v4.py': ('cb78d77e621b14adcc334eb2a0d41ffe05fc8e9ce845d7dd43377c4acfbeed0f', (('comparison', 3),)),
     'install_direction_resolver.py': ('22a551e20b5e0fa4e1cce521aa58c35cb6be224009648dc23b8ac65bd0c20114', (('comparison', 2),)),
-    'intent_extractor.py': ('8fb6eb42792c7462fcd35ed8e6935a3eced72c9f6efb68f1fbc75b1abfd006ba', (('comparison', 9), ('regex', 3))),
+    'intent_extractor.py': ('66ee36b548e77949cebd796ace2583262671e7d81865dfd39ae7770a11027a8b', (('comparison', 9), ('regex', 3))),
     'introvertiva.py': ('5323a3d1edb25698e2e879e433134ff2fbd5f36360a74c6d191d92377602bb03', (('comparison', 11), ('helper-argument', 2))),
     'invocation_scope.py': ('d55de472beb73a94515b9ffe367e7d5d6dc1aa79303006e88c4788343a617999', (('comparison', 2), ('prefix-suffix', 1))),
     'invocations.py': ('681f1e90dec56ff1268bfe655bdc559320f02c42f24d9cc91d556b318063a080', (('comparison', 25), ('helper-argument', 1))),
@@ -624,7 +624,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/planning_repair.py': ('5ffc90866185a59ce8f0ff3c2e188b2e823fb4f4193f51459b1b5c8bccc2a5be', (('comparison', 2), ('iteration', 1), ('regex', 2))),
     'list_outcomes.py': ('3f93ff3c9a4f080743d92b3c6f489ccac1320528ede5d8c49f3b506fd5f5aeb4', (('comparison', 3), ('iteration', 2), ('membership', 3))),
     'durable_workloads/internal_runners.py': ('103855524c1fc62d701cee5b6f055fe9723c52b5231d2bdcadef3cfb91a5c216', (('comparison', 1),)),
-    'planning_measure.py': ('06fc18985398bdb9d54e5171b37de7d24970a504eb11e2f0fb64f07d2c1ce60a', (('comparison', 9), ('membership', 3), ('regex', 2))),
+    'planning_measure.py': ('bb49a2c3ae72c81c50a0731e3589cb2f188e3b33e1b857411be47a7d6952268c', (('comparison', 9), ('membership', 3), ('regex', 2))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

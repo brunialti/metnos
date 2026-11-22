@@ -26,6 +26,7 @@ from __future__ import annotations
 import json
 import os
 import re
+from contextvars import ContextVar
 from typing import Optional
 
 from vocab import (
@@ -48,6 +49,7 @@ import detection_lexicon as _dl
 # molto prima). §7.3 generale, non patch per-query.
 _INTENT_MAX_TOKENS = 320
 INTENT_KINDS = frozenset({"action", "conversation", "metnos_help", "unknown"})
+SCAFFOLD_REQUEST: ContextVar = ContextVar("intent_scaffold_request", default=None)
 
 # Prompt persistito in `runtime/prompts/<lang>/intent_extractor_v4.j2` (ADR 0092
 # Phase 2; v3 `intent_extractor.j2` ritirato 26/6, §7.1 — v4 unico template mono).
@@ -255,7 +257,8 @@ def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optio
     # i chunk e riempie i buchi col detector lessicale. §7.9: codice possiede
     # segmentazione+count, LLM possiede anafora+boundary. Solo su compound (>=2
     # segmenti); mono → path v4 invariato.
-    _scaffold = os.getenv("METNOS_INTENT_SCAFFOLD", "0") == "1"
+    selection = SCAFFOLD_REQUEST.get()
+    _scaffold = selection is not None or os.getenv("METNOS_INTENT_SCAFFOLD", "0") == "1"
     _segments: list[str] = []
     if _scaffold:
         try:
@@ -312,6 +315,8 @@ def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optio
             VOCAB_VERBS, VOCAB_OBJECTS, kinds,
             scaffold=bool(_scaffold and len(_segments) >= 2))
     try:
+        if selection is not None:
+            selection["prompts"].append("intent_extractor_scaffold" if _scaffold and len(_segments) >= 2 else "intent_extractor_v4")
         res = llm_call(prompt, query, **call_options)
     except Exception:
         return None
