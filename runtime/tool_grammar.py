@@ -501,13 +501,12 @@ def generate_json_grammar(*, decimal_numbers_only: bool = False) -> str:
                      + ["root ::= jsonObject"])
 
 
-def generate_intent_grammar(verbs, objects, kinds, *, scaffold: bool = False, list_only: bool = False) -> str:
+def generate_intent_grammar(verbs, objects, kinds, *, list_only: bool = False) -> str:
     """GBNF for the intent extractor's reply, over the closed vocabulary.
 
     Mono path: a single action ``{"kind":"action","verb":…,"object":…}`` (kind
     optional), a closed non-operational kind (``{"kind":"conversation"}`` …)
-    or an ordered array of actions. Scaffold path: ``{"kind":"action",
-    "clauses":[{"n":…,"ref":…,"verb":…,"object":…}, …]}``. Values come from
+    or an ordered array of actions. Values come from
     the caller's vocabulary (the SoT), never from a list kept here.
     """
     def alt(values):
@@ -523,23 +522,16 @@ def generate_intent_grammar(verbs, objects, kinds, *, scaffold: bool = False, li
         f'intentKind ::= {key("kind")} colon {json.dumps(json.dumps("action"))} sep',
         f'intentPair ::= {key("verb")} colon intentVerb sep {key("object")} colon intentObject',
     ]
-    if scaffold:
-        lines += [
-            f'intentClause ::= "{{" ws {key("n")} colon jsonInt sep {key("ref")} colon jsonStr sep intentPair ws "}}"',
-            f'root ::= ws "{{" ws intentKind? {key("clauses")} colon "[" ws intentClause (sep intentClause)* ws "]" ws "}}" ws',
-        ]
-        used = {"ws", "sep", "colon", "jsonInt", "jsonStr"}
+    lines.append('intentAction ::= "{" ws intentKind? intentPair ws "}"')
+    if list_only:
+        lines.append('root ::= ws "[" ws intentAction sep intentAction (sep intentAction)* ws "]" ws')
     else:
-        lines.append('intentAction ::= "{" ws intentKind? intentPair ws "}"')
-        if list_only:
-            lines.append('root ::= ws "[" ws intentAction sep intentAction (sep intentAction)* ws "]" ws')
-        else:
-            lines.append('intentList ::= "[" ws intentAction (sep intentAction)* ws "]"')
-            if others:
-                lines.append(f'intentOther ::= "{{" ws {key("kind")} colon ({alt(others)}) ws "}}"')
-            lines.append("root ::= ws (intentAction | intentList"
-                         + (" | intentOther" if others else "") + ") ws")
-        used = {"ws", "sep", "colon"}
+        lines.append('intentList ::= "[" ws intentAction (sep intentAction)* ws "]"')
+        if others:
+            lines.append(f'intentOther ::= "{{" ws {key("kind")} colon ({alt(others)}) ws "}}"')
+        lines.append("root ::= ws (intentAction | intentList"
+                     + (" | intentOther" if others else "") + ") ws")
+    used = {"ws", "sep", "colon"}
     used = _expand_deps(used)
     return "\n".join([_PRIMITIVE_DEFS[k] for k in _PRIMITIVE_DEFS if k in used] + lines)
 

@@ -139,11 +139,6 @@
     "source_lang": null,
     "version_hash": "sha256:124791911591f724f8d84c7ae50abd378ffbb580aa0d9fc4c896d9a80f31ef03"
   },
-  "intent_extractor_scaffold": {
-    "source_hash": "sha256:475f370be7c9ae961fd914e7d4bb0b2684152fd1f5bae0ca5eab81fd5125ea6b",
-    "source_lang": "en",
-    "version_hash": "sha256:2db53e08a26dc79ae6fb50ead96a87b7631c2552684da1417fc28a13aeacfccb"
-  },
   "intent_extractor_v4": {
     "source_hash": "sha256:4418b576bf0d5e8d8caea812ef2b87766aebba1c48b70f3d769faa42f4401ce7",
     "source_lang": "en",
