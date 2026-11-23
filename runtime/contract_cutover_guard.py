@@ -29,13 +29,25 @@ _MAINTENANCE_SESSION_GUARD_V1 = threading.Lock()
 _ACTIVE_MAINTENANCE_SESSIONS_V1: dict[object, object] = {}
 
 
+def _grouped_states_v1(systemctl, targets):
+    targets = tuple(targets)
+    states = {}
+    many = getattr(systemctl, "show_many", None)
+    for scope in dict.fromkeys(scope for scope, _unit in targets):
+        units = tuple(unit for selected, unit in targets if selected == scope)
+        group = many(units, scope) if callable(many) else {
+            unit: systemctl.show(unit, scope) for unit in units
+        }
+        states.update(((scope, unit), group[unit]) for unit in units)
+    return ((scope, unit, states[(scope, unit)]) for scope, unit in targets)
+
+
 def _prove_stack_stopped_v1(reconciler, *, load_states: frozenset[str]) -> dict:
     """Prove every catalog consumer and browser ingress remains idle."""
     from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
 
     observations: list[dict[str, object]] = []
-    for scope, unit in MAINTENANCE_TARGETS_V1:
-        state = reconciler.systemctl.show(unit, scope)
+    for scope, unit, state in _grouped_states_v1(reconciler.systemctl, MAINTENANCE_TARGETS_V1):
         load_state = str(state.get("LoadState") or "")
         active_state = str(state.get("ActiveState") or "")
         try:
@@ -160,8 +172,7 @@ def _prove_installed_topology_stopped_v1(reconciler) -> None:
     units = _installed_service_units_v1()
     if units is None:
         return
-    for scope, unit in units:
-        state = reconciler.systemctl.show(unit, scope)
+    for scope, unit, state in _grouped_states_v1(reconciler.systemctl, units):
         load_state = str(state.get("LoadState") or "")
         try:
             main_pid = int(state.get("MainPID") or 0)
@@ -186,8 +197,8 @@ def _prove_release_stopped_v1(reconciler, catalog, *, load_states=("loaded",)) -
     )
 
     plan = _plan_release_systemd_quiescence_v1(catalog)
-    for unit in plan.batches[0].units:
-        state = reconciler.systemctl.show(unit, "system")
+    targets = (("system", unit) for unit in plan.batches[0].units)
+    for _scope, unit, state in _grouped_states_v1(reconciler.systemctl, targets):
         try:
             pid = int(state.get("MainPID") or 0)
         except (TypeError, ValueError):

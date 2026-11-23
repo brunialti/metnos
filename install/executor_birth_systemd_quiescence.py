@@ -226,12 +226,16 @@ def _parse_show_v1(
         fields = {key: value for key, value in pairs if len((key, value)) == 2}
     except (UnicodeDecodeError, ValueError) as exc:
         _fail("systemctl show output", exc)
+    if any(len(pair) != 2 for pair in pairs) or len(fields) != len(pairs):
+        _fail("systemctl show output")
+    return _observation_from_fields_v1(fields, scope, unit)
+
+
+def _observation_from_fields_v1(fields, scope, unit):
     required = {"LoadState", "ActiveState"}
     admitted = required | {"UnitFileState", "MainPID"}
     if (
-        any(len(pair) != 2 for pair in pairs)
-        or len(fields) != len(pairs)
-        or not required.issubset(fields)
+        not required.issubset(fields)
         or not set(fields).issubset(admitted)
     ):
         _fail("systemctl show output")
@@ -258,7 +262,45 @@ def _parse_show_v1(
     )
 
 
+def _parse_show_many_v1(raw, scope, units, extra=()):
+    """Bind complete blocks by Id, retaining the existing per-unit refusals."""
+    if len(raw) > _MAX_OUTPUT_BYTES_V1 or not raw.endswith(b"\n"):
+        _fail("systemctl grouped output")
+    grouped = {}
+    try:
+        for block in raw.decode("ascii").removesuffix("\n").split("\n\n"):
+            pairs = [line.split("=", 1) for line in block.splitlines()]
+            fields = dict(pairs)
+            unit = fields.pop("Id")
+            if len(fields) + 1 != len(pairs) or unit not in units or unit in grouped:
+                _fail("systemctl grouped identity")
+            observation = _observation_from_fields_v1(
+                {key: value for key, value in fields.items() if key not in extra}, scope, unit,
+            )
+            grouped[unit] = ({"Id": unit, **fields}, observation)
+    except (UnicodeDecodeError, ValueError, KeyError) as exc:
+        _fail("systemctl grouped output", exc)
+    if set(grouped) != set(units):
+        _fail("systemctl grouped coverage")
+    return grouped
+
+
 class _SubprocessSystemdEffectsV1:
+    def observe_many(self, scope, units, snapshot):
+        if len(set(units)) != len(units):
+            _fail("systemctl duplicate units")
+        if not units:
+            return ()
+        if scope == "user":
+            _require_current_legacy_snapshot_v1(snapshot)
+        command = _command_v1(scope, "show", (), snapshot)[:-1] + (
+            "--no-pager", "--plain", "--all",
+            "--property=Id,LoadState,ActiveState,UnitFileState,MainPID", "--", *units,
+        )
+        result = _run_command_v1(command, _command_environment_v1(scope, snapshot))
+        grouped = _parse_show_many_v1(result.stdout, scope, units)
+        return tuple(grouped[unit][1] for unit in units)
+
     def apply(
         self, action: str, batch: SystemdQuiescenceBatchV1,
         snapshot: PosixAccountSnapshotV1,
@@ -292,9 +334,12 @@ class _SubprocessSystemdEffectsV1:
 
 
 def _observations_v1(plan, snapshot, effects) -> tuple[SystemdUnitObservationV1, ...]:
+    many = getattr(effects, "observe_many", None)
     observed = tuple(
-        effects.observe(batch.scope, unit, snapshot)
-        for batch in plan.batches for unit in batch.units
+        item for batch in plan.batches for item in (
+            many(batch.scope, batch.units, snapshot) if callable(many) else
+            (effects.observe(batch.scope, unit, snapshot) for unit in batch.units)
+        )
     )
     expected = tuple(
         (batch.scope, unit) for batch in plan.batches for unit in batch.units

@@ -384,6 +384,42 @@ class Systemctl:
             "SubState": "dead", "MainPID": "0",
         }
 
+    def show_many(self, units, scope="user"):
+        from executor_birth_service_catalog import SERVICE_SOURCE_V1
+        from install.executor_birth_systemd_quiescence import (
+            _parse_show_many_v1, SystemdQuiescenceError,
+        )
+
+        if len(set(units)) != len(units):
+            raise StackFailure("unknown_unit", "duplicate units")
+        if not units:
+            return {}
+        admitted = set(MAINTENANCE_TARGETS_V1) | {
+            ("system", item.unit_name) for item in SERVICE_SOURCE_V1
+        }
+        if any((scope, unit) not in admitted for unit in units):
+            raise StackFailure("unknown_unit", "unit is outside the closed stack catalog")
+        result = self.run(
+            scope, "show", "--no-pager", "--plain", "--all",
+            "--property=Id,LoadState,ActiveState,SubState,UnitFileState,MainPID,InvocationID",
+            "--", *units, timeout_s=10,
+        )
+        if max(len(result.stdout.encode()), len(result.stderr.encode())) > 64 * 1024:
+            raise StackFailure("systemctl_failed", "systemctl output")
+        if result.returncode and not any("=" in line for line in result.stdout.splitlines()):
+            absent = self._absent_user_manager(units[0]) if scope == "user" else None
+            if absent is None:
+                return {unit: {"LoadState": "error", "ManagerError": (result.stderr or "")[-300:]}
+                        for unit in units}
+            return {unit: {**absent, "Id": unit} for unit in units}
+        try:
+            grouped = _parse_show_many_v1(
+                result.stdout.encode("ascii"), scope, units, ("SubState", "InvocationID"),
+            )
+            return {unit: fields for unit, (fields, _observation) in grouped.items()}
+        except (SystemdQuiescenceError, UnicodeEncodeError) as exc:
+            raise StackFailure("systemctl_failed", "systemctl grouped output") from exc
+
     def show(self, unit: str, scope: str = "user") -> dict[str, str]:
         # The service topology is the sole authority for both productive and
         # legacy maintenance observations.  In particular, cutover must prove
