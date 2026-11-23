@@ -202,6 +202,17 @@ def _names_a_device(query: str) -> bool:
         return False
 
 
+def _has_two_mutating_clauses(query: str) -> bool:
+    try:
+        from compound_decomposer import split_query_chunks
+        from prefilter import tokenize, detect_canonical_verbs_all
+        from vocab import DESTRUCTIVE_VERBS
+        return sum(any(v in DESTRUCTIVE_VERBS for v in detect_canonical_verbs_all(tokenize(s)))
+                   for s in split_query_chunks(query)) >= 2
+    except Exception:
+        return False
+
+
 def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optional[dict]:
     """Estrae verb+object dalla richiesta. Ritorna None se LLM o parsing fallisce.
 
@@ -326,7 +337,8 @@ def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optio
         call_options["grammar"] = generate_intent_grammar(
             VOCAB_VERBS, VOCAB_OBJECTS, kinds,
             scaffold=bool(_scaffold and len(_segments) >= 2),
-            list_only=bool(_list and len(_segments) >= 2))
+            list_only=bool(_list and len(_segments) >= 2) or (
+                not _scaffold and selection is None and _has_two_mutating_clauses(query)))
     try:
         if selection is not None:
             selection["prompts"].append("intent_extractor_scaffold" if _scaffold and len(_segments) >= 2 else "intent_extractor_v4")
