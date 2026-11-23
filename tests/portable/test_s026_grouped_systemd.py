@@ -4,8 +4,12 @@ from __future__ import annotations
 from types import SimpleNamespace
 from pathlib import Path
 import subprocess
+import sys
 
 import pytest
+
+if sys.platform == "win32":
+    pytest.skip("the grouped observations control the Linux systemd stack", allow_module_level=True)
 
 import contract_cutover_guard as guard
 from executor_birth_maintenance_units import MAINTENANCE_TARGETS_V1
