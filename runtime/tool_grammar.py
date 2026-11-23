@@ -501,7 +501,7 @@ def generate_json_grammar(*, decimal_numbers_only: bool = False) -> str:
                      + ["root ::= jsonObject"])
 
 
-def generate_intent_grammar(verbs, objects, kinds, *, scaffold: bool = False) -> str:
+def generate_intent_grammar(verbs, objects, kinds, *, scaffold: bool = False, list_only: bool = False) -> str:
     """GBNF for the intent extractor's reply, over the closed vocabulary.
 
     Mono path: a single action ``{"kind":"action","verb":…,"object":…}`` (kind
@@ -530,14 +530,15 @@ def generate_intent_grammar(verbs, objects, kinds, *, scaffold: bool = False) ->
         ]
         used = {"ws", "sep", "colon", "jsonInt", "jsonStr"}
     else:
-        lines += [
-            'intentAction ::= "{" ws intentKind? intentPair ws "}"',
-            'intentList ::= "[" ws intentAction (sep intentAction)* ws "]"',
-        ]
-        if others:
-            lines.append(f'intentOther ::= "{{" ws {key("kind")} colon ({alt(others)}) ws "}}"')
-        lines.append("root ::= ws (intentAction | intentList"
-                     + (" | intentOther" if others else "") + ") ws")
+        lines.append('intentAction ::= "{" ws intentKind? intentPair ws "}"')
+        if list_only:
+            lines.append('root ::= ws "[" ws intentAction sep intentAction (sep intentAction)* ws "]" ws')
+        else:
+            lines.append('intentList ::= "[" ws intentAction (sep intentAction)* ws "]"')
+            if others:
+                lines.append(f'intentOther ::= "{{" ws {key("kind")} colon ({alt(others)}) ws "}}"')
+            lines.append("root ::= ws (intentAction | intentList"
+                         + (" | intentOther" if others else "") + ") ws")
         used = {"ws", "sep", "colon"}
     used = _expand_deps(used)
     return "\n".join([_PRIMITIVE_DEFS[k] for k in _PRIMITIVE_DEFS if k in used] + lines)

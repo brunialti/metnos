@@ -294,6 +294,8 @@ def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optio
             _action_segs = len(_segments)
         if _action_segs < 2:
             _segments = []  # non è un vero compound → ricadi su mono
+    _list = bool(selection and selection["requested"] == "action_list")
+    _scaffold = _scaffold and not _list
     if _scaffold and len(_segments) >= 2:
         segments_block = "\n".join(f"{i}. {s}" for i, s in enumerate(_segments, 1))
         prompt = prompt_loader.get(
@@ -323,7 +325,8 @@ def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optio
         from tool_grammar import generate_intent_grammar
         call_options["grammar"] = generate_intent_grammar(
             VOCAB_VERBS, VOCAB_OBJECTS, kinds,
-            scaffold=bool(_scaffold and len(_segments) >= 2))
+            scaffold=bool(_scaffold and len(_segments) >= 2),
+            list_only=bool(_list and len(_segments) >= 2))
     try:
         if selection is not None:
             selection["prompts"].append("intent_extractor_scaffold" if _scaffold and len(_segments) >= 2 else "intent_extractor_v4")

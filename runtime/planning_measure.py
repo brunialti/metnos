@@ -267,7 +267,7 @@ def finish(framework, intent, executors) -> None:
     raise MeasureComplete(state.report)
 
 
-def run(query: str, owner_user_id: str, catalog: list, *, intent_scaffold: bool = False) -> dict:
+def run(query: str, owner_user_id: str, catalog: list, *, intent_scaffold: bool = False, intent_list: bool = False) -> dict:
     """Run inside the ordinary turn worker; retain ownership until it finishes."""
     if (not isinstance(query, str) or not query.strip()
             or not isinstance(owner_user_id, str) or not owner_user_id
@@ -280,9 +280,9 @@ def run(query: str, owner_user_id: str, catalog: list, *, intent_scaffold: bool 
     token = scope_token = scaffold_token = None
     try:
         state = _State(owner_user_id)
-        if intent_scaffold:
+        if intent_scaffold or intent_list:
             from intent_extractor import SCAFFOLD_REQUEST
-            state.intent_reader = {"requested": "numbered_clauses", "prompts": []}
+            state.intent_reader = {"requested": "action_list" if intent_list else "numbered_clauses", "prompts": []}
             scaffold_token = SCAFFOLD_REQUEST.set(state.intent_reader)
         token = CURRENT.set(state)
         scope_token = _PLANNING_MEASURE.set((CURRENT, state, observe, finish))
