@@ -92,6 +92,8 @@ data already produced during the turn. It returns:</p>
  <li>any dialog to resume after a choice or consent.</li>
 </ul>
 
+<p>When durable admission rejects a plan, the turn log keeps tool and argument names in <code>durable_admission.rejected_steps</code>, without argument values, even when no step ran.</p>
+
 <p>The catalog is the effective execution boundary. An absent or unadmitted
 executor does not become available merely because the model names it.</p>
 

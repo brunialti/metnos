@@ -210,6 +210,12 @@ def _admit_finalized_long_work(
             "error_class": "contract_violation",
         }
     accepted = outcome["ok"] is True
+    admission = dict(outcome)
+    if not accepted:
+        admission["rejected_steps"] = [
+            {"tool": step.tool, "args": sorted(step.args)}
+            for step in framework.steps
+        ]
     final_text = outcome.get("final_message_hint") or outcome.get("error") or ""
     return DispatchResult(
         final_text=str(final_text),
@@ -218,7 +224,7 @@ def _admit_finalized_long_work(
         framework_hash=compute_framework_hash(framework),
         elapsed_ms=int((time.time() - started_at) * 1000),
         framework=framework,
-        durable_admission=dict(outcome),
+        durable_admission=admission,
         error_class="" if accepted else str(
             outcome.get("error_class") or "operation_failed"
         ),
