@@ -3,10 +3,10 @@ role: intent_extractor
 tier: fast
 lang: en
 style: definitional
-version: 7
+version: 8
 owner: roberto
-updated: 2026-09-23
-sha_prev: b9d3bee1
+updated: 2026-11-23
+sha_prev: 475f370b
 --- #}
 {# scaffold (hybrid, gate METNOS_INTENT_SCAFFOLD): testa = v4 (confini SoT +
    regole oggetto + esempi mono). Sezione COMPOUND riscritta: segmentazione
@@ -190,6 +190,21 @@ BOUNDARIES/OBJECT.
 MUST: for each "ref" choose the verb whose BOUNDARY (above) matches and the object from the
   NOUN of the clause. MUST NOT copy a verb due to word similarity with an example.
 
+NEW ARTIFACT — a sheet, a table or a document that is BORN from the request.
+MUST: read as {create, files} the segment that makes the artifact, even already filled
+  («put <ITEMS> in a sheet», «make a sheet with <COLUMNS>»): rows, columns and initial
+  content are arguments of the create.
+MUST NOT: read it as write (write = a text file, or an artifact that already exists); MUST NOT
+  take the listed columns or the previous segment's object as the object.
+OK: «put them in a sheet» → {create, files}; «make a sheet with <COLUMN_A>, <COLUMN_B>» → {create, files}.
+ERROR: «put <ITEMS> in a sheet» read as {write, files}; «make a sheet with <COLUMNS>» read with an object other than files.
+
+DESTINATION — the folder or container where the segment puts the items.
+MUST: take the verb from the IMPERATIVE of the segment: «move <ITEMS> to a new folder» = move.
+MUST NOT: read create because the destination folder is new, «created» or to be created.
+OK: «move them to a folder <NAME> created in there» → {move, files}.
+ERROR: the same segment read as {create, dirs}.
+
 Compound examples (ILLUSTRATE boundaries, NOT a lookup table):
 Segments: 1. find processes using most memory 2. write a report
 → {"clauses":[{"n":1,"ref":"find processes using most memory","verb":"get","object":"processes"},
@@ -201,6 +216,9 @@ Segments: 1. save photos to /tmp 2. compress them 3. send them to me
 → {"clauses":[{"n":1,"ref":"save photos to /tmp","verb":"write","object":"files"},
    {"n":2,"ref":"compress THE PHOTOS","verb":"compress","object":"files"},
    {"n":3,"ref":"send THE PHOTOS (archive) to me","verb":"send","object":"messages"}]}
+Segments: 1. find the closed issues 2. put them in a spreadsheet
+→ {"clauses":[{"n":1,"ref":"find the closed issues","verb":"find","object":"issues"},
+   {"n":2,"ref":"put THE ISSUES in a spreadsheet","verb":"create","object":"files"}]}
 
 Respond ONLY with JSON {"kind":"action","clauses":[…]}, no prose.
 

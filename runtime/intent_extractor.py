@@ -264,6 +264,16 @@ def extract_intent(query: str, llm_call, *, device_named: bool = False) -> Optio
         try:
             from compound_decomposer import split_query_chunks
             _segments = split_query_chunks(query)
+            from prefilter import canonical_verb_spans
+            _merged: list[str] = []
+            for _segment in _segments:
+                _spans = canonical_verb_spans(_segment)
+                if (_merged and _spans
+                        and _dl.polarity_state_at(_segment, _spans[0][1]) == "negated"):
+                    _merged[-1] = f"{_merged[-1]}, {_segment}"
+                else:
+                    _merged.append(_segment)
+            _segments = _merged
         except Exception:
             _segments = []
     # Falso-compound: lo split può spezzare su una «e» che coordina AVVERBI/

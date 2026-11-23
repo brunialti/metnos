@@ -304,7 +304,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'index_schema_upgrade.py': ('0ef8a34c184d600cc7cc0493f785fd11dd3461330ab1386bc3918c3f874dfd96', (('comparison', 2),)),
     'index_schema_upgrade_v4.py': ('cb78d77e621b14adcc334eb2a0d41ffe05fc8e9ce845d7dd43377c4acfbeed0f', (('comparison', 3),)),
     'install_direction_resolver.py': ('22a551e20b5e0fa4e1cce521aa58c35cb6be224009648dc23b8ac65bd0c20114', (('comparison', 2),)),
-    'intent_extractor.py': ('66ee36b548e77949cebd796ace2583262671e7d81865dfd39ae7770a11027a8b', (('comparison', 9), ('regex', 3))),
+    'intent_extractor.py': ('ecbd95b8fee3d919b73a729ce96491c6d7c1d6e7604f219d5fcfed960b11289a', (('comparison', 10), ('regex', 3))),
     'introvertiva.py': ('5323a3d1edb25698e2e879e433134ff2fbd5f36360a74c6d191d92377602bb03', (('comparison', 11), ('helper-argument', 2))),
     'invocation_scope.py': ('d55de472beb73a94515b9ffe367e7d5d6dc1aa79303006e88c4788343a617999', (('comparison', 2), ('prefix-suffix', 1))),
     'invocations.py': ('681f1e90dec56ff1268bfe655bdc559320f02c42f24d9cc91d556b318063a080', (('comparison', 25), ('helper-argument', 1))),

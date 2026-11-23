@@ -3,10 +3,10 @@ role: intent_extractor
 tier: fast
 lang: it
 style: definitional
-version: 7
+version: 8
 owner: roberto
-updated: 2026-09-23
-sha_prev: ee08a21c
+updated: 2026-11-23
+sha_prev: 2db53e08
 --- #}
 {# scaffold (hybrid, gate METNOS_INTENT_SCAFFOLD): testa = v4 (confini SoT +
    regole oggetto + esempi mono). Sezione COMPOUND riscritta: segmentazione
@@ -195,6 +195,21 @@ CONFINI/OGGETTO.
 DEVI: per ogni "ref" scegliere il verbo il cui CONFINE (sopra) combacia e l'object dal
   SOSTANTIVO della clausola. NON DEVI copiare un verbo per somiglianza di parola con un esempio.
 
+ARTEFATTO NUOVO — un foglio, una tabella o un documento che NASCE dalla richiesta.
+DEVI: leggere come {create, files} il segmento che fa nascere l'artefatto, anche già popolato
+  («metti <ELEMENTI> in un foglio», «crea un foglio con <COLONNE>»): righe, colonne e contenuto
+  iniziale sono argomenti del create.
+NON DEVI: leggerlo come write (write = un file di testo, o un artefatto che esiste già); NON DEVI
+  prendere per object le colonne elencate né l'object del segmento precedente.
+OK: «mettili in un foglio» → {create, files}; «crea un foglio con <COLONNA_A>, <COLONNA_B>» → {create, files}.
+ERRORE: «metti <ELEMENTI> in un foglio» letto {write, files}; «crea un foglio con <COLONNE>» letto con un object diverso da files.
+
+DESTINAZIONE — la cartella o il contenitore in cui il segmento mette gli elementi.
+DEVI: prendere il verbo dall'IMPERATIVO del segmento: «sposta <ELEMENTI> in una cartella nuova» = move.
+NON DEVI: leggere create perché la cartella di destinazione è nuova, «creata» o da creare.
+OK: «spostali in una cartella <NOME> creata lì dentro» → {move, files}.
+ERRORE: lo stesso segmento letto {create, dirs}.
+
 Esempi composti (ILLUSTRANO i confini, NON sono una tabella di ricerca):
 Segmenti: 1. trova i processi che usano più memoria  2. scrivi un report
 → {"clauses":[{"n":1,"ref":"trova i processi che usano più memoria","verb":"get","object":"processes"},
@@ -206,6 +221,9 @@ Segmenti: 1. salva le foto in /tmp  2. comprimile  3. inviamele
 → {"clauses":[{"n":1,"ref":"salva le foto in /tmp","verb":"write","object":"files"},
    {"n":2,"ref":"comprimi LE FOTO","verb":"compress","object":"files"},
    {"n":3,"ref":"invia LE FOTO (archivio) a me","verb":"send","object":"messages"}]}
+Segmenti: 1. trova le issue chiuse  2. mettile in un foglio di calcolo
+→ {"clauses":[{"n":1,"ref":"trova le issue chiuse","verb":"find","object":"issues"},
+   {"n":2,"ref":"metti LE ISSUE in un foglio di calcolo","verb":"create","object":"files"}]}
 
 Rispondi SOLO col JSON {"kind":"action","clauses":[…]}, niente prosa.
 
