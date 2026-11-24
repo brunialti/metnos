@@ -2620,6 +2620,24 @@ def _dropped_required_verbs(framework: Framework, query: str, intent=None,
             _create_need = _Counter(
                 (a.get("object") or "") for a in _acts
                 if (a.get("verb") or "") == "create")
+            # A format names the write destination; object nouns can instead
+            # be column values. Other created objects need not carry data.
+            # Without one format domain retain the original population rule.
+            try:
+                from compound_decomposer import _format_hint_mapping
+                _format_objects = {
+                    obj for verb, chunk in lexical_writer_chunks if verb == "write"
+                    for surface, (obj, _) in _format_hint_mapping().items()
+                    if tokenize(surface) and tokenize(surface) <= tokenize(chunk)
+                }
+                if len(_format_objects) == 1:
+                    _create_need = _Counter({
+                        obj: count for obj, count in _create_need.items()
+                        if obj in _format_objects
+                    })
+            except Exception:
+                # Unavailable format evidence leaves the old rule intact.
+                pass
             if _create_need and all(
                     populated_creates[obj] >= count
                     for obj, count in _create_need.items()):
