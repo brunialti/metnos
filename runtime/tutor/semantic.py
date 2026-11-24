@@ -777,10 +777,9 @@ def retrieve_sources(
     # Ultima, dopo le espansioni strutturali: la rappresentanza per autorita'
     # non deve spezzare un inventario ne' perdere una sezione adiacente, e a
     # sua volta nessuna espansione successiva puo' sfrattarla.
-    if _flag("METNOS_TUTOR_AUTHORITY_QUOTA", True):
-        _reserve_authorities(
-            selected, visible, adjusted, threshold, top, band,
-            per_document, per_kind, maximum, pinned=protected)
+    _reserve_authorities(
+        selected, visible, adjusted, threshold, top, band,
+        per_document, per_kind, maximum, pinned=protected)
 
     # Naming an admitted public document fixes the source, while dense ranks
     # still choose the primary section. Reserve one support slot for the best

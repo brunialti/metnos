@@ -1276,9 +1276,6 @@ def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
     legacy|token_flat` ritorna esattamente il comportamento di
     `_rank_adaptive_legacy` originale.
 
-    Telemetria opt-in (`METNOS_PREFILTER_TELEMETRY=1`): logga ogni call su
-    `~/.local/share/metnos/prefilter_telemetry.jsonl` per A/B compare.
-
     Compare mode (`METNOS_PREFILTER=compare:a,b`): esegue entrambi A e B in
     sequenza, ritorna A, ma logga B come confronto.
     """
@@ -1290,8 +1287,6 @@ def rank_adaptive(query, catalog, k_min=5, k_max=8, *, llm_call=None,
             query, catalog, k_min=k_min, k_max=k_max,
             llm_call=llm_call, prefer_intent=prefer_intent,
         )
-        if _os.environ.get("METNOS_PREFILTER_TELEMETRY", "0") == "1":
-            _log_telemetry("legacy", query, result)
         return result
     # Modular path
     from prefilter_strategies import select_strategy

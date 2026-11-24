@@ -2686,8 +2686,8 @@ def _process_resume_planner_with_dialog_values(
     # kind="done": il proposer (consapevole via «FATTO FINORA») pianifica solo il
     # resto, la guardia dedup salta le ri-emissioni. e2e: create_events + notify
     # compound (il caso ADR 0129) e send_messages (che lo shortcut NON copriva).
-    # `run_turn` instrada `resume_with_scratchpad` all'engine (gate
-    # METNOS_ENGINE_RESUME, fallback legacy su engine-None).
+    # run_turn always routes resume_with_scratchpad to the engine and reports
+    # a failure when the engine produces no result.
     try:
         import agent_runtime
         # `get_inputs` is intentionally removed from executable seed steps so

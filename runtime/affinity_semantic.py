@@ -215,11 +215,6 @@ def semantic_max_per_executor(query: str, cache: dict | None
     return out
 
 
-def is_enabled() -> bool:
-    """Default ON; opt-out via METNOS_SEMANTIC_MATCH=0."""
-    return os.environ.get("METNOS_SEMANTIC_MATCH", "1") != "0"
-
-
 def threshold() -> int:
     try:
         return int(os.environ.get("METNOS_SEMANTIC_THRESHOLD",

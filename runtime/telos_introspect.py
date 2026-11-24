@@ -286,17 +286,7 @@ def run_for_telos(
     user_patterns = _build_user_patterns()
     executors_sample = _build_executors_sample(catalog)
 
-    # GBNF opt-in via env: vincola executor_target a catalog vivo e
-    # new_op_name a vocab §2.2 + descriptor kebab-case (Naming Authority).
     grammar = None
-    if os.environ.get("METNOS_TELOS_GRAMMAR", "0") == "1":
-        try:
-            from naming_grammar import naming_grammar_fragment, scamper_json_grammar
-            grammar = scamper_json_grammar(naming_grammar_fragment(
-                live_executors=sorted(live_names),
-            ))
-        except Exception as ex:
-            _LOG.warning("telos_introspect: grammar build failed: %r", ex)
 
     ctx = LensCtx(
         telos=telos,

@@ -1253,11 +1253,8 @@ def _invoke_default(args: dict) -> dict:
         top_n = SEARXNG_TOP_N
     top_n = max(1, min(20, top_n))
     # Re-rank LLM (ADR 0118): general-purpose, multilingua, no hardcoded.
-    # Disable: METNOS_FIND_URLS_RERANK=0. Default ON. Wide candidate set
+    # Wide candidate set
     # (default 30) viene proposto al LLM, top_n finali vincolati a top_n.
-    rerank_on = os.environ.get("METNOS_FIND_URLS_RERANK", "1") not in (
-        "", "0", "false", "False",
-    )
     try:
         wide_n = int(os.environ.get("METNOS_FIND_URLS_RERANK_WIDE", "30"))
     except ValueError:
@@ -1267,8 +1264,6 @@ def _invoke_default(args: dict) -> dict:
     candidates_full: list[dict] = []
     if isinstance(search_query, str) and search_query.strip():
         # Fetch wide-N (default 30) per dare materiale al re-rank.
-        # Se rerank disabilitato, equivalente al vecchio comportamento.
-        n_fetch = wide_n if rerank_on else top_n
         # Propaga time_window → SearXNG time_range (filtro server-side).
         # Letto direttamente da args perche' la variabile `time_window`
         # locale viene normalizzata solo piu' avanti nella funzione.
@@ -1278,14 +1273,14 @@ def _invoke_default(args: dict) -> dict:
         backend_meta: dict = {}
         search_started = time.monotonic()
         candidates_full, err_class = _searxng_search_full(
-            search_query.strip(), top_n=n_fetch, time_range=_sx_tr,
+            search_query.strip(), top_n=wide_n, time_range=_sx_tr,
             metadata=backend_meta,
         )
         search_ms = round((time.monotonic() - search_started) * 1000)
         urls_from_search: list[str] = [c["url"] for c in candidates_full]
         rerank_meta: dict = {"used": False, "reason": "disabled"}
         rerank_started = time.monotonic()
-        if err_class is None and rerank_on and candidates_full:
+        if err_class is None and candidates_full:
             urls_from_search, rerank_meta = _llm_rerank_candidates(
                 search_query.strip(), candidates_full, top_k=top_n,
             )
@@ -1296,7 +1291,7 @@ def _invoke_default(args: dict) -> dict:
         search_meta = {
             **backend_meta, "search_query": search_query.strip(),
             "search_results_used": len(urls_from_search),
-            "search_top_n": top_n, "search_wide_n": n_fetch,
+            "search_top_n": top_n, "search_wide_n": wide_n,
             "rerank": rerank_meta, "caller_seeds_dropped": list(seed_urls),
             "timings_ms": {"search": search_ms,
                            "rerank": round((time.monotonic() - rerank_started) * 1000)},

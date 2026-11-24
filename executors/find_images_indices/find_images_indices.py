@@ -564,10 +564,6 @@ def _expand_query_via_corpus(query, tokens, embs,
     return expanded
 
 
-def _query_expansion_enabled() -> bool:
-    return os.environ.get("METNOS_QUERY_EXPANSION", "1") != "0"
-
-
 # ----- Date extraction from path/filename (15/5/2026) -------------------
 # EXIF taken_at puo' mancare (foto vecchie, scansioni, screenshot,
 # whatsapp export). mtime filesystem e' spesso inaffidabile (copy/move
@@ -1351,8 +1347,7 @@ def _filter_unified(
         # embedding neighbourhood is too broad; BM25 + cosine remain active.
         q_clean = query_text.strip()
         _is_short_mono = (len(q_clean.split()) == 1 and len(q_clean) <= 5)
-        if (idx_dir is not None and _query_expansion_enabled()
-                and not _is_short_mono):
+        if idx_dir is not None and not _is_short_mono:
             try:
                 tokens, embs = _corpus_token_embs(idx_dir)
                 if tokens and embs is not None:

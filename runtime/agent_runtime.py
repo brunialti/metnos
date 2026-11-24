@@ -1034,7 +1034,7 @@ def render_tools_for_provider(executors):
     Slim (#H0 19/5/2026 sera): la description + args_schema sono compressi
     deterministicamente (prima frase + boundary §2.5; args desc 1
     frase corta; rimozione description per arg auto-descrittivi con
-    default). Disable via env METNOS_TOOL_SCHEMA_FULL=1. Vedi
+    default). Vedi
     `runtime/tool_schema_slim.py`.
     """
     # Il chiamante puo' passare anche un generatore. Materializzarlo una sola
@@ -6438,8 +6438,7 @@ def _run_engine(
     needs_inputs_obs = None
     frozen_plan_resume = None
     gate_obs = None
-    # §2.11 errore-runtime→form: il form viene dal RECOVERY (non da uno step) →
-    # propagalo dal DispatchResult diretto (vedi _error_disambiguation_form).
+    # Propagate needs-inputs observations supplied directly by dispatch.
     if getattr(result, "needs_inputs_obs", None):
         needs_inputs_obs = result.needs_inputs_obs
     if result.run:
@@ -7138,17 +7137,12 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     sp.gc()  # cleanup periodico
 
     # ── ASSORBIMENTO continuazione-dialogo → ENGINE v3 (ADR 0177 M1) ───────
-    # Un turno di RIPRESA (`resume_with_scratchpad`: un dialogo si era fermato a
-    # chiedere all'utente, ora prosegue) cadeva nel PLANNER legacy. Instradiamo
-    # all'ENGINE con gli step pregressi come seed kind="done": il proposer
-    # (consapevole via «FATTO FINORA») pianifica solo il resto, la guardia dedup
-    # salta le ri-emissioni. Su risultato ritorna; su None (crash) cade nel
-    # legacy come fallback. Gate METNOS_ENGINE_RESUME (default 1; =0 → legacy,
-    # per A/B). Esclude le foto (gestite dal loro branch).
+    # Resume always seeds the engine with completed steps: the proposer plans
+    # the remaining work and deduplication skips repeated steps.
+    # A missing engine result reports its failure.
+    # Uploaded images use the dedicated branch below.
     if (resume_with_scratchpad and isinstance(resume_with_scratchpad, list)
-            and not _ref_images_for_prompt
-            and os.environ.get("METNOS_ENGINE_RESUME", "1") == "1"
-            ):  # gate storico METNOS_ENGINE_V2 rimosso (6/7)
+            and not _ref_images_for_prompt):
         _eng_rs_res = None
         try:
             _eng_rs_res = _run_engine(
@@ -7165,7 +7159,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
         except Exception as _ex:
             import logging as _logging
             _logging.getLogger(__name__).warning(
-                "engine resume fallito: %s → fallback PLANNER legacy", _ex)
+                "engine resume fallito: %s → esito onesto (legacy rimosso)", _ex)
             _eng_rs_res = None
         if _eng_rs_res is not None:
             return _finalize_engine_result(
@@ -7471,15 +7465,9 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
             log.ts_end = time.time(); log.write(); return log
 
     # ── ASSORBIMENTO foto-allegate → ENGINE v3 (ADR 0177 M1) ───────────────
-    # Foto allegate al turno (ADR 0092): il blocco fast-path/engine sopra è
-    # saltato (guardia `not _ref_images_for_prompt`) e il controllo cadrebbe nel
-    # PLANNER legacy sotto. Instradiamo invece all'ENGINE con un seed-state
-    # `@uploaded` (find_images_indices via from_step=1, stesso consumer-match del
-    # legacy ma senza ReAct). Su risultato ritorna; su None (crash engine) cade
-    # nel PLANNER legacy come fallback. Gate METNOS_ENGINE_UPLOADS (default 1;
-    # =0 → solo legacy, per A/B durante il bake).
-    if (_ref_images_for_prompt
-            and os.environ.get("METNOS_ENGINE_UPLOADS", "1") == "1"):
+    # Uploaded images always seed the engine with @uploaded references.
+    # A missing engine result reports its failure.
+    if _ref_images_for_prompt:
         _eng_up_res = None
         try:
             _eng_up_res = _run_engine(

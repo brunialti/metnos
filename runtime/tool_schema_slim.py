@@ -12,7 +12,7 @@ Razionale (sessione 19/5/2026 sera, continuum 19/5 §H0):
   (vaglio, synt cross-check, docs, http_render) continuano a vedere la
   description full (`Executor.description`).
 
-  Reversibile via env `METNOS_TOOL_SCHEMA_FULL=1` (debug / regression).
+  Planner-facing schemas always use the reduced representation.
 
 Algoritmo description (§7.9 deterministico, no LLM):
   - la superficie principale usa `manifest_rules.render_heads_budgeted`, cioe'
@@ -38,7 +38,6 @@ Stima impatto (baseline 19/5 = 132k chars → ~33k tok):
 """
 from __future__ import annotations
 
-import os
 import re
 
 _SENT_TERM_RE = re.compile(r"(?<=[\.\!\?])\s+|\n")
@@ -278,5 +277,5 @@ def slim_args_schema(schema: dict) -> dict:
 
 
 def is_slim_enabled() -> bool:
-    """Default ON. Disable via METNOS_TOOL_SCHEMA_FULL=1."""
-    return os.environ.get("METNOS_TOOL_SCHEMA_FULL", "0") != "1"
+    """Planner-facing schema reduction is always enabled."""
+    return True
