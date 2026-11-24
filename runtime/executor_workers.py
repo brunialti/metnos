@@ -11,7 +11,7 @@ import os
 import time
 from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 from contextlib import contextmanager
-from contextvars import ContextVar
+from contextvars import ContextVar, copy_context
 from typing import Callable, TypeVar
 
 from worker_policy import bounded_worker_count
@@ -84,7 +84,7 @@ def map_ordered(
             max_workers=workers, thread_name_prefix="metnos_item") as pool:
         pending = {}
         while next_index < len(values) and len(pending) < workers:
-            future = pool.submit(fn, values[next_index])
+            future = pool.submit(copy_context().run, fn, values[next_index])
             pending[future] = next_index
             next_index += 1
 
@@ -95,7 +95,7 @@ def map_ordered(
                 completed_by_index[index] = future.result()
             while (next_index < len(values) and len(pending) < workers
                    and not _deadline_hit()):
-                future = pool.submit(fn, values[next_index])
+                future = pool.submit(copy_context().run, fn, values[next_index])
                 pending[future] = next_index
                 next_index += 1
 

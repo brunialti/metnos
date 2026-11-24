@@ -6433,6 +6433,7 @@ def _run_engine(
         return None
 
     # Converti DispatchResult → dict shape legacy (per minimal change caller)
+    _diagnostics["planning"] = getattr(result, "planning", None)
     steps_out = []
     needs_inputs_obs = None
     frozen_plan_resume = None

@@ -555,6 +555,10 @@ def _resolve_tier(args: dict) -> str:
     tier = args.get("tier", tier_for("frontier.consult"))
     if tier == "fast" and args.get("remote_context"):
         return tier_for("frontier.tool_loop")
+    if tier in {"fast", "middle", "wise", "creative"}:
+        return tier_for("frontier.consult." + tier)
+    if tier == "frontier":
+        return tier_for("frontier.consult")
     return tier
 
 

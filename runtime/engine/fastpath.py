@@ -37,6 +37,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
+from .turn_diagnostics import observe as _turn_measure
+
 from .types import Framework
 from . import cluster as _cluster
 from .executor import bakes_query_number, is_query_specific
@@ -258,8 +260,10 @@ def lookup(query: str) -> Optional[FastpathHit]:
             try:
                 fw = Framework.from_dict(json.loads(row[2]))
                 if _exact_only(row[2], row[5]) and row[5] != query:
+                    _turn_measure("L0", "excluded")
                     return None
                 _touch(row[0])
+                _turn_measure("L0", "hit")
                 return FastpathHit(fp_id=row[0], canonical_text=row[1],
                                     framework=fw, match_kind="hash",
                                     similarity=1.0,
@@ -271,15 +275,18 @@ def lookup(query: str) -> Optional[FastpathHit]:
                 # di QUESTA query). Niente fallthrough.
                 log.warning("fastpath: 0a exact-match framework_json corrupt "
                             "→ clean miss: %r", ex)
+                _turn_measure("L0", "invalid")
                 return None
     except Exception as ex:
         log.warning("fastpath: 0a lookup failed: %r", ex)
+        _turn_measure("L0", "unavailable")
         return None
     # Layer 0b: semantic cosine. SOLO framework non query-specific (guard di
     # PERTINENZA §2.4/§7.9: i piani con literal content-bearing valgono per
     # quella query esatta → servibili solo via hash 0a).
     eb = _cluster.embed(query)
     if not eb:
+        _turn_measure("L0", "unavailable")
         return None  # BGE-M3 unavailable, miss
     try:
         c = _conn()
@@ -291,7 +298,9 @@ def lookup(query: str) -> Optional[FastpathHit]:
         c.close()
     except Exception as ex:
         log.warning("fastpath: 0b query failed: %r", ex)
+        _turn_measure("L0", "unavailable")
         return None
+    _turn_measure("L0", "excluded" if rows else "no_rows")
     threshold = _cluster.COSINE_HIGH + 0.02  # leggermente più stretto del cluster
     best = None
     best_sim = 0.0
@@ -302,6 +311,7 @@ def lookup(query: str) -> Optional[FastpathHit]:
         # state classificate prima che il predicato riconoscesse questi dati.
         if _exact_only(fjson, exact or ""):
             continue
+        _turn_measure("L0", "threshold")
         sim = _cluster.cosine(eb, stored_eb)
         if sim > best_sim:
             best_sim = sim
@@ -310,12 +320,14 @@ def lookup(query: str) -> Optional[FastpathHit]:
         try:
             fw = Framework.from_dict(json.loads(best[2]))
             _touch(best[0])
+            _turn_measure("L0", "hit")
             return FastpathHit(fp_id=best[0], canonical_text=best[1],
                                 framework=fw, match_kind="cosine",
                                 similarity=best_sim,
                                 tools_sig=best[3] or "",
                                 pool_sig=best[4] or "")
         except Exception:
+            _turn_measure("L0", "invalid")
             return None
     return None
 

@@ -46,6 +46,8 @@ import detection_lexicon_seed_reconciliation as _reconciliation_lex
 # riguarda.
 from vocab import SINGULAR_EXECUTOR_NAMES as _SINGULAR_EXECUTORS
 
+from .turn_diagnostics import collect as _collect_turn, observe as _turn_measure
+
 log = logging.getLogger(__name__)
 
 _PLANNING_MEASURE = ContextVar("planning_measure_scope", default=None)
@@ -176,6 +178,7 @@ class DispatchResult:
     # from, and the row written under the planning text of a device or site
     # request, are not found from the words the person typed.
     fastpath_rows: tuple = ()
+    planning: Optional[dict] = None
 
 
 def _admit_finalized_long_work(
@@ -8539,6 +8542,7 @@ def _recompose_faceless_upload(run: RunResult) -> None:
     run.final_text = ((lead + "\n\n" + tail).strip() if lead else tail)
 
 
+@_collect_turn
 @_partition_destination_boundary
 def run_turn(*, query: str, intent: Intent, catalog: list,
               invoke_executor_cb: Callable,
@@ -8828,6 +8832,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             _ok, _why = _cv_validate(fp_hit.tools_sig, fp_hit.pool_sig,
                                      fp_hit.framework, intent, catalog)
             if not _ok:
+                _turn_measure("L0", "tool_signature")
                 log.info("[L0 fastpath] fp_id=%d INVALIDATO: %s → morte + "
                          "fall-through", fp_hit.fp_id, _why)
                 _fp.delete(fp_hit.fp_id)
@@ -8837,20 +8842,24 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         _fp_ungrounded = (_ungrounded_mutating_args(fp_hit.framework, query)
                           if fp_hit is not None else [])
         if fp_hit is not None and _fp_ungrounded:
+            _turn_measure("L0", "excluded")
             log.info("[L0 fastpath] REJECT mis-serve: step mutante con valore "
                      "non presente nella query → fall-through/re-plan "
                      "evidence=%s", _fp_ungrounded[:5])
             fp_hit = None
         if fp_hit is not None and _dropped_required_verbs(
                 fp_hit.framework, query, intent, catalog):
+            _turn_measure("L0", "required_verb")
             log.info("[L0 fastpath] fp_id=%d INVALIDATO: azione richiesta "
                      "assente dal piano → morte + fall-through", fp_hit.fp_id)
             _fp.delete(fp_hit.fp_id)
             fp_hit = None
         if fp_hit is not None and _prohibited_plan_verbs(fp_hit.framework, query):
+            _turn_measure("L0", "ban")
             log.info("[L0 fastpath] REJECT: prohibited action in cached plan")
             fp_hit = None
         if fp_hit is not None and _accepted_rejection(fp_hit.framework, query):
+            _turn_measure("L0", "ban")
             log.info("[L0 fastpath] REJECT: cached plan rejected by an accepted change")
             fp_hit = None
         if fp_hit is not None:
@@ -8940,6 +8949,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             _ok, _why = _cv_validate(ap_hit.tools_sig, ap_hit.pool_sig,
                                      ap_hit.framework, intent, catalog)
             if not _ok:
+                _turn_measure("L1", "tool_signature")
                 log.info("[L1 autopath] %s INVALIDATO: %s → fall-through L3",
                          ap_hit.autopath_id, _why)
                 ap_hit = None
@@ -8949,19 +8959,23 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         _ap_ungrounded = (_ungrounded_mutating_args(ap_hit.framework, query)
                           if ap_hit is not None else [])
         if ap_hit is not None and _ap_ungrounded:
+            _turn_measure("L1", "excluded")
             log.info("[L1 autopath] REJECT mis-serve: step mutante con valore "
                      "non presente nella query → fall-through a L3 (re-plan) "
                      "evidence=%s", _ap_ungrounded[:5])
             ap_hit = None
         if ap_hit is not None and _dropped_required_verbs(
                 ap_hit.framework, query, intent, catalog):
+            _turn_measure("L1", "required_verb")
             log.info("[L1 autopath] REJECT: azione richiesta assente dal "
                      "piano → fall-through a L3")
             ap_hit = None
         if ap_hit is not None and _prohibited_plan_verbs(ap_hit.framework, query):
+            _turn_measure("L1", "ban")
             log.info("[L1 autopath] REJECT: prohibited action in cached plan")
             ap_hit = None
         if ap_hit is not None and _accepted_rejection(ap_hit.framework, query):
+            _turn_measure("L1", "ban")
             log.info("[L1 autopath] REJECT: cached plan rejected by an accepted change")
             ap_hit = None
         if ap_hit is not None:
@@ -9040,6 +9054,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     if intent.is_complete() and _PLANNING_MEASURE.get() is None:
         excluded = _ap.excluded_framework_hashes(intent)
 
+    _turn_measure("proposal", "initial")
     framework = proposer.propose(
         query=query, intent=intent, pool=pool_names,
         excluded_hashes=excluded,
@@ -9080,6 +9095,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # grammar GBNF), qualunque sia la fonte che ha portato get_inputs nel
         # pool (object=inputs, affinity, full-catalog): rimuoverlo solo dal
         # pool del caller non basterebbe.
+        _turn_measure("proposal", "get_inputs_misroute")
         _framework_gi = proposer.propose(
             query=query, intent=intent, pool=pool_names,
             excluded_hashes=excluded | {_failed_hash},
@@ -9090,6 +9106,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         # (difesa: re-propose potrebbe fallire o degenerare).
         if _framework_gi is not None and not _is_get_inputs_misroute(_framework_gi):
             framework = _framework_gi
+            _turn_measure("selected")
         _measure("observe", "get_inputs_misroute:selection", framework)
 
     # Guard decomposizione incompleta (§7.3/§4.3, universale): query multi-azione
@@ -9112,6 +9129,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                   if isinstance(a, dict) and a.get("verb") in _dropped]
         try:
             setattr(intent, "_repropose_cover", _cover)
+            _turn_measure("proposal", "required_verb")
             _fw2 = proposer.propose(
                 query=query, intent=intent, pool=pool_names,
                 excluded_hashes=excluded | {_fh},
@@ -9127,6 +9145,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if _fw2 is not None and len(_dropped_required_verbs(
                 _fw2, query, intent, catalog)) < len(_dropped):
             framework = _fw2
+            _turn_measure("selected")
         _measure("observe", "dropped_required_verbs:selection", framework)
 
     # Guard DETERMINISTICI di struttura (§7.9): (1) align — ri-allinea i
@@ -9161,6 +9180,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 log.info("[L2 validator] %d errors, requesting re-propose",
                           len(vres.errors))
             failed_hash = compute_framework_hash(framework)
+            _turn_measure("proposal", "validator")
             framework2 = proposer.propose(
                 query=query, intent=intent, pool=pool_names,
                 excluded_hashes=excluded | {failed_hash},
@@ -9184,6 +9204,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 _errs2 = Validator(catalog).check(framework2).errors
                 if len(_errs2) < len(vres.errors):
                     framework = framework2
+                    _turn_measure("selected")
                 else:
                     log.info("[L2 validator] ri-proposta SCARTATA: %d errori "
                              "contro %d del piano originale",
@@ -9202,6 +9223,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     # boundary keeps the last word.
     if _accepted_rejection(framework, query):
         log.info("[guard] plan rejected by an accepted change → re-propose")
+        _turn_measure("proposal", "accepted_rejection")
         _other = proposer.propose(
             query=query, intent=intent, pool=pool_names,
             excluded_hashes=excluded | {_proposed_hash,
@@ -9216,6 +9238,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 intent, query, catalog, runtime_ctx)
             if not _accepted_rejection(_other, query):
                 framework = _other
+                _turn_measure("selected")
         _measure("observe", "accepted_rejection:selection", framework)
 
     # Last word before any executor: never replace an explicit side effect
@@ -9360,6 +9383,7 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                     log.info("[L3 recovery] SKIP: finalized plan unchanged")
                     framework_alt = None
             if framework_alt is not None:
+                _turn_measure("selected", "recovery")
                 durable, run2 = _execute_with_lre_boundary(framework_alt)
                 if durable is not None:
                     return durable

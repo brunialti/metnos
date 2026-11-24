@@ -34,6 +34,7 @@ from pathlib import Path
 from typing import Optional
 
 from timefmt import now_iso_z
+from .turn_diagnostics import observe as _turn_measure
 
 from .types import Intent, Framework
 from . import cluster as _cluster
@@ -374,6 +375,7 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
     """
     if not intent.is_complete():
         return None
+    _turn_measure("L1", "no_rows")
     _, ihash = _compute_intent_sig(intent)
     _qobj = (intent.object or "").lower().strip()
     eb = _cluster.embed(query)
@@ -412,9 +414,12 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
                 # che BYPASSA il proposer (llm_out_tokens=0). L'object dell'intent
                 # e' un confine di CATEGORIA: un piano `files` NON serve una query
                 # `messages`. §7.9 deterministico (path 2 gia' vincola via ihash).
+                if row:
+                    _turn_measure("L1", "excluded")
                 if (row and not _is_query_specific(row[1])
                         and _sig_object(row[4]) == _qobj):
                     fw = Framework.from_dict(json.loads(row[1]))
+                    _turn_measure("L1", "hit")
                     return AutopathHit(autopath_id=row[0], framework=fw,
                                         cluster_id=best_cid, uses=row[2],
                                         composite_score=row[3] or 0.5,
@@ -438,13 +443,17 @@ def lookup(query: str, intent: Intent) -> Optional[AutopathHit]:
         # esplicito sull'object PRIMARIO e' difesa-in-profondita' contro le
         # collisioni residue del troncamento sha256-16. No-op se l'object
         # combacia (caso normale).
+        if row:
+            _turn_measure("L1", "excluded")
         if (row and not _is_query_specific(row[1])
                 and _sig_object(row[5]) == _qobj):
             ap_cluster = row[2]
             if eb and ap_cluster:
                 if _max_cosine_to_cluster(c, eb, ap_cluster) < COSINE_FLOOR_INTENT:
+                    _turn_measure("L1", "threshold")
                     return None
             fw = Framework.from_dict(json.loads(row[1]))
+            _turn_measure("L1", "hit")
             return AutopathHit(autopath_id=row[0], framework=fw,
                                 cluster_id=ap_cluster or "", uses=row[3],
                                 composite_score=row[4] or 0.5,

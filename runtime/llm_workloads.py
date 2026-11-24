@@ -75,6 +75,10 @@ WORKLOADS: dict[str, WorkloadContract] = {
     "urls.rerank": WorkloadContract("middle", None, "procedural_exact", "json"),
     "synt.procedural": WorkloadContract("middle", None, "procedural_exact", "json"),
     "frontier.tool_loop": WorkloadContract("middle", None, "procedural_exact", "tools"),
+    "frontier.consult.fast": WorkloadContract("fast", "micro", "micro_decision", "tools"),
+    "frontier.consult.middle": WorkloadContract("middle", None, "procedural_exact", "tools"),
+    "frontier.consult.wise": WorkloadContract("wise", None, "high_fidelity_exact", "tools"),
+    "frontier.consult.creative": WorkloadContract("creative", None, "divergent", "tools"),
 
     # Faithful high-context transforms without divergent decoding.
     "entries.describe": WorkloadContract("wise", None, "high_fidelity_exact", "text"),

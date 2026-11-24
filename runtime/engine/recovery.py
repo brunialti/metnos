@@ -139,6 +139,8 @@ def propose_with_recovery_signal(*, proposer, intent: Intent,
     try:
         if signal:
             setattr(intent, "_recovery_signal", signal)
+        from .turn_diagnostics import observe
+        observe("proposal", "recovery")
         return proposer.propose(intent=intent, **kwargs)
     finally:
         if previous is marker:
