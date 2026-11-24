@@ -29,7 +29,6 @@ import datetime
 import errno
 import fnmatch
 import hashlib
-import html
 import json
 import mimetypes
 import os
@@ -38,7 +37,6 @@ import shutil
 import stat
 import sys
 import tempfile
-import zipfile
 from pathlib import Path, PureWindowsPath
 
 # Lazy: il modulo move() usa platform_policy per system-file safety net.
@@ -2372,104 +2370,6 @@ def _normalize_rows(values) -> list:
 
 def _is_csv(path: Path) -> bool:
     return path.suffix.lower() == ".csv"
-
-
-def _xlsx_col_name(index: int) -> str:
-    out = ""
-    while index:
-        index, rem = divmod(index - 1, 26)
-        out = chr(65 + rem) + out
-    return out
-
-
-def _xlsx_cell_xml(value, ref: str) -> str:
-    if value is None:
-        return f'<c r="{ref}"/>'
-    if isinstance(value, bool):
-        return f'<c r="{ref}" t="b"><v>{1 if value else 0}</v></c>'
-    if isinstance(value, (int, float)) and not isinstance(value, bool):
-        return f'<c r="{ref}"><v>{value}</v></c>'
-    text = value if isinstance(value, str) else json.dumps(
-        value, ensure_ascii=False)
-    escaped = html.escape(text, quote=False)
-    return (f'<c r="{ref}" t="inlineStr"><is><t xml:space="preserve">'
-            f'{escaped}</t></is></c>')
-
-
-def _write_xlsx_stdlib(path: Path, rows: list, sheet_name: str) -> None:
-    """Scrive un XLSX minimo interoperabile usando solo zipfile/XML stdlib.
-
-    Il file finale e' aperto in modalita' esclusiva ``xb``: una destinazione
-    comparsa fra pre-check e publish non viene mai sovrascritta, anche su
-    Windows dove la pubblicazione via hard-link non e' sempre disponibile.
-    """
-    sheet_rows: list[str] = []
-    for row_no, row in enumerate(rows, 1):
-        cells = "".join(_xlsx_cell_xml(value, f"{_xlsx_col_name(col_no)}{row_no}")
-                        for col_no, value in enumerate(row, 1))
-        sheet_rows.append(f'<row r="{row_no}">{cells}</row>')
-    sheet_xml = (
-        '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-        '<worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-        '<sheetData>' + "".join(sheet_rows) + '</sheetData></worksheet>')
-    safe_sheet = html.escape(sheet_name[:31], quote=True)
-    payloads = {
-        "[Content_Types].xml": (
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">'
-            '<Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>'
-            '<Default Extension="xml" ContentType="application/xml"/>'
-            '<Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>'
-            '<Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
-            '<Override PartName="/xl/styles.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.styles+xml"/>'
-            '</Types>'),
-        "_rels/.rels": (
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/officeDocument" Target="xl/workbook.xml"/>'
-            '</Relationships>'),
-        "xl/workbook.xml": (
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" '
-            'xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">'
-            f'<sheets><sheet name="{safe_sheet}" sheetId="1" r:id="rId1"/></sheets>'
-            '</workbook>'),
-        "xl/_rels/workbook.xml.rels": (
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">'
-            '<Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>'
-            '<Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/styles" Target="styles.xml"/>'
-            '</Relationships>'),
-        "xl/styles.xml": (
-            '<?xml version="1.0" encoding="UTF-8" standalone="yes"?>'
-            '<styleSheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main">'
-            '<numFmts count="0"/>'
-            '<fonts count="1"><font><sz val="11"/><name val="Calibri"/></font></fonts>'
-            '<fills count="2"><fill><patternFill patternType="none"/></fill>'
-            '<fill><patternFill patternType="gray125"/></fill></fills>'
-            '<borders count="1"><border><left/><right/><top/><bottom/><diagonal/></border></borders>'
-            '<cellStyleXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0"/></cellStyleXfs>'
-            '<cellXfs count="1"><xf numFmtId="0" fontId="0" fillId="0" borderId="0" xfId="0"/></cellXfs>'
-            '<cellStyles count="1"><cellStyle name="Normal" xfId="0" builtinId="0"/></cellStyles>'
-            '<dxfs count="0"/>'
-            '<tableStyles count="0" defaultTableStyle="TableStyleMedium9" defaultPivotStyle="PivotStyleLight16"/>'
-            '</styleSheet>'),
-        "xl/worksheets/sheet1.xml": sheet_xml,
-    }
-    created = False
-    try:
-        with path.open("xb") as raw_file:
-            created = True
-            with zipfile.ZipFile(raw_file, "w", zipfile.ZIP_DEFLATED) as archive:
-                for name, content in payloads.items():
-                    archive.writestr(name, content.encode("utf-8"))
-    except Exception:
-        if created:
-            try:
-                path.unlink()
-            except OSError:
-                pass
-        raise
 
 
 def _xlsx_text_cells(ws, row) -> list:

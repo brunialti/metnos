@@ -342,35 +342,6 @@ def open_imap(account: str = "metnos_system", *,
     raise last
 
 
-def list_mail_folders(account: str) -> list[dict]:
-    """List configured IMAP folders and their server-advertised flags."""
-    conn = open_imap(account)
-    try:
-        status, data = conn.list()
-        if status != "OK" or not data:
-            return []
-        folders = []
-        pattern = re.compile(
-            r'\((?P<flags>[^)]*)\)\s+(?:"[^"]*"|\S+)\s+'
-            r'(?P<name>"[^"]+"|\S+)\s*$')
-        for raw in data:
-            line = (raw.decode("utf-8", "replace")
-                    if isinstance(raw, (bytes, bytearray)) else str(raw))
-            match = pattern.match(line)
-            if not match:
-                continue
-            folders.append({
-                "name": match.group("name").strip().strip('"'),
-                "flags": match.group("flags"),
-            })
-        return folders
-    finally:
-        try:
-            conn.logout()
-        except Exception:
-            pass
-
-
 def open_smtp(account: str = "metnos_system") -> smtplib.SMTP_SSL:
     c = _account_creds(account)
     if not c["user"] or not c["password"]:

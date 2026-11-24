@@ -602,20 +602,6 @@ def cancel_pending(sender_id: str, dialog_id: str, *,
             source=source)
 
 
-def claim_callback_once(sender_id: str, dialog_id: str, nonce: str, *,
-                        owner_user_id: str) -> bool:
-    """Atomically claim one completed callback carrying the exact nonce.
-
-    This is intentionally narrower than generic dialog completion: existing
-    callbacks retain their historical semantics, while security-sensitive
-    one-shot callbacks (Tutor handoff) gain an explicit replay barrier.
-    """
-
-    return begin_callback_once(
-        sender_id, dialog_id, nonce,
-        owner_user_id=owner_user_id).get("status") == "claimed"
-
-
 def _process_claim() -> dict:
     """Identity strong enough to reject PID reuse after a callback crash."""
     try:

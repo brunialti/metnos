@@ -15,7 +15,6 @@ se l'utente vuole estensioni custom.
 API:
   - get_typing(name) -> dict | None
   - has_typing(name) -> bool
-  - all_typed_names() -> list[str]
 
 §7.9 deterministico: nessuna call LLM. Pure lettura JSON con cache.
 §2.1 helper comune in runtime/, non per-executor.
@@ -32,7 +31,6 @@ from typing import Optional
 
 # Cache: name → (mtime, dict). Invalidato per-name al cambio mtime.
 _TYPING_CACHE: dict[str, tuple[float, dict]] = {}
-_NAMES_CACHE: Optional[set[str]] = None  # scoperti via listdir + env
 _DIRS_CACHE: Optional[list[Path]] = None
 
 
@@ -132,31 +130,10 @@ def has_typing(name: str) -> bool:
     return _resolve_path(name) is not None
 
 
-def all_typed_names() -> set[str]:
-    """Lista di tutti gli executor con typing disponibile (union delle dirs).
-
-    Cache: scansiona una sola volta. Reset via reset_cache().
-    """
-    global _NAMES_CACHE
-    if _NAMES_CACHE is not None:
-        return _NAMES_CACHE
-    names: set[str] = set()
-    for d in _candidate_dirs():
-        try:
-            for f in d.iterdir():
-                if f.is_file() and f.suffix == ".json":
-                    names.add(f.stem)
-        except OSError:
-            continue
-    _NAMES_CACHE = names
-    return names
-
-
 def reset_cache() -> None:
     """Resetta cache (test/debug)."""
-    global _TYPING_CACHE, _NAMES_CACHE, _DIRS_CACHE
+    global _TYPING_CACHE, _DIRS_CACHE
     _TYPING_CACHE = {}
-    _NAMES_CACHE = None
     _DIRS_CACHE = None
 
 

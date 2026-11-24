@@ -139,21 +139,6 @@ def pending_for_device(device_id: str, *, owner_user_id: str) -> list[dict]:
     return out
 
 
-def expired_unnotified() -> list[dict]:
-    """Pending SCADUTI di qualunque device (per lo sweep di notifica)."""
-    now = time.time()
-    out = []
-    for rec in _load().values():
-        if rec.get("state") == "pending" and \
-                now > float(rec.get("expires_at") or 0):
-            owner = str(rec.get("owner_user_id") or "")
-            if not owner:
-                continue
-            mark(rec["id"], "expired", owner_user_id=owner)
-            out.append({**rec, "state": "expired"})
-    return out
-
-
 def _rewrite_excluding(*, owner_user_id: str | None = None,
                        unscoped: bool = False) -> int:
     with _store_lock(exclusive=True):

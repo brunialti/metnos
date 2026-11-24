@@ -24,7 +24,6 @@ di un pairing (es. da auto "guest_xxxxx" a leggibile "guest_anna").
 """
 from __future__ import annotations
 
-from typing import Optional
 
 
 def _short_sender(sender_id: str) -> str:
@@ -73,43 +72,3 @@ def resolve_actor(channel: str, sender_id: str) -> str:
     finally:
         conn.close()
     return actor
-
-
-def set_actor(channel: str, sender_id: str, actor: str,
-              display_name: Optional[str] = None) -> bool:
-    """Override esplicito dell'actor per un pairing. Usato dal comando
-    /setname (futuro) o per migrazione manuale."""
-    try:
-        from pairing import _open_db
-    except ImportError:
-        return False
-    if not actor or not channel or not sender_id:
-        return False
-    conn = _open_db()
-    try:
-        cur = conn.execute(
-            "UPDATE pairings SET actor=?, display_name=COALESCE(?, display_name) "
-            "WHERE channel=? AND sender_id=?",
-            (actor, display_name, channel, sender_id)
-        )
-        return cur.rowcount > 0
-    finally:
-        conn.close()
-
-
-def list_actors() -> list[dict]:
-    """Lista compatta degli actor noti (per debug / future UI admin)."""
-    try:
-        from pairing import _open_db
-    except ImportError:
-        return []
-    conn = _open_db()
-    try:
-        rows = conn.execute(
-            "SELECT channel, sender_id, autonomy_level, actor, display_name, "
-            "paired_at, last_seen FROM pairings WHERE revoked_at IS NULL "
-            "ORDER BY paired_at ASC"
-        ).fetchall()
-        return [dict(r) for r in rows]
-    finally:
-        conn.close()

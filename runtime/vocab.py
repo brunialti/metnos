@@ -145,8 +145,7 @@ OBJECTS = (
     # nel scheduler v2 Metnos (ADR 0112). Entita' di prima classe distinta
     # da `events` (calendario utente): hanno trigger grammar `daily@HH:MM`/
     # `every_Nm`/`at:<ISO>`/`cron:<5-field>`, history esecuzioni, query
-    # da rilanciare al fire, grace window. Sezione planner `scheduled_tasks`
-    # gated automaticamente via `_OBJECT_TO_SECTIONS['tasks']`.
+    # da rilanciare al fire, grace window.
     "tasks",
     # Workflows (RM-0011 F2, approvato da Roberto il 20/9/2026): automazione
     # REMOTA e le sue esecuzioni, per esempio GitHub Actions o una pipeline
@@ -939,121 +938,6 @@ ACTION_MAPPING = {
 # `find_packages(packages=['ffmpeg'])`. Dal 17/8/2026 la risposta e' una
 # riga per pacchetto con `installed: true|false`, non una lista che si
 # svuota: «non installato» e' un dato, non un'assenza di dati.
-
-
-# ── Mapping OBJECT → sezioni planner (Fase C2, 11/5/2026) ─────────────
-# Tabella deterministica (the design guide §7.9): dato l'`object` estratto dall'intent
-# extractor, ritorna l'elenco di sezioni del planner da iniettare nel prompt
-# composto. Caller (`prompt_loader.compose`) usa il selettore via
-# `sections_for_object(obj)`; lista vuota = nessun mapping (caller decide
-# fallback: includere TUTTE le sezioni).
-#
-# Convenzione: chiavi = membri di OBJECTS; valori = nomi base (no `.j2`) di
-# file in `runtime/prompts/<lang>/planner/sections/`.
-#
-# Razionale di assegnazione:
-# - `messages` → mail: IMAP + Google Workspace mail vivono insieme.
-# - `events` → calendar: calendario events (Google Calendar). Workspace
-#   non-calendar (drive/sheets/docs/contacts) vivono in sezioni dedicate.
-# - `contacts` → workspace/contacts + mail + calendar: rubrica e' usata sia
-#   per `to_user` (mail) sia per partecipanti agli eventi (calendar).
-# - `urls` → web/search + web/crawl + web/content: tutto il dominio crawler
-#   splittato in 3 sub-topic (12/5/2026, asse A refactor).
-# - `images`/`signatures` → photos: foto + face index + EXIF/GPS unified.
-#   `signatures` ospita anche safety policy (mount/admin) ma quel routing
-#   avviene via admin_shell quando l'intent e' shell-imperative; per le
-#   query relative ai criteri di firma (find_signatures_*) il routing
-#   admin_shell e' piu' pertinente di photos — escolgliamo admin_shell.
-# - `processes` → system: top-K processi + health block.
-# - `credentials` → admin_shell: gestione token + mount + sudo dipendono
-#   dallo store cifrato.
-# - `files`/`dirs`/`packages`/`places`/`numbers`/`texts`/`proposals`/`inputs`
-#   → [] (no sezione dedicata): coperti dal core (filesystem generico,
-#   compute, find_places, get_inputs UI). Il composer fallback aggiunge tutte
-#   le sezioni se la lista e' vuota (degrade graceful). Per `files`: non
-#   triggeriamo automaticamente workspace/drive|docs sull'object da solo —
-#   preferiamo MISS che over-load. La detection workspace passa per
-#   l'intent extractor o synonym piu' specifico (skill_vocab_map).
-_OBJECT_TO_SECTIONS: dict[str, tuple[str, ...]] = {
-    "files": (),                  # generico FS, coperto dal core
-    "dirs": (),                   # generico FS, coperto dal core
-    "packages": (),               # find_packages: query verbale-deterministica
-    "messages": ("mail",),
-    "events": ("calendar",),
-    "contacts": ("workspace/contacts", "mail", "calendar"),
-    "places": (),                 # find_places: globale (con/senza get_location)
-    "processes": ("system",),
-    "urls": ("web/search", "web/crawl", "web/content"),
-    "numbers": (),                # compute scalare, coperto dal core
-    "images": ("photos",),
-    "signatures": ("admin_shell",),  # safety policy shell + mount
-    "texts": (),                  # filter/read text generico, coperto dal core
-    "proposals": (),              # admin proposals_cli, no PLANNER routing
-    "tasks": ("scheduled_tasks",),  # scheduler v2 ricorrenti + one-shot
-    "persons": ("photos",),       # registro nominale, compositive con images
-    "inputs": (),                 # dialog UI, gestito dal runtime, no sezione
-    "approval": (),               # gate UI (get_approval), no sezione planner
-    "credentials": ("admin_shell",),
-    "entries": (),                # meta-oggetto runtime, no sezione dedicata
-    "lists": (),                  # meta-oggetto bi-lista, no sezione dedicata
-    "skills": (),                 # amministrazione catalogo skill
-    "issues": (),                 # provider github, no sezione planner dedicata
-    "pulls": (),                  # provider github, no sezione planner dedicata
-    "comments": (),               # provider github, no sezione planner dedicata
-    "workflows": (),              # provider github, no sezione planner dedicata
-    "calendars": (),              # provider google_workspace, core-only
-    # sites (F1): core-only per ora. Gli executor open/login/read/close_sites
-    # sono offerti via affinity nel prefilter; una sezione planner dedicata
-    # (.j2, dominio Fable) e' un follow-up di qualita' del routing, non un
-    # requisito di disponibilita' dei tool.
-    "sites": (),
-    # preferences: i tre builtin bastano a se stessi, nessuna sezione di
-    # prompt dedicata.
-    "preferences": (),
-}
-
-
-def sections_for_object(obj: str | None) -> tuple[str, ...]:
-    """Ritorna le sezioni planner attive per un OBJECT.
-
-    `()` (vuota) = nessun mapping noto: il caller (`prompt_loader.compose`)
-    decide il fallback (tipicamente: includere TUTTE le sezioni per degrade
-    graceful in caso di intent.confidence bassa o object unknown).
-
-    Esempi:
-        >>> sections_for_object("messages")
-        ('mail',)
-        >>> sections_for_object("contacts")
-        ('workspace/contacts', 'mail', 'calendar')
-        >>> sections_for_object("urls")
-        ('web/search', 'web/crawl', 'web/content')
-        >>> sections_for_object("files")
-        ()
-        >>> sections_for_object(None)
-        ()
-        >>> sections_for_object("unknown_obj")
-        ()
-    """
-    if not obj:
-        return ()
-    return _OBJECT_TO_SECTIONS.get(obj, ())
-
-
-def object_is_core_only(obj: str | None) -> bool:
-    """True se l'OBJECT e' mappato esplicitamente a NESSUNA sezione, cioe'
-    e' interamente coperto dal `_core.j2` (no mail/calendar/photos/web/...).
-
-    Usato da `agent_runtime` per distinguere:
-      - object known-core (in mapping con `()`)  → sections=() = core-only
-      - object unknown (NOT in mapping)          → sections=None = all
-      - object con sezioni esplicite             → sections=[...] mirate
-
-    #H0 19/5/2026 sera: con la distinzione None/(), risparmiamo ~14k tok / step
-    sui turn di dominio core (files, dirs, numbers, texts, ...).
-    """
-    if not obj:
-        return False
-    return obj in _OBJECT_TO_SECTIONS and _OBJECT_TO_SECTIONS[obj] == ()
 
 
 # ── L7 admission: imported skill bindings registry (ADR 0125, 12/5/2026) ──

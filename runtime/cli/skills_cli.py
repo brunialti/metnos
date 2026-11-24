@@ -78,19 +78,6 @@ def _audit_log_path() -> Path:
 # ---------------------------------------------------------------------------
 
 
-def _sign_keys_present(key_name: str = "author") -> tuple[bool, Optional[Path]]:
-    """Gap 3 (10/5/2026): verifica `~/.config/metnos/keys/<name>_priv.bin`.
-
-    Ritorna `(present, expected_path)`. Caller (cmd_import) puo' fallire
-    gentilmente con istruzioni se il key non esiste.
-    """
-    import config as _C
-    keys_dir = _C.PATH_USER_CONFIG / "keys"
-    priv = keys_dir / f"{key_name}_priv.bin"
-    pub = keys_dir / f"{key_name}_pub.bin"
-    return (priv.is_file() and pub.is_file()), priv
-
-
 def _try_submit_birth(
     manifest_dir: Path, *, contract_id=None,
 ) -> Optional[str]:

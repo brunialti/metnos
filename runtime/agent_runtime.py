@@ -1026,9 +1026,6 @@ def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
 
 
 
-_OBS_HISTORY_CHAR_CAP = 8000
-
-
 _FROM_STEP_DESC = (
     "Numero dello step precedente (in questo turno) che ha prodotto la "
     "lista da consumare. Es. se al passo 1 hai chiamato find_files / "
@@ -1938,73 +1935,6 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
         )
     return final_message, ok_count, n_above_threshold
 
-
-# Vectorial enforcement helpers (ADR 0130, 12/5/2026).
-# Bug live turn `8f8080c0` (12/5/2026, 13min): find_events_empty x9 consecutivi
-# con args che variavano solo `time_windows` -> DUPLICATE_CALL non scattava (args
-# diff), cap_same a 10 troppo permissivo per executor vettoriali. Anti-pattern
-# §2.1: un executor che accetta args plurali (paths/urls/time_windows/...) DEVE
-# essere chiamato UNA volta con N args, NON N volte. Detection deterministica via
-# manifest introspection (`args_schema.properties[arg].type == "array"`), zero
-# whitelist hardcoded §7.3. Cap_same custom 2 per executor vettoriali (vs 10
-# default), perche' la chiamata seguente alla prima ok=True su un vettoriale e'
-# sempre un retry del LLM che non aggiunge lavoro utile (segno di confusione su
-# §2.1, non di esplorazione legittima).
-_VECTORIAL_CAP_SAME = 2  # cap_same per executor vettoriali (vs DEFAULT_CAP_SAME_EXECUTOR=10)
-
-@functools.lru_cache(maxsize=512)
-def _executor_has_plural_args(executor_name: str, schema_signature: str) -> bool:
-    """True se l'executor accetta almeno un arg plurale (lista) nel suo schema.
-
-    Detection introspettiva del `args_schema.properties`: cerca proprieta' con
-    `type=="array"` (JSON Schema). Determinismo §7.9: niente LLM, niente
-    whitelist hardcoded. Si applica a TUTTI gli executor vettoriali §2.1.
-
-    `schema_signature` e' una stringa stabile derivata dallo schema (sorted
-    properties + type), usata come chiave di cache: invalida automaticamente
-    al re-firma dell'executor (manifest re-loaded).
-
-    DEVI: passare il signature dal caller (vedi `_vectorial_schema_signature`).
-    NON DEVI: ispezionare l'oggetto Executor in cache (non hashable).
-    """
-    # Parser leggero del signature: "name:type;name:type;..." con type "array"
-    # come marker per detection. Se non c'e' "array" nel signature, nessun
-    # plural arg presente.
-    return ":array" in schema_signature or ";array" in schema_signature
-
-
-def _vectorial_schema_signature(args_schema: dict | None) -> str:
-    """Stringa stabile derivata da `args_schema.properties` per cache key.
-
-    Format: "name1:type1;name2:type2;..." (sorted by name). Tipi normalizzati a
-    lowercase (json schema usa lowercase). Lascia "" se schema vuoto o malformed.
-    Riusa solo type del top-level (no nested items.type analysis, sufficient
-    per detection plural).
-    """
-    if not isinstance(args_schema, dict):
-        return ""
-    props = args_schema.get("properties") or {}
-    if not isinstance(props, dict) or not props:
-        return ""
-    parts = []
-    for name in sorted(props.keys()):
-        prop = props.get(name) or {}
-        t = (prop.get("type") if isinstance(prop, dict) else None) or ""
-        parts.append(f"{name}:{str(t).lower()}")
-    return ";".join(parts)
-
-
-# Bug live turn `eb837329` (11/5/2026): final_message su loop_break era una
-# stringa hardcoded ("file extension, precise path") che parlava di file
-# anche per query su events/messages/urls. Soluzione: hint parametrico per
-# OBJECT dell'intent, tabella deterministica in `i18n.sqlite` (ADR 0104).
-# Determinismo §7.9: mapping OBJECT -> chiave i18n, niente LLM.
-_LOOP_BREAK_HINT_OBJECTS = frozenset({
-    "files", "dirs", "messages", "events", "urls",
-    "images", "processes", "contacts", "credentials",
-})
-
-
 def _resolve_auto_final_from_steps(steps):
     """Risolve il `last_productive` per `auto_final_on_duplicate`.
 
@@ -2283,16 +2213,6 @@ def resolve_references(args, history):
         return node
 
     return walk(args), errors
-
-
-_INLINE_LIST_THRESHOLD = 3  # >= N dict in lista inline => richiedi reference (default)
-# Nomi di arg riservati al "data passing" fra step: per questi la soglia e' 1
-# (qualunque dict inline e' rifiutato — devono arrivare via {{stepN.<field>}}).
-# Coerente con i nomi che `scratchpad._summarize_structured` cerca come
-# `chosen_key` e con `ref_hint` nel synthetic handle.
-_REFERENCE_ARG_NAMES = frozenset({"entries", "items", "matches", "results", "files", "paths"})
-
-_MALFORMED_REF_RE = re.compile(r"\{\{?step\d+\.[^{}]*[|?][^{}]*\}\}?|(?<!\{)\{step\d+\.[^{}]*\}(?!\})")
 
 
 def extract_step_refs(args) -> set[int]:

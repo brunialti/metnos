@@ -2412,8 +2412,7 @@ def filter_for_visibility(catalog: "Catalog", visibility: str = VISIBILITY_COMPO
 
     composer: solo `active`. Esclusione procedurale dei non-active.
     synt:     `active` + `proposed` + `synthesized` (manifest pieni, sono
-              target di lavoro per il sintetizzatore). I deprecated sono
-              esposti come indice compatto via `deprecated_index(catalog)`.
+              target di lavoro per il sintetizzatore).
     all:      include tutto, anche deprecated/archived. Per undo storici e audit.
     """
     out = Catalog(rejected=list(catalog.rejected))
@@ -2429,23 +2428,6 @@ def filter_for_visibility(catalog: "Catalog", visibility: str = VISIBILITY_COMPO
         if ex.lifecycle == "active":
             out.executors[name] = ex
     return out
-
-
-def deprecated_index(catalog: "Catalog") -> list[dict]:
-    """Indice compatto dei deprecated: {name, superseded_by, version, deprecated_at,
-    deprecation_ttl_hours}. Per synt + per scan di deprecation imminente."""
-    return [
-        {
-            "name": ex.name,
-            "superseded_by": ex.superseded_by,
-            "version": ex.version,
-            "deprecated_at": ex.deprecated_at,
-            "deprecation_ttl_hours": ex.deprecation_ttl_hours,
-        }
-        for ex in catalog.executors.values()
-        if ex.lifecycle == "deprecated"
-    ]
-
 
 
 def main():

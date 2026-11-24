@@ -795,26 +795,6 @@ def consume_pairing_token(channel: str, recipient_id: str, token: str) -> dict:
 
 # --- lookup ----------------------------------------------------------------
 
-def is_device_bound(channel: str, recipient_id: str) -> bool:
-    """True se esiste un `user_channels` riga con channel+recipient_id
-    verificato (non solo token emesso). Usato da `verify_user_cookie`
-    per controllare che il device sia ancora attivo (non revocato)."""
-    if not channel or not recipient_id or channel not in CHANNELS:
-        return False
-    init_db()
-    conn = _open_db()
-    try:
-        row = conn.execute(
-            "SELECT 1 FROM user_channels c JOIN users u ON u.id=c.user_id "
-            "WHERE c.channel=? AND c.recipient_id=? "
-            "AND c.verified_at IS NOT NULL AND u.deleting_at IS NULL LIMIT 1",
-            (channel, str(recipient_id)),
-        ).fetchone()
-        return row is not None
-    finally:
-        conn.close()
-
-
 def find_user_by_recipient(channel: str, recipient_id: str) -> dict | None:
     """Reverse lookup: dato un chat_id Telegram (o email, ...) trova lo user."""
     if not channel or not recipient_id:

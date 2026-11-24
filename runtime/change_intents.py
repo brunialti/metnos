@@ -622,44 +622,6 @@ def count_by_state() -> dict[str, int]:
     return out
 
 
-def count_by_filters(
-    *,
-    state: str | Iterable[str] | None = None,
-    origin_family: str | None = None,
-    origin_module: str | None = None,
-    intent_kind: str | None = None,
-    min_score: float | None = None,
-) -> int:
-    """Conteggio con stessi filtri di list_intents (per paginazione)."""
-    init_db()
-    wh: list[str] = []
-    args: list[Any] = []
-    if state is not None:
-        if isinstance(state, str):
-            wh.append("state = ?")
-            args.append(state)
-        else:
-            states = list(state)
-            wh.append(f"state IN ({','.join('?' for _ in states)})")
-            args.extend(states)
-    if origin_family:
-        wh.append("origin_family = ?")
-        args.append(origin_family)
-    if origin_module:
-        wh.append("origin_module = ?")
-        args.append(origin_module)
-    if intent_kind:
-        wh.append("intent_kind = ?")
-        args.append(intent_kind)
-    if min_score is not None:
-        wh.append("score >= ?")
-        args.append(min_score)
-    where = ("WHERE " + " AND ".join(wh)) if wh else ""
-    sql = f"SELECT COUNT(*) FROM change_intents {where}"
-    with _conn() as cn:
-        return int(cn.execute(sql, args).fetchone()[0])
-
-
 # --- Transizioni (singolo punto di mutate per ogni edge) -----------------
 
 class TransitionError(Exception):

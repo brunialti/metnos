@@ -152,30 +152,6 @@ def _load_toml(*, strict: bool = False) -> dict[str, Any]:
 
 # ── Public API ──────────────────────────────────────────────────────────────
 
-def get_bool(key: str, default: bool | None = None) -> bool:
-    """Boolean setting con hierarchy env > toml > default.
-
-    Env values interpretati: "1"/"true"/"yes"/"on" (case-insensitive) → True.
-    Tutto il resto → False.
-    """
-    env_name = _ENV_MAP.get(key)
-    if env_name and env_name in os.environ:
-        v = os.environ[env_name].strip().lower()
-        return v in ("1", "true", "yes", "on")
-    toml_data = _load_toml()
-    if key in toml_data:
-        v = toml_data[key]
-        if isinstance(v, bool):
-            return v
-        if isinstance(v, str):
-            return v.strip().lower() in ("1", "true", "yes", "on")
-        return bool(v)
-    if default is not None:
-        return default
-    fallback = _DEFAULTS.get(key, False)
-    return bool(fallback)
-
-
 def get_int(key: str, default: int | None = None) -> int:
     """Integer setting con hierarchy env > toml > default."""
     env_name = _ENV_MAP.get(key)

@@ -271,28 +271,3 @@ def finish_flow(*,
         pass          # only costs a notice the person does not need
 
     return True, None, ungranted
-
-
-def has_valid_token(binding: str, mirror_paths: list | None = None) -> bool:
-    """Best-effort: token presente con refresh_token.
-
-    Lookup ordine: Metnos credentials store (cifrato) -> mirror_paths (plain).
-    """
-    try:
-        from credentials import fetch as _cred_fetch  # type: ignore
-        data = _cred_fetch(binding)
-        if isinstance(data, dict) and data.get("refresh_token"):
-            return True
-    except Exception:
-        pass
-    for mp in (mirror_paths or []):
-        target = Path(mp).expanduser()
-        if not target.is_file():
-            continue
-        try:
-            data = json.loads(target.read_text(encoding="utf-8"))
-            if data.get("refresh_token"):
-                return True
-        except Exception:
-            continue
-    return False
