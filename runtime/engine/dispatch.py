@@ -9314,8 +9314,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if _localized_partial:
             log.info("[L3 recovery] SKIP: side-effect fallito dopo uno step "
                      "riuscito — preservo l'esito parziale localizzato")
-        if not _committed and not _localized_partial and err_class in (
-                "wrong_tool", "wrong_args", "missing_input"):
+        # Deterministic corrections remain available for concrete causes
+        # (e.g. a glob reported as not_found); recovery gates model calls.
+        if not _committed and not _localized_partial:
             if verbose:
                 log.info("[L3 recovery] class=%s", err_class)
             framework_alt = recovery.recover(

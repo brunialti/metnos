@@ -9,10 +9,11 @@ nel result.error_class. No regex su error_text multi-lingua.
 from __future__ import annotations
 
 import logging
+from functools import cache
 from typing import Optional, Callable, Protocol
 
-from .types import (Intent, Framework, RunResult, ERROR_CLASSES, RECOVERABLE,
-                    OPERATIONAL_ERROR_CLASSES, result_error_classes)
+from .types import (Intent, Framework, RunResult, RECOVERABLE,
+                    result_error_classes)
 
 log = logging.getLogger(__name__)
 
@@ -30,12 +31,23 @@ class Recovery(Protocol):
 
 # ── classify_error deterministic ──────────────────────────────────────────
 
-def classify_error(failed_run: RunResult) -> str:
-    """Mappa RunResult fallito a 4 classi (3 recoverable + out_of_scope).
+@cache
+def _error_code_classes() -> dict[str, str]:
+    """Reuse declared mappings; a code with conflicting meanings stays unknown."""
+    from backends.files.local import _MOVE_ERROR_CLASSES, _DELETE_ERROR_CLASSES
+    from skill_wrapper import ERROR_CODE_BY_CLASS
 
-    Priorità: legge result.error_class strutturato. Fallback su pattern
-    aborted_reason (cap/loop). Mai regex su error_text.
-    """
+    meanings: dict[str, set[str]] = {}
+    for table in (_MOVE_ERROR_CLASSES, _DELETE_ERROR_CLASSES,
+                  {code: cls for cls, code in ERROR_CODE_BY_CLASS.items()}):
+        for code, cls in table.items():
+            meanings.setdefault(code, set()).add(cls)
+    return {code: next(iter(classes)) for code, classes in meanings.items()
+            if len(classes) == 1}
+
+
+def classify_error(failed_run: RunResult) -> str:
+    """Keep the failed step's cause; never infer argument errors from its text."""
     if not failed_run:
         return "out_of_scope"
     aborted = (failed_run.aborted_reason or "").lower()
@@ -44,37 +56,35 @@ def classify_error(failed_run: RunResult) -> str:
         return "wrong_args"
     if not failed_run.steps:
         return "out_of_scope"
-    last = failed_run.steps[-1]
+    last = next((step for step in failed_run.steps if not step.ok),
+                failed_run.steps[-1])
     r = last.result if isinstance(last.result, dict) else {}
     classes = result_error_classes(r)
-    ec = classes[0] if classes else ""
-    if ec in ERROR_CLASSES:
-        return ec
-    # Una ricerca conclusa senza risultati pertinenti non prova che gli
-    # argomenti siano malformati. La classe strutturale piu' vicina e'
-    # ``missing_input``: abilita un unico tentativo alternativo, poi il
-    # terminatore conserva il codice executor concreto ``search_no_results``.
-    if ec == "search_no_results":
-        return "missing_input"
-    # Un errore operativo puo' essere annidato in ``failed[]`` nei producer
-    # vettoriali. Un piano alternativo non ripara DNS, timeout o sidecar:
-    # chiudi senza recovery invece di etichettarlo come argomenti errati.
-    if any(item in OPERATIONAL_ERROR_CLASSES for item in classes):
-        return "out_of_scope"
-    # Out_of_scope: executor ha esplicito needs_user_action / capability_missing
-    if ec in ("needs_user_action", "capability_missing"):
-        return "out_of_scope"
+    if classes:
+        return classes[0]
+    failed = r.get("failed")
+    items = [r] + ([item for item in failed if isinstance(item, dict)]
+                   if isinstance(failed, list) else [])
+    for item in items:
+        code = item.get("error_code")
+        if isinstance(code, str):
+            cls = _error_code_classes().get(code.strip())
+            if cls:
+                return cls
     # Fallback strutturale: ok_count=0 con last step ok → input vuoto
     if failed_run.ok_count == 0 and last.ok:
         entries = r.get("entries") if isinstance(r, dict) else None
         if isinstance(entries, list) and not entries:
             return "missing_input"
-    # Default: wrong_args (pipeline malformata)
-    return "wrong_args"
+    return "unknown"
 
 
-def is_recoverable(err_class: str) -> bool:
-    return err_class in RECOVERABLE
+def is_recoverable(err_class: str, failed_run: RunResult | None = None) -> bool:
+    return err_class in RECOVERABLE and all(
+        cls in RECOVERABLE
+        for step in (failed_run.steps if failed_run else []) if not step.ok
+        for cls in result_error_classes(step.result)
+    )
 
 
 def recovery_signal_for(failed_run: RunResult) -> dict | None:
@@ -151,7 +161,7 @@ class SimpleRecovery:
                 lang: str = "it",
                 catalog: Optional[list] = None) -> Optional[Framework]:
         err = classify_error(failed_run)
-        if not is_recoverable(err):
+        if not is_recoverable(err, failed_run):
             return None  # out_of_scope → terminator
         signal = recovery_signal_for(failed_run)
         # Le esclusioni normali sono per SHAPE. Una ricerca riformulata usa per

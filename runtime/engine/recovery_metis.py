@@ -23,7 +23,7 @@ from __future__ import annotations
 import logging
 from typing import Optional, Callable
 
-from .types import (Intent, Framework, StepSpec, RunResult,
+from .types import (Intent, Framework, StepSpec, RunResult, OPERATIONAL_ERROR_CLASSES,
                     result_error_classes)
 from .recovery import (
     classify_error,
@@ -63,8 +63,9 @@ class MetisRecovery:
                 lang: str = "it",
                 catalog: Optional[list] = None) -> Optional[Framework]:
         err = classify_error(failed_run)
-        if not is_recoverable(err):
-            return None  # out_of_scope → terminator
+        if err in OPERATIONAL_ERROR_CLASSES or err in (
+                "out_of_scope", "needs_user_action", "capability_missing"):
+            return None
 
         # 1. Correzione deterministica su segnale esplicito dell'executor.
         corrected = self._fix_needs_content_fetch(failed_run, catalog)
@@ -121,6 +122,9 @@ class MetisRecovery:
         if self._has_live_site_session(failed_run):
             log.info("MetisRecovery: sessione sites ancora valida; "
                      "nessun re-propose stateful")
+            return None
+
+        if not is_recoverable(err, failed_run):
             return None
 
         # 2. Re-propose escludendo SOLO il framework fallito (NON il tool: a

@@ -72,6 +72,14 @@
  no plan, it returns the available events and final outcome code; it does not
  claim that any work ran or was admitted.</p>
 
+ <p>After a failed step, the engine keeps the result's declared error class or
+ derives it from an unambiguous code; an unclassified error stays unclassified.
+ Automatic corrections that do not use a model precede any replanning.
+ The planner retries only when another plan can help: invalid arguments or
+ types, an unsuitable tool, missing input, or a search with no results.
+ A missing item, an unavailable service, or an operational failure ends the
+ turn with its concrete cause, without another model call.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">The intelligent executor loop</title>

@@ -173,12 +173,15 @@ class RunResult:
     gate_dialog_id: str = ""
 
 
-# ── Error classification (4 classi strutturali §7.3) ──────────────────────
+# ── Structural error vocabulary and replanning policy (§7.3) ─────────────
 
-ErrorClass = str  # alias: 'wrong_tool' | 'wrong_args' | 'missing_input' | 'out_of_scope'
+ErrorClass = str  # structural classes or the failed executor's concrete class
 
 ERROR_CLASSES = ("wrong_tool", "wrong_args", "missing_input", "out_of_scope")
-RECOVERABLE = frozenset({"wrong_tool", "wrong_args", "missing_input"})
+RECOVERABLE = frozenset({
+    "wrong_tool", "wrong_args", "missing_input", "invalid_args", "invalid_input",
+    "wrong_type", "search_no_results", "session_lost", "session_expired",
+})
 
 # Errori operativi dichiarati dagli executor: cambiare piano o strumento non
 # ripara rete/servizio. Restano fuori dalle quattro classi strutturali del

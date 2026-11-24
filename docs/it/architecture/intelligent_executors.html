@@ -73,6 +73,14 @@
  Se il modello non produce un piano, restituisce gli eventi disponibili e il
  codice dell'esito finale; non dichiara eseguito o ammesso alcun lavoro.</p>
 
+ <p>Dopo un passo fallito, il motore conserva la classe dichiarata dal risultato
+ o la ricava da un codice non ambiguo; un errore non classificato resta tale.
+ Le correzioni automatiche senza modello precedono l'eventuale ripianificazione.
+ Il pianificatore riprova soltanto quando un piano diverso può servire:
+ argomenti o tipo errati, strumento inadatto, input mancante o ricerca senza
+ risultati. Un elemento non trovato, un servizio indisponibile o un guasto
+ chiudono il turno con la causa concreta, senza un'altra chiamata al modello.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">Ciclo limitato di un executor intelligente</title>

@@ -315,7 +315,25 @@ class SimpleTerminator:
                 failed_run: Optional[RunResult],
                 error_class: str = "") -> TerminatorResponse:
         from messages import get as _msg
-        ck, ak = _CAUSE_KEYS.get(error_class, _CAUSE_KEYS["out_of_scope"])
+        # Keep the existing localized templates while turn records retain
+        # the concrete class. An unclassified failure used the argument-error
+        # template before the cause and the replanning policy were separated.
+        display_class = error_class
+        if display_class not in _CAUSE_KEYS:
+            display_class = "out_of_scope"
+            for step in (failed_run.steps if failed_run else []):
+                if getattr(step, "ok", False):
+                    continue
+                display_class = "wrong_args"
+                classes = result_error_classes(step.result)
+                if classes and classes[0] == "search_no_results":
+                    display_class = "missing_input"
+                elif (any(cls in OPERATIONAL_ERROR_CLASSES for cls in classes)
+                      or classes and classes[0] in (
+                          "needs_user_action", "capability_missing")):
+                    display_class = "out_of_scope"
+                break
+        ck, ak = _CAUSE_KEYS[display_class]
         action = _msg(ak)
         # §2.8: se uno step ha fallito con un errore concreto/azionabile, mostra
         # QUELLO come causa invece del generico per-classe (che lo mascherava).
