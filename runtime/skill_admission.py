@@ -177,24 +177,6 @@ def _is_synth(name: str) -> bool:
     return False
 
 
-def _is_imported(name: str) -> bool:
-    """True se `<name>` esiste sotto `skills/<skill>/<name>/manifest.toml`
-    (ADR 0160) o legacy `_imports/<skill>/<name>/manifest.toml` (ADR 0123)."""
-    from manifest_inventory import ManifestLayout, resolve_manifest_layout
-
-    if resolve_manifest_layout() is ManifestLayout.STORE_ONLY:
-        from loader import load_catalog
-
-        executor = load_catalog().get(name)
-        return executor is not None and executor.is_imported
-    from skills_paths import skill_roots as _sr
-    for base in _sr():
-        for skill_dir in base.iterdir():
-            if (skill_dir / name / "manifest.toml").is_file():
-                return True
-    return False
-
-
 def _read_affinity_from_manifest(manifest_path: Path) -> list:
     """Lettura veloce di affinity dal manifest TOML.
 

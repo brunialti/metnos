@@ -1,6 +1,6 @@
 {
   "schema": "metnos.contract-boundary-inventory/2",
-  "source_census": "sha256:fdc9b6eadf0bc3efe9ae03116155f1eeb8944af2ea7c5c2ff264ac03f8bc238a",
+  "source_census": "sha256:6bb9d6c1924cb14f462b1583b13d011fbd99a71c9ef91122ff8309e57986f0cb",
   "scan_roots": [
     "runtime",
     "install",
@@ -4450,16 +4450,6 @@
     },
     {
       "path": "runtime/manifest_lint.py",
-      "scope": "_load_all_affinities",
-      "role": "documentation",
-      "capabilities": [
-        "authoring_read"
-      ],
-      "destination": "read-only documentation, lint, test, or reference inspection",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/manifest_lint.py",
       "scope": "_load_catalog_names",
       "role": "documentation",
       "capabilities": [
@@ -4898,17 +4888,6 @@
     {
       "path": "runtime/skill_admission.py",
       "scope": "_is_handcrafted",
-      "role": "offline_authoring",
-      "capabilities": [
-        "authoring_read",
-        "live_artifact_read"
-      ],
-      "destination": "offline authoring, candidate preparation, or legacy pre-cutover compatibility only",
-      "phase": "M4"
-    },
-    {
-      "path": "runtime/skill_admission.py",
-      "scope": "_is_imported",
       "role": "offline_authoring",
       "capabilities": [
         "authoring_read",

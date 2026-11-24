@@ -144,10 +144,3 @@ def compute_dormancy(provenance: dict[str, Any] | None
         return False, ""
     ok, reason = is_credentials_available(skill)
     return (not ok), (reason if not ok else "")
-
-
-def reset_cache() -> None:
-    """Placeholder per cache future. Oggi i check sono cheap (stat+JSON
-    parse), non cached. Esiste per simmetria con `loader.invalidate_catalog_cache`
-    quando si vorra' cache-are i check ad N secondi."""
-    return

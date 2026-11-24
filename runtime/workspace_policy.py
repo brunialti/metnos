@@ -96,9 +96,3 @@ def effective_hints(
             seen.add(h)
             merged.append(h)
     return merged, get_excludes(actor, capability_name)
-
-
-def reset_cache():
-    global _CACHE, _LOADED_PATH
-    _CACHE = None
-    _LOADED_PATH = None

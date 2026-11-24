@@ -130,13 +130,6 @@ def has_typing(name: str) -> bool:
     return _resolve_path(name) is not None
 
 
-def reset_cache() -> None:
-    """Resetta cache (test/debug)."""
-    global _TYPING_CACHE, _DIRS_CACHE
-    _TYPING_CACHE = {}
-    _DIRS_CACHE = None
-
-
 # ── Helpers per rules (extract typed views, no semantic logic) ────────────
 
 def required_source_inputs(typing: dict) -> list[dict]:

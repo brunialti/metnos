@@ -722,24 +722,6 @@ def lint_file(
                          sibling_affinities=sibling_affinities)
 
 
-def _load_all_affinities() -> dict:
-    """Compatibility view backed by the shared neutral inventory."""
-    import tomllib
-    from manifest_inventory import inventory_authoring_manifests
-
-    out = {}
-    for ref in inventory_authoring_manifests().manifests:
-        try:
-            with ref.manifest_path.open("rb") as handle:
-                m = tomllib.load(handle)
-            out[ref.name] = {
-                str(value).lower() for value in (m.get("affinity") or [])
-            }
-        except Exception:
-            continue
-    return out
-
-
 def _load_catalog_names(affinities: dict | None = None) -> set[str]:
     """Compatibility view of names from the shared neutral inventory."""
     from manifest_inventory import inventory_authoring_manifests
