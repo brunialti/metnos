@@ -961,9 +961,6 @@ def _apply_cap_pending(
         # su Z)" non regge sul PLANNER medium (modello locale): test live
         # 5/5/2026 ha mostrato che il modello locale ha interpretato il rewrite come
         # saluto e ha emesso "Ciao!" invece di rilanciare il tool.
-        # 6/5/2026 (ADR 0091 generalizzato): il vecchio kind="cap_expand"
-        # e' stato sostituito a monte da get_inputs_response (vedi
-        # agent_runtime._orchestrate_cap_expand_dialog) — qui resta solo
         # `approval_required` (build pesante, signature size approval).
         if p.get("kind") == "approval_required":
             _cap_pending_clear(sender_id)

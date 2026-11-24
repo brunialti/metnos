@@ -2429,9 +2429,6 @@ class ChannelDaemon:
             # ADR 0091 (5/5/2026): rimosso il branch `kind="credentials_required"`.
             # 6/5/2026: rimosso il branch generico cap_expand (rewrite
             # "(forza X=Y su Z)" che il PLANNER medium leggeva come saluto).
-            # Cap-expand ora sintetizza un get_inputs upstream (agent_runtime
-            # _orchestrate_cap_expand_dialog) e arriva qui come
-            # `kind="get_inputs_response"`, gestito sopra in modo uniforme.
             elif p.get("kind") == "admin_approval":
                 ans = _classify_yes_no(msg.text)
                 if ans == "yes":
