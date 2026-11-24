@@ -667,14 +667,12 @@ def _enforce_missing_clauses(framework: Framework, intent, query: str,
         names.discard(None)
         from compound_decomposer import derive_tool_name
         from .types import StepSpec
-        from . import is_v3
         from detection_lexicon_seed_routing import capture_store_target
         # GAP-B residue (redesign): in v3 il derive delle clausole SCOPERTE e'
         # provider-aware → un compound github che enforce-a la clausola send
         # appende send_messages_github, NON il generico (P1 gatea il pool ma
-        # l'enforce ricostruiva il tool col derive provider-blind). v2: query=None
-        # → comportamento invariato.
-        _q = query if is_v3() else None
+        # l'enforce ricostruiva il tool col derive provider-blind).
+        _q = query
         # from_step = ultimo step-executor (1-based) prima del final_answer
         exec_n = sum(1 for s in steps if (s.tool or "") != "final_answer")
         store = capture_store_target(query or "")
@@ -726,11 +724,8 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
     INSERISCE con `fields` derivati dalla clausola «estrai X e Y» quando
     disponibili; (2) PRESENTE ma SENZA `fields` → li RIEMPIE quando derivabili.
     In assenza di schema esplicito l'executor usa la propria inferenza bounded.
-    v3-gated, mai eccezioni."""
+    Mai eccezioni."""
     try:
-        from . import is_v3
-        if not is_v3():
-            return framework
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
@@ -1021,11 +1016,8 @@ def _scope_dirs_clause_to_contents(framework: Framework, intent, query: str,
     DISCRIMINANTE (conservativo): scatta SOLO se `delete_dirs` bersaglia
     ESATTAMENTE la cartella che una clausola FILE fratella tratta da contenitore.
     «cancella la cartella X» (senza clausola file) → nessun contenitore-candidato
-    → NON si tocca: rimuovere X è ciò che l'utente chiede. v3-gated, best-effort."""
+    → NON si tocca: rimuovere X è ciò che l'utente chiede. best-effort."""
     try:
-        from . import is_v3
-        if not is_v3():
-            return framework
         steps = list(getattr(framework, "steps", None) or [])
         if not steps:
             return framework
@@ -1276,9 +1268,6 @@ def _enrich_move_source_dir(framework: Framework, query: str,
     la sorgente del move è una SINGOLA path bare (no glob) senza from_step.
     «sposta la cartella X» (senza «file») NON matcha → X si sposta com'è."""
     try:
-        from . import is_v3
-        if not is_v3():
-            return framework
         if not (query and _dl_match("fs.files_in_folder", query)):
             return framework
         names = catalog_names(catalog)
@@ -1798,12 +1787,11 @@ def _align_framework_objects(framework: Framework, intent,
         try:
             from compound_decomposer import (PRODUCER_VERBS as _PRODV,
                                              derive_tool_name as _derive)
-            from . import is_v3 as _is_v3_fn
             all_objs = {o for lst in by_verb.values() for o in lst}
             producer_objs = [a.get("object") for a in actions
                              if isinstance(a, dict)
                              and a.get("verb") in _PRODV and a.get("object")]
-            if all_objs and producer_objs and _is_v3_fn():
+            if all_objs and producer_objs:
                 # v3 (banco caso 3): un produttore con oggetto preso SOLO da una
                 # clausola CONSUMER (es. read_files per «salvali in un csv») e' un
                 # fantasma del proposer flaky → riallinea o DROP. Vedi helper.
@@ -1811,40 +1799,6 @@ def _align_framework_objects(framework: Framework, intent,
                                                _PRODV, _derive, names, _ng):
                     changed = True
                     steps = getattr(framework, "steps", steps)
-            elif all_objs and producer_objs:
-                # v2/metis storico (byte-invariato): realign-only su all_objs.
-                covered = set()
-                for st in steps:
-                    nc2 = _ng.parse_name(getattr(st, "tool", "") or "")
-                    if nc2 and nc2.obj in all_objs:
-                        covered.add(nc2.obj)
-                for st in steps:
-                    tool = getattr(st, "tool", None)
-                    nc = _ng.parse_name(tool) if tool else None
-                    if tool in _SINGULAR_EXECUTORS:
-                        # The second pass has the same vocabulary limitation
-                        # as the first: scalar operations have no plural peer.
-                        continue
-                    if (not nc or nc.verb not in _PRODV
-                            or nc.obj in all_objs):
-                        continue  # non-produttore o oggetto gia' richiesto
-                    target = next((o for o in producer_objs
-                                   if o not in covered), producer_objs[0])
-                    new_tool = _derive(nc.verb, target, names)
-                    if new_tool and new_tool != tool:
-                        st.tool = new_tool
-                        # Gli args erano per il tool SBAGLIATO (es. read_urls_html
-                        # con `urls=[...]`): inutili/dannosi per il nuovo tool con
-                        # schema diverso. Azzera lasciando solo gli args runtime/
-                        # pipe (`_actor/_lang/...`, `from_step/entries`) → il nuovo
-                        # tool usa i suoi default (read_messages: max_results=500)
-                        # e i passi a valle (extract/filter) selezionano.
-                        old_args = getattr(st, "args", None) or {}
-                        st.args = {k: v for k, v in old_args.items()
-                                   if k.startswith("_")
-                                   or k in ("from_step", "from", "entries")}
-                        covered.add(target)
-                        changed = True
         except Exception as ex:
             log.warning("align_objects foreign-obj noop: %r", ex)
         if changed:
@@ -3113,9 +3067,7 @@ def _align_foreign_producers_v3(framework, producer_objs, _PRODV, _derive,
         (nessuno lo consuma) → DROP onesto §2.8 + rimappa from_step a valle.
     §7.9 deterministico, no LLM. Ritorna True se ha modificato il framework.
 
-    NB v2/metis: questa logica NON gira (gating is_v3 nel chiamante) → byte-
-    invariato. Differenza vs v2: v2 usa `all_objs` (skip se l'oggetto compare
-    in QUALSIASI clausola) e non DROPpa mai; v3 usa solo gli oggetti-produttore."""
+    Si considerano solo gli oggetti-produttore dell'intent."""
     steps = list(getattr(framework, "steps", None) or [])
     producer_set = set(producer_objs)
     covered = set()
@@ -3174,8 +3126,7 @@ def _conform_to_intent_order(framework: Framework, intent, query: str,
     di intent.actions (autoritativo, ordinato dall'extractor) e rimappa from_step
     + ${stepN.field}. Risolve l'ordine sbagliato quando proposer/enforce emette/
     appende step in sequenza diversa dalla query — es. FASE 3: enforce appende
-    send_messages_github DOPO write_entries → reorder a find→send→write. Gated
-    is_v3() dal caller (v2 invariato).
+    send_messages_github DOPO write_entries → reorder a find→send→write.
 
     Robusto agli helper trasformativi (filter/sort/describe/...): NON partecipano
     al match con le action (sono SOFT) e seguono il loro producer (rank = quello
@@ -4542,7 +4493,7 @@ def _align_provider_client(framework: Framework, query: str,
 
 
 # ── CONTRATTO D'ORDINE della pipeline guard (ADR 0177 T3, CP1·M0) ──────────
-# L'ORDINE è il contratto: ogni entry = (nome, v3_only, fn(fw,intent,query,cat)).
+# L'ORDINE è il contratto: ogni guardia dichiara nome e fn(fw,intent,query,cat).
 # `test_guard_pipeline_contract.py` blocca nomi+ordine: chi inserisce/sposta un
 # guard DEVE aggiornare il test consapevolmente. Il razionale di ogni guard vive
 # nel SUO docstring; qui solo il vincolo di posizione quando esiste:
@@ -4551,7 +4502,7 @@ def _align_provider_client(framework: Framework, query: str,
 #     è il content-reader che fa scattare il trigger strutturale, bb977a14).
 #   - fill_clause_args DOPO conform (opera su step già in ordine-intent);
 #     resolve_store_field_refs DOPO fill (args ormai stabili).
-#   - route_mail/filename/provider DOPO i guard di struttura, sempre (no gate v3).
+#   - route_mail/filename/provider DOPO i guard di struttura.
 #   - scope_sink_provider DOPO align_provider_client (prima i produttori→gw,
 #     poi i sink→clause-scoped local §10.3).
 #   - degenerate_find ULTIMO (un find instradato a gw dal provider-guard non
@@ -7013,7 +6964,6 @@ class Guard:
     cambio di comportamento: è documentazione tipizzata + verificabile."""
     name: str
     fn: Callable
-    v3_only: bool = False
     scope: str = "structure"        # per-clause | cross-clause | structure | routing
     writes: frozenset = frozenset()
     reads: frozenset = frozenset()
@@ -7229,7 +7179,7 @@ def _record_kind_form(framework: Framework, query: str,
 GUARD_PIPELINE: tuple = (
     Guard("coerce_args_to_schema",
           lambda fw, i, q, c: _coerce_args_to_schema(fw, c),
-          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          scope="structure", writes=frozenset({"args.*"}),
           reads=frozenset({"catalog"}),
           rationale="FASE 3.1 provenienza: backstop unico sul confine LLM→pipeline — drop chiavi fuori-schema e leak runtime_resolved, enum case-normalize o drop (mai snap). PRIMO per costruzione: tocca solo l'output grezzo del proposer, i guard a valle scrivono dopo",
           adr="0177"),
@@ -7265,14 +7215,14 @@ GUARD_PIPELINE: tuple = (
           adr="0182"),
     Guard("align_strong_affinity_producers",
           _align_strong_affinity_producers,
-          v3_only=True, scope="routing",
+          scope="routing",
           writes=frozenset({"step", "step.tool", "args.*"}),
           reads=frozenset({"intent.actions", "query", "catalog"}),
           rationale="riallinea un produttore solo su affinity composta univoca, verbo compatibile e output provato da naming grammar/schema tipizzato; prima dell'enforce object-level per evitare produttori ridondanti",
           adr="0177"),
     Guard("enforce_missing_objects",
           lambda fw, i, q, c: _enforce_missing_objects(fw, i, q, c),
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "catalog"}),
           rationale="appende il produttore per un OGGETTO scoperto (drop per-object che il verb-level non vede)",
           adr="0177"),
@@ -7290,43 +7240,43 @@ GUARD_PIPELINE: tuple = (
           adr="sites-F2"),
     Guard("decontaminate_reader_qualifier",
           lambda fw, i, q, c: _decontaminate_reader_qualifier(fw, q, c),
-          v3_only=True, scope="cross-clause", writes=frozenset({"step.tool"}),
+          scope="cross-clause", writes=frozenset({"step.tool"}),
           reads=frozenset({"query", "catalog"}),
           rationale="demote read_<obj>_<fmt>→read_<obj> quando il formato è contaminato da una clausola-sink a valle",
           adr="0174"),
     Guard("ensure_extract_clause",
           lambda fw, i, q, c: _ensure_extract_clause(fw, i, q, c),
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query"}),
           rationale="inserisce lo step extract mancante fra read e create (compound)",
           adr="0174"),
     Guard("ensure_extracted_period_scope",
           lambda fw, i, q, c: _ensure_extracted_period_scope(fw, i, q, c),
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"query", "step"}),
           rationale="dopo extract applica deterministicamente gli anni espliciti della query su un campo data/anno, ricablando i consumer",
           adr="0174"),
     Guard("conform_to_intent_order",
           lambda fw, i, q, c: _conform_to_intent_order(fw, i, q, c),
-          v3_only=True, scope="structure", writes=frozenset({"step"}),
+          scope="structure", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions"}),
           rationale="riordina gli step nell'ordine di intent.actions",
           adr="0177"),
     Guard("scope_dirs_clause_to_contents",
           lambda fw, i, q, c: _scope_dirs_clause_to_contents(fw, i, q, c),
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"catalog"}),
           rationale="§2.9: delete_dirs sul contenitore X (clausola file fratella) → find_dirs(base=X)→delete_dirs(from_step): scopa alle sottodir, X resta (no over-deletion). Dopo conform_to_intent_order: l'ordine appeso è finale",
           adr="0177"),
     Guard("enrich_move_source_dir",
           lambda fw, i, q, c: _enrich_move_source_dir(fw, q, c),
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"query", "catalog"}),
           rationale="§7.9 move-enumeration: «sposta i file DA cartella X» (lessico fs.files_in_folder) con move_files(entries=[dir]) → find_files(base=X)→move(from_step). Solo move (mai delete); «sposta la cartella X» non matcha",
           adr="0177"),
     Guard("fill_clause_args",
           lambda fw, i, q, c: _fill_clause_args(fw, i, q, c),
-          v3_only=True, scope="per-clause", writes=frozenset({"args.*"}),
+          scope="per-clause", writes=frozenset({"args.*"}),
           reads=frozenset({"clause", "catalog"}),
           rationale="riempie gli args deducibili dal chunk della clausola (pattern/date/store); NON sovrascrive l'LLM. È LO STAGE clause-derive (esito PROV.3 6/7: già ben costruito, count-cap nidificati; non sussumere)",
           adr="0177"),
@@ -7346,7 +7296,7 @@ GUARD_PIPELINE: tuple = (
           adr="0177"),
     Guard("resolve_store_field_refs",
           lambda fw, i, q, c: _resolve_store_field_refs(fw),
-          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          scope="structure", writes=frozenset({"args.*"}),
           reads=frozenset({"step"}),
           rationale="risolve i riferimenti ${stepN.field} negli args (contesto-turno, resta)",
           adr="0177"),
@@ -7402,19 +7352,19 @@ GUARD_PIPELINE: tuple = (
           adr="0177"),
     Guard("normalize_document_report_pipeline",
           _normalize_document_report_pipeline,
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "catalog"}),
           rationale="workflow documentale find/extract/spreadsheet/archive -> una dataflow create-only con dedup, audit e output sul target",
           adr="0177"),
     Guard("normalize_multisource_entity_report_pipeline",
           _normalize_multisource_entity_report_pipeline,
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "catalog"}),
           rationale="workflow con almeno tre sorgenti fra file/mail/calendario/contatti -> estrazioni indipendenti, schema comune, riconciliazione e sink create-only alimentati dallo stesso carrier",
           adr="0177"),
     Guard("normalize_message_event_report_pipeline",
           _normalize_message_event_report_pipeline,
-          v3_only=True, scope="cross-clause", writes=frozenset({"step"}),
+          scope="cross-clause", writes=frozenset({"step"}),
           reads=frozenset({"intent.actions", "query", "catalog"}),
           rationale="workflow email+calendario -> schema comune, batching bounded, dedup/conflitti e due output create-only",
           adr="0177"),
@@ -7503,7 +7453,7 @@ GUARD_PIPELINE: tuple = (
     *_request_grounding_guards(Guard),
     Guard("strip_unknown_args",
           lambda fw, i, q, c: _strip_unknown_args(fw, c),
-          v3_only=True, scope="structure", writes=frozenset({"args.*"}),
+          scope="structure", writes=frozenset({"args.*"}),
           reads=frozenset({"catalog"}),
           rationale="ULTIMA per costruzione: l'esenzione guard_owned dell'ingresso e' per nome nudo e cresce a ogni guardia nuova (21 nomi, incluso path/mode/exist_ok/dst_folder, esenti su OGNI tool). Non si chiude all'ingresso senza accecare chi legge quegli arg come prova; si chiude qui, dove nessuno deve piu' leggerli. Ingresso tollerante, uscita conforme ai manifest",
           adr="0177"),
@@ -7574,12 +7524,10 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
                                           catalog: Optional[list]) -> Framework:
     """Guard DETERMINISTICI di struttura (no LLM, IDEMPOTENTI — proprietà
     misurata: 33/33 piani reali L0+L1+flagship, sweep S3 5/7 + test T4),
-    condivisi da L0/L1 (hit cache) e L3 (proposer). L'ordine e i gate v3
-    sono il CONTRATTO dichiarato in `GUARD_PIPELINE` (ADR 0177 T3). NON
+    condivisi da L0/L1 (hit cache) e L3 (proposer). L'ordine delle guardie
+    è il CONTRATTO dichiarato in `GUARD_PIPELINE` (ADR 0177 T3). NON
     include il re-propose LLM dei dropped: quello resta L3-only."""
     import os as _os
-    from . import is_v3
-    _v3 = is_v3()
     _count = (_os.environ.get("METNOS_GUARD_FIRE_COUNT", "1") == "1"
               and _PLANNING_MEASURE.get() is None)
     if _count:
@@ -7588,8 +7536,6 @@ def _apply_deterministic_structure_guards(framework: Framework, intent,
         except Exception:  # noqa: BLE001 — la misura non blocca mai un turno
             _gs = None
     for _g in GUARD_PIPELINE:
-        if _g.v3_only and not _v3:
-            continue
         if _count:
             try:
                 _before = framework.to_dict()
@@ -8626,17 +8572,15 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
     _measure("observe", "intent_extracted", intent)
     # De-contaminazione oggetti-clausola (v3, 19/6): a 7-8 clausole l'LLM ancora
     # una clausola all'oggetto di una vicina (foto→files dopo «file»). Corregge
-    # via object_hint_mapping (funzione canonica) PRIMA di tutto. Gated is_v3().
-    from . import is_v3
-    if is_v3():
-        # Clauses are the person's words: a site address the runtime appended
-        # to the planner's text is no clause of theirs (live Fineco 38ebbe35,
-        # 4/11/2026: its "https" turned «crea un foglio» into create urls).
-        clause_text = str((runtime_ctx or {}).get("user_query_raw") or query)
-        _decontaminate_clause_objects(intent, clause_text, catalog)
-        _measure("observe", "_decontaminate_clause_objects", intent)
-        _fix_unroutable_verbs(intent, clause_text, catalog)
-        _measure("observe", "_fix_unroutable_verbs", intent)
+    # via object_hint_mapping (funzione canonica) PRIMA di tutto.
+    # Clauses are the person's words: a site address the runtime appended
+    # to the planner's text is no clause of theirs (live Fineco 38ebbe35,
+    # 4/11/2026: its "https" turned «crea un foglio» into create urls).
+    clause_text = str((runtime_ctx or {}).get("user_query_raw") or query)
+    _decontaminate_clause_objects(intent, clause_text, catalog)
+    _measure("observe", "_decontaminate_clause_objects", intent)
+    _fix_unroutable_verbs(intent, clause_text, catalog)
+    _measure("observe", "_fix_unroutable_verbs", intent)
     # gate-resume (20/6): sulla RIPRESA dopo approvazione (runtime_ctx
     # _gate_approved) il gate e' gia' consentito → togli la clausola
     # (get, approval) dall'intent cosi' il proposer compone la pipeline PULITA a

@@ -12,7 +12,7 @@ Trade-off vs simple:
 
 §7.3: ranking deterministico, niente LLM dentro _rank_by_telos.
 
-Selezione via METNOS_ENGINE=metis. Tuning via:
+Shared base and fallback for the v3 proposer. Tuning via:
   METNOS_METIS_N_CANDIDATES=3
   METNOS_METIS_CACHE_MAX=200
   METNOS_PROPOSER_GRAMMAR=1 (default) → single-shot grammar (perde multi-candidate)

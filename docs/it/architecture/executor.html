@@ -659,8 +659,8 @@ catalogo firmato corrente, senza modificare servizi o ampliare i comandi di
 controllo. Un catalogo non valido interrompe la verifica: non viene sostituito
 silenziosamente con la configurazione precedente.</p>
 
-<p>Il catalogo firmato avvia HTTP con <code>METNOS_ENGINE=v3</code>, senza
-ereditare aggiunte arbitrarie alle unit&agrave; (<code>.service.d</code>) o
+<p>Il motore usa sempre il comportamento di v3, con le classi Metis e Simple
+come basi e ripieghi. Il catalogo firmato avvia HTTP senza ereditare aggiunte arbitrarie alle unit&agrave; (<code>.service.d</code>) o
 all'ambiente di avvio. Le impostazioni private restano nel file esistente
 <code>$METNOS_USER_CONFIG/runtime.toml</code>: <code>default_account</code> nella
 sezione <code>[mail]</code> &egrave; una stringa non vuota, con valore predefinito

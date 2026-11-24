@@ -7,12 +7,9 @@ basta; su 4+ i tre layer LLM-liberi (GBNF solo-nomi + skeleton non-vincolante +
 args ~100% LLM) collassano. v3 INVERTE l'architettura: scheletro VINCOLANTE per
 struttura+ordine+provider+tipi, LLM solo per gli args testuali liberi.
 
-SWAPPABLE con v2 (§7.1, Roberto 18/6): METNOS_ENGINE=v3 ↔ =metis e' un rollback
-ISTANTANEO. v2 (MetisProposer/SimpleProposer) resta byte-intatto: v3 e' una
-SOTTOCLASSE che riusa il wrapper multi-candidate/rank/cache di metis e ne swappa
-il CORE di generazione (self._simple = SimpleProposerV3) via il seam _make_simple.
-Niente ramo `if v3:` sparso nei moduli v2; il solo gate condiviso e' engine.is_v3()
-nei guard deterministici di dispatch (comportamento AGGIUNTIVO, mai sottrattivo).
+The v3 proposer reuses the Metis multi-candidate/rank/cache wrapper and replaces
+its generation core (self._simple = SimpleProposerV3) through _make_simple.
+Metis and Simple remain shared bases and fallbacks.
 
 Roadmap a fasi bench-gated (routing_subset 29/29 + intent gold 25/25 + suite 2730):
   - Phase 0 (questo commit): skeleton swappable, v3 ≡ v2 (zero override sostanziali).
@@ -67,13 +64,12 @@ class SimpleProposerV3(SimpleProposer):
 
 
 class MetisV3Proposer(MetisProposer):
-    """Engine v3 di produzione: wrapper metis (multi-candidate + telos-rank +
-    cache LRU) sul core di generazione v3. Selezione via METNOS_ENGINE=v3.
+    """Production proposer: the Metis multi-candidate/rank/cache wrapper.
 
-    Eredita TUTTO da MetisProposer (propose/_generate_candidates/_rank_by_telos/
-    cache) e swappa SOLO il core via _make_simple → ogni generazione passa per
-    SimpleProposerV3. Drop-in di prod: la stessa hardening di metis
-    (grammar+verb_filter ON) resta valida; rollback = METNOS_ENGINE=metis."""
+    Inherit propose, candidate generation, ranking and caching from
+    MetisProposer; replace only the generation core through _make_simple.
+    Each generation uses SimpleProposerV3, retaining grammar and verb_filter.
+    """
 
     def _make_simple(self, prompt_loader):
         return SimpleProposerV3(prompt_loader=prompt_loader)

@@ -181,14 +181,9 @@ class SimpleRecovery:
 # ── Factory ───────────────────────────────────────────────────────────────
 
 def get_recovery() -> Recovery:
-    from . import get_engine_name
-    name = get_engine_name()
-    # v3 è drop-in di metis (nessun recovery_v3): in prod METNOS_ENGINE=v3 deve
-    # usare MetisRecovery, non SimpleRecovery (bug 20/6 — allineato a get_proposer).
-    if name in ("metis", "v3"):
-        try:
-            from . import recovery_metis
-            return recovery_metis.MetisRecovery()
-        except Exception as ex:
-            log.warning("MetisRecovery unavailable (%r), fallback simple", ex)
+    try:
+        from . import recovery_metis
+        return recovery_metis.MetisRecovery()
+    except Exception as ex:
+        log.warning("MetisRecovery unavailable (%r), fallback simple", ex)
     return SimpleRecovery()

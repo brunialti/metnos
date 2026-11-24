@@ -107,7 +107,7 @@ PROCEDURA:
    a. python3 -m py_compile <file toccati>
    b. python3 -m pytest tests/runtime/ -q -p no:cacheprovider   → ZERO fallimenti nuovi
       (preesistente noto e accettato: nessuno al 9/6/2026; se ne trovi, è una regressione).
-   c. METNOS_ENGINE=metis METNOS_PROPOSER_GRAMMAR=1 METNOS_PROPOSER_VERB_FILTER=1 \\
+   c. METNOS_PROPOSER_GRAMMAR=1 METNOS_PROPOSER_VERB_FILTER=1 \\
       METNOS_PREFILTER_RULES=1 METNOS_ENGINE_POOL_SIZE=12 \\
       python3 tests/benchmarks/routing_subset_bench.py --runs 1 --baseline tests/benchmarks/routing_baseline.json
       → tutti i casi OK, "no regression" (oggi 26/26).

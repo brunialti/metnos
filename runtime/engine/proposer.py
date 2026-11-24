@@ -1,18 +1,14 @@
-"""engine/proposer.py — Protocol + SimpleProposer (default).
+"""engine/proposer.py — Protocol, SimpleProposer and the proposer factory.
 
 Il Proposer produce un Framework JSON dalla query+intent+pool tool. È
 l'unico componente del Layer 3 che dipende dal LLM (a parte filler resolve
-nell'Executor). Implementazione default: 1-shot modello locale wise tier con GBNF
+nell'Executor). Il core SimpleProposer usa il modello locale wise tier con GBNF
 strict.
 
-Implementazioni alternative (file separati):
-  - proposer_metis.py    → multi-strategia 2-3 alternative ranked telos (β)
-  - proposer_frontier.py → Sonnet 4 API single call
+The factory builds MetisV3Proposer; MetisProposer and SimpleProposer remain
+shared bases and fallbacks, in that order.
 
-Selettore via METNOS_ENGINE env. Swap zero-rewrite del resto del sistema.
-
-§7.9: deterministic dispatcher (engine selector), LLM solo dentro
-SimpleProposer.propose().
+§7.9: costruzione deterministica, LLM solo dentro SimpleProposer.propose().
 """
 from __future__ import annotations
 
@@ -50,7 +46,7 @@ class Proposer(Protocol):
                 prior_steps: Sequence = ()) -> Optional[Framework]: ...
 
 
-# ── SimpleProposer (default) ──────────────────────────────────────────────
+# ── SimpleProposer ────────────────────────────────────────────────────────
 
 _THINK_CLOSED_RE = re.compile(r"<think>[\s\S]*?</think>", re.IGNORECASE)
 _THINK_OPEN_RE = re.compile(r"<think>", re.IGNORECASE)
@@ -811,39 +807,18 @@ class SimpleProposer:
             return None
 
 
-# ── Factory (selettore engine) ────────────────────────────────────────────
+# ── Factory ───────────────────────────────────────────────────────────────
 
 def get_proposer() -> Proposer:
-    """Ritorna istanza Proposer selezionata via METNOS_ENGINE.
-
-    Caricamento lazy: i moduli proposer_metis / proposer_frontier sono
-    importati solo se richiesti, così l'assenza del file non blocca il
-    sistema (fallback su SimpleProposer).
-    """
-    from . import get_engine_name
-    name = get_engine_name()
-    if name == "v3":
-        # Engine v3 (redesign compound, swappable con metis — vedi proposer_v3).
-        try:
-            from . import proposer_v3
-            return proposer_v3.MetisV3Proposer()
-        except Exception as ex:
-            log.warning("MetisV3Proposer unavailable (%r), fallback metis", ex)
-        try:
-            from . import proposer_metis
-            return proposer_metis.MetisProposer()
-        except Exception as ex:
-            log.warning("MetisProposer unavailable (%r), fallback simple", ex)
-    elif name == "metis":
-        try:
-            from . import proposer_metis
-            return proposer_metis.MetisProposer()
-        except Exception as ex:
-            log.warning("MetisProposer unavailable (%r), fallback simple", ex)
-    elif name == "frontier":
-        try:
-            from . import proposer_frontier
-            return proposer_frontier.FrontierProposer()
-        except Exception as ex:
-            log.warning("FrontierProposer unavailable (%r), fallback simple", ex)
+    """Build the v3 proposer, falling back to Metis and then Simple."""
+    try:
+        from . import proposer_v3
+        return proposer_v3.MetisV3Proposer()
+    except Exception as ex:
+        log.warning("MetisV3Proposer unavailable (%r), fallback metis", ex)
+    try:
+        from . import proposer_metis
+        return proposer_metis.MetisProposer()
+    except Exception as ex:
+        log.warning("MetisProposer unavailable (%r), fallback simple", ex)
     return SimpleProposer()
