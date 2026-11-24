@@ -116,7 +116,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'admin_chat_commands.py': ('a88a306af700787c6b2b11f73bab9c25a069d2062d7570f2e369e3974240d74b', (('comparison', 11),)),
     'admitted_module_v1.py': ('4e8397a4a89db733434b2a50118f592129ecd3d429a2448ed6f0e671181cb518', (('comparison', 4), ('helper-argument', 1), ('prefix-suffix', 2))),
     'agent_mirror.py': ('870f4556a8cd0bcc06eeda1d834549ecfb560fdd5eb3dee87b0170f9d63fe875', (('helper-argument', 4),)),
-    'agent_runtime.py': ('8ebb72e734b65393e304539c31e88bae154f763087b099dafa51243851330730', (('comparison', 148), ('helper-argument', 1), ('iteration', 5), ('membership', 7), ('prefix-suffix', 2), ('regex', 3))),
+    'agent_runtime.py': ('b6ba13e569de1172ac302d448f028527041565c519b84179c6501256e0155df0', (('comparison', 135), ('helper-argument', 1), ('iteration', 5), ('membership', 7), ('prefix-suffix', 2), ('regex', 3))),
     'agent_server.py': ('14faa41b18dbd6a44a77af8ca40b2aa94d132c12eed348976eac5cfda78cb14e', (('comparison', 11), ('helper-argument', 5))),
     'agentic_executor.py': ('8320cd919ebc831aba7deade7477217ce278367974f4d65bb1cc0b7fe8a826f3', (('comparison', 3),)),
     'alignment_engine.py': ('ae8b5551fc8590e1a6bfeda9436b312c8e854d1728921d46fd699175a0484bb7', (('comparison', 6),)),
@@ -2341,7 +2341,6 @@ _REVIEWED_TECHNICAL_INVARIANTS: Mapping[
     str, tuple[TechnicalInvariant, ...]
 ] = {
     "agent_runtime.py": (
-        *_reviewed("pipeline-grammar", "from_step wire reference syntax", "PATTERN"),
         *_reviewed("protocol-enum", "canonical dialog tool and virtual-step identities", "_DIALOG_MARKERS"),
     ),
     "agent_server.py": (

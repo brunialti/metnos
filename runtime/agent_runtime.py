@@ -973,41 +973,6 @@ def _render_users_known_block() -> str:
     return "\n".join(out) if out else "[]"
 
 
-def _render_canonical_query_block(lang: str) -> str:
-    """Istruzioni del by-product ``canonical_query`` nella lingua del turno."""
-    return prompt_loader.get("planner_canonical_query", lang).rstrip()
-
-
-def _render_credentials_context_block(extracted_meta: list[dict],
-                                      lang: str) -> str:
-    """Contesto privo di segreti per il planner, localizzato per richiesta."""
-    rows: list[str] = []
-    for item in extracted_meta:
-        ctx = item.get("context") or {}
-        record = {
-            "credentials_domain": item.get("domain") or "?",
-            "binding": ctx.get("binding") or "?",
-            "host": ctx.get("host") or "?",
-        }
-        if ctx.get("share"):
-            record["share"] = ctx["share"]
-        rows.append("  - " + json.dumps(record, ensure_ascii=False,
-                                         sort_keys=True))
-    return prompt_loader.get(
-        "planner_credentials_context", lang,
-        credential_records="\n".join(rows) if rows else "[]",
-    ).rstrip()
-
-
-def _render_reference_images_block(paths: list[str], lang: str) -> str:
-    """Istruzioni per gli allegati fotografici nella lingua del turno."""
-    return prompt_loader.get(
-        "planner_reference_images", lang,
-        image_count=len(paths),
-        sample_path=paths[0] if paths else "",
-    ).rstrip()
-
-
 def _render_telos_block(lang: str) -> str:
     """Wrap thin di `telos_loader.render_planner_block(lang)`. Fase 4
     wire-in (22/5/2026): se TELOS.md mancante o vuoto ritorna stringa
@@ -1064,128 +1029,6 @@ def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
 _OBS_HISTORY_CHAR_CAP = 8000
 
 
-def _check_top_k_affinity_jaccard(
-    query: str, candidates: list, *, threshold: float = 0.3,
-) -> tuple[str, float] | None:
-    """Soft-gate B.5 (19/5/2026 v4, #10 prompt PLANNER re-eng):
-    ritorna `(tool_name, jaccard_score)` del primo candidate del top-K che
-    ha jaccard affinity vs query >= threshold. None se nessuno passa la soglia.
-
-    Usato per rifiutare `request_new_executor` quando il top-K contiene gia'
-    un tool con affinity adeguata. Determinismo §7.9.
-
-    Tokenizzazione: lower + split su non-alfanumerico, filtra stop-word
-    minimali IT+EN. Affinity del tool: union di `name` (split su _) + termini
-    da `affinity` (lista).
-    """
-    import re as _re
-    if not query or not candidates:
-        return None
-    stopwords = {
-        str(form).casefold() for form in _residual_am_lexicon.ready_forms(
-            _residual_am_lexicon.AGENT_AFFINITY_STOPWORD,
-        )
-    }
-    q_tokens = {
-        t for t in _re.split(r"[^\w]+", query.lower())
-        if t and t not in stopwords and len(t) >= 3
-    }
-    if not q_tokens:
-        return None
-    # B.5 STRONG MATCH (19/5/2026 v4): se la query contiene un verbo che
-    # canonicalizza a un verbo Metnos §2.2 via vocab synonyms (es. "salva"→
-    # "write", "cancella"→"delete"), E il top-K ha un tool con nome che
-    # inizia con quel verbo canonico, → match forte (score=1.0) immediato.
-    # Questo evita che query con molti tokens irrilevanti (es. "salva nota:
-    # spesa supermercato 35€") diluiscano la jaccard sotto threshold.
-    try:
-        from prefilter import detect_canonical_verbs_all, tokenize  # type: ignore
-        _qtoks_for_verb = tokenize(query)
-        _canonical_verbs = detect_canonical_verbs_all(_qtoks_for_verb) or []
-    except Exception:
-        _canonical_verbs = []
-    if _canonical_verbs:
-        for ex in candidates:
-            name = getattr(ex, "name", "") or ""
-            if not name or name == "request_new_executor":
-                continue
-            for cv in _canonical_verbs:
-                if name.startswith(cv + "_"):
-                    return (name, 1.0)
-    for ex in candidates:
-        name = getattr(ex, "name", "") or ""
-        if not name or name == "request_new_executor":
-            continue
-        aff_terms = getattr(ex, "affinity", None) or []
-        if isinstance(aff_terms, dict):
-            aff_terms = aff_terms.get("it", []) + aff_terms.get("en", [])
-        tool_tokens = set()
-        tool_tokens.update(t for t in name.split("_") if len(t) >= 3)
-        for term in aff_terms:
-            if isinstance(term, str):
-                tool_tokens.update(t for t in _re.split(r"[^\w]+", term.lower())
-                                    if t and len(t) >= 3 and t not in stopwords)
-        if not tool_tokens:
-            continue
-        inter = q_tokens & tool_tokens
-        if not inter:
-            continue
-        # Overlap coefficient: inter / min(|q|, |t|). Insensibile all'asimmetria
-        # tool con affinity ricca vs query breve (caso live 11/5 "appuntamenti
-        # domani": Jaccard penalizza, overlap coefficient cattura coverage).
-        score = len(inter) / max(1, min(len(q_tokens), len(tool_tokens)))
-        if score >= threshold:
-            return (name, score)
-    return None
-
-
-def _trim_obs_for_history(obs: dict | str, *, cap: int = _OBS_HISTORY_CHAR_CAP) -> str:
-    """Serializza una observation in JSON pronto per `history_for_llm` con cap
-    sui caratteri. Se sfora, prova prima a rimuovere `body_preview` dalle
-    entries (campo pesante, recuperabile da scratchpad_read); se ancora sfora,
-    riduce il numero di entries preservando struttura JSON valida; come ultima
-    risorsa, fallback al troncamento "stupido" di stringa con marker.
-
-    Niente perdita silenziosa: se rimuove campi/entries lo dichiara via campo
-    `_obs_trimmed` con dettaglio."""
-    if not isinstance(obs, dict):
-        s = json.dumps(obs, ensure_ascii=False) if not isinstance(obs, str) else obs
-        return s if len(s) <= cap else s[:cap] + "...[troncato]"
-
-    s = json.dumps(obs, ensure_ascii=False)
-    if len(s) <= cap:
-        return s
-
-    entries = obs.get("entries")
-    if isinstance(entries, list) and entries:
-        # Tentativo 1: rimuovi body_preview
-        slim_entries = [
-            {k: v for k, v in e.items() if k != "body_preview"} if isinstance(e, dict) else e
-            for e in entries
-        ]
-        slim = dict(obs)
-        slim["entries"] = slim_entries
-        slim["_obs_trimmed"] = "body_preview rimosso (recuperabile via scratchpad_read)"
-        s2 = json.dumps(slim, ensure_ascii=False)
-        if len(s2) <= cap:
-            return s2
-
-        # Tentativo 2: riduci numero di entries proporzionalmente
-        n = len(slim_entries)
-        keep = max(1, int(n * cap / max(len(s2), 1)))
-        slim["entries"] = slim_entries[:keep]
-        slim["_obs_trimmed"] = (
-            f"body_preview rimosso + entries ridotte a {keep}/{n} "
-            f"(piene via scratchpad_read)"
-        )
-        s3 = json.dumps(slim, ensure_ascii=False)
-        if len(s3) <= cap:
-            return s3
-
-    # Fallback: troncamento stringa con marker
-    return s[:cap] + "...[troncato]"
-
-
 _FROM_STEP_DESC = (
     "Numero dello step precedente (in questo turno) che ha prodotto la "
     "lista da consumare. Es. se al passo 1 hai chiamato find_files / "
@@ -1194,32 +1037,6 @@ _FROM_STEP_DESC = (
     "entries inline: lo schema non lo prevede e il modello non ha visibilita' "
     "sui dati prodotti dagli step precedenti."
 )
-
-
-def _render_now_vars() -> dict:
-    """Restituisce dict con riferimenti temporali correnti per il prompt
-    planner footer: today_iso/now_hhmm/weekday_iso/tz.
-    Iniettato in compose() per evitare step get_now ridondante quando il
-    planner deve solo risolvere una data relativa banale. §7.9 deterministico.
-    Per orari precisi al secondo o explicit time-of-day request, il planner
-    invoca comunque get_now (hint in _footer.j2).
-    """
-    from datetime import datetime
-    try:
-        import zoneinfo
-        tz = zoneinfo.ZoneInfo(DEFAULT_TIMEZONE)
-        now = datetime.now(tz)
-    except Exception:
-        now = datetime.now()
-    return {
-        "today_iso": now.strftime("%Y-%m-%d"),
-        "now_hhmm": now.strftime("%H:%M"),
-        # ISO 8601 is language-neutral: 1=Monday, 7=Sunday. The localized
-        # prompt explains the labels without requiring per-language runtime
-        # branches or process-global locale changes.
-        "weekday_iso": now.isoweekday(),
-        "tz": DEFAULT_TIMEZONE,
-    }
 
 
 def planner_facing_schema(schema):
@@ -1519,23 +1336,6 @@ _ACTION_VERBS_PRED = {
 # crei duplicati. ADR 0123 + bug live turn c627784c (11/5/2026 sera).
 # Estendere solo per executor che creano UNA singola entita' remota per
 # invocazione (set_*, send_*, write_* su provider esterni).
-def _detect_binary_missing_in_obs(obs) -> dict | None:
-    """Cerca `error_class="binary_missing"` nei `results` di un'observation.
-
-    Ritorna il primo record con suggested_install (dict raw), None se
-    nessun result ha questa shape. Pattern §7.3 install-on-demand
-    (17/5/2026): usato sia da hook T1 (save pending) sia da rule planner
-    (suggerire admin install).
-    """
-    if not isinstance(obs, dict):
-        return None
-    for r in (obs.get("results") or []):
-        if isinstance(r, dict) and r.get("error_class") == "binary_missing":
-            if r.get("suggested_install"):
-                return r
-    return None
-
-
 def _is_auto_final_transformative(tool_name: str) -> bool:
     """True se il tool e' mutating §2.2 (verbo `_MUTATING_VERBS` prefix).
     Derivazione dinamica §7.3: ogni nuovo executor con verbo mutating eredita
@@ -1610,29 +1410,6 @@ def _query_has_continuation(query: str) -> bool:
         return False
 
 
-def _format_send_messages_detail(obs: dict) -> str:
-    """Costruisce il `detail` di MSG_TRANSFORMATIVE_AUTO_FINAL per send_messages.
-
-    Pattern: «a <recipient_id> «<subject>»». Helper §7.9 (no LLM). Idem
-    `_format_..._detail` per altri executor che non espongono htmlLink/id ma
-    hanno una shape `results[0]` con campi user-facing standardizzati.
-    """
-    if not isinstance(obs, dict):
-        return ""
-    r0 = (obs.get("results") or [{}])[0]
-    if not isinstance(r0, dict):
-        return ""
-    to = r0.get("recipient_id") or r0.get("target") or ""
-    if isinstance(to, list):
-        to = ", ".join(str(x) for x in to)
-    subj = r0.get("subject") or ""
-    if to and subj:
-        return f"a {to} «{subj}»"
-    if to:
-        return f"a {to}"
-    return subj
-
-
 _MUTATING_VERBS = frozenset({
     # Sottoinsieme di ACTIONS §2.2 con side-effect remoto:
     # send, create, delete, set, write, move, share, change, render, organize.
@@ -1641,40 +1418,6 @@ _MUTATING_VERBS = frozenset({
     "send", "create", "delete", "set", "write", "move", "share",
     "change", "render", "organize",
 })
-
-
-def _all_query_verbs_satisfied(query: str, executed_tools: list[str]) -> bool:
-    """True se TUTTI i verbi MUTATING della query sono coperti da almeno
-    uno degli `executed_tools` (prefisso `<verb>_`). Verbi read-only/
-    suggestion (find/get/read/list/filter/describe/...) sono opzionali per
-    la chiusura pipeline. Determinismo §7.9.
-
-    Bug live turn 7f7381d2dba24bdc (14/5/2026, propose+choose+notify): dopo
-    send_messages ok=True il PLANNER rifaceva find_events_empty perche'
-    auto_final_transformative era inibito da `_query_has_continuation` (la
-    query ha 2 verbi: `proponi`→describe + `mandami`→send). Pipeline e'
-    completa quando il verbo MUTATING (`send`) e' stato eseguito; il
-    `describe` di «proponi» e' P5 suggestion-semantics, copertura
-    soddisfatta dal `find_events_empty + get_inputs` upstream.
-
-    `executed_tools` deve essere la lista dei tool name (chosen_name) degli
-    step ok=True inclusi i `resumed_from_prior_turn` (lo scratchpad
-    ricostruito dal callback resume_planner). Caller responsabile.
-    """
-    if not query or not isinstance(query, str) or not executed_tools:
-        return False
-    try:
-        from prefilter import tokenize, detect_canonical_verbs_all
-        verbs = detect_canonical_verbs_all(tokenize(query))
-        mutating = [v for v in verbs if v in _MUTATING_VERBS]
-        if not mutating:
-            return False
-        executed_verbs = {
-            t.split("_", 1)[0] for t in executed_tools if isinstance(t, str) and "_" in t
-        }
-        return all(v in executed_verbs for v in mutating)
-    except Exception:
-        return False
 
 
 # P6 (12/5/2026) — Notify-continuation detection per multi-pipeline.
@@ -1878,35 +1621,6 @@ def _should_resume_planner_after_dialog(query: str, route_info,
     if _detlex.match("dialog.resume_hint", query):
         return True
     return False
-
-
-def _inject_get_inputs_choice_for_propose(*, entries: list,
-                                            object_canonical: str
-                                            ) -> dict | None:
-    """Costruisce args deterministici per `get_inputs(kind=choice)` quando
-    siamo in pipeline propose+notify dopo `find_events_empty` (ADR 0129
-    extended, 14/5/2026 sera).
-
-    Determinismo §7.9: nessun LLM, lookup tabellare per object_canonical
-    (oggi solo `events`; estendere quando emerge altro pattern).
-    """
-    if not entries:
-        return None
-    if object_canonical == "events":
-        return {
-            "title": "Scegli l'orario per l'appuntamento",
-            "entries": entries,
-            "dialog": [{
-                "var": "scelta",
-                "prompt": "Quale orario preferisci per l'appuntamento?",
-                "schema": {
-                    "kind": "choice",
-                    "display_template": "{when_human}",
-                    "value_field": "start",
-                },
-            }],
-        }
-    return None
 
 
 def _snapshot_scratchpad(history_for_refs) -> list:
@@ -2280,20 +1994,6 @@ def _vectorial_schema_signature(args_schema: dict | None) -> str:
     return ";".join(parts)
 
 
-def _cap_same_for_executor(executor, default_cap: int) -> int:
-    """Cap_same dedicato per `executor`: 2 se vettoriale (plural args), default
-    altrimenti. ADR 0130 §2.1: executor vettoriali devono essere chiamati una
-    volta con N args, non N volte. La soglia bassa previene il thrashing del
-    LLM che varia gli args sperando in un risultato diverso.
-    """
-    if executor is None:
-        return default_cap
-    sig = _vectorial_schema_signature(getattr(executor, "args_schema", None))
-    if _executor_has_plural_args(executor.name, sig):
-        return _VECTORIAL_CAP_SAME
-    return default_cap
-
-
 # Bug live turn `eb837329` (11/5/2026): final_message su loop_break era una
 # stringa hardcoded ("file extension, precise path") che parlava di file
 # anche per query su events/messages/urls. Soluzione: hint parametrico per
@@ -2303,38 +2003,6 @@ _LOOP_BREAK_HINT_OBJECTS = frozenset({
     "files", "dirs", "messages", "events", "urls",
     "images", "processes", "contacts", "credentials",
 })
-
-
-def _loop_break_hint(intent_object: str | None) -> str:
-    """Ritorna il hint user-facing parametrico sull'object dell'intent.
-
-    Mappa `intent.object` (lowercase) -> chiave `MSG_LOOP_BREAK_HINT_<OBJ>`
-    in `i18n.sqlite`. Fallback `MSG_LOOP_BREAK_HINT_GENERIC` quando l'object
-    e' None, vuoto o non in `_LOOP_BREAK_HINT_OBJECTS`. Riusa `messages.get`
-    (alias `msg`) per il fallback chain `current_lang -> en -> it`.
-    """
-    obj = (intent_object or "").strip().lower()
-    if obj in _LOOP_BREAK_HINT_OBJECTS:
-        text = msg(f"MSG_LOOP_BREAK_HINT_{obj.upper()}")
-        # `<missing:KEY>` indica che la chiave non esiste in DB: fallback a generic.
-        if not text.startswith("<missing:"):
-            return text
-    return msg("MSG_LOOP_BREAK_HINT_GENERIC")
-
-
-def _intent_object_from_route(route_info) -> str | None:
-    """Estrae `intent.object` da `route_info`. Robusto a None/missing.
-
-    Riusato dai 6 emit-site di `MSG_LOOP_BREAK` in `run_turn` (5 guard
-    branches pre-execute + 1 post-execute fail) per costruire il hint
-    object-aware (`_loop_break_hint`).
-    """
-    if not route_info:
-        return None
-    intent = route_info.get("intent") if isinstance(route_info, dict) else None
-    if not intent:
-        return None
-    return intent.get("object") if isinstance(intent, dict) else None
 
 
 def _resolve_auto_final_from_steps(steps):
@@ -2447,33 +2115,6 @@ def _format_auto_final_count(ok_count: int | None,
     return msg("MSG_AUTO_FINAL_COUNT_PLAIN", n=ok_count)
 
 
-def _predict_remaining_path(intent: dict | None, current_tool: str) -> list[str]:
-    """Previsione euristica dei prossimi step dato intent + tool corrente.
-
-    Conservative: ritorna al massimo 2 elementi (incertezza alta nei
-    multi-step ReAct). Usata SOLO per il rendering del breadcrumb live
-    (badge "futuri" muti); il path reale puo' divergere senza danni.
-
-    Logica:
-      - current_tool == "final_answer" → []
-      - intent.verb in ACTION_VERBS (move/delete/send/...) → ["final_answer"]
-        (l'azione di solito chiude il turno, niente describe dopo)
-      - current_tool == "describe_entries" → ["final_answer"]
-      - producer (read/find/list/get) + intent NON azione → ["describe_entries", "final_answer"]
-      - default → ["final_answer"]
-    """
-    if current_tool == "final_answer":
-        return []
-    if current_tool == "describe_entries":
-        return ["final_answer"]
-    verb = (intent or {}).get("verb")
-    if verb in _ACTION_VERBS_PRED:
-        return ["final_answer"]
-    if verb in ("read", "find", "list", "get"):
-        return ["describe_entries", "final_answer"]
-    return ["final_answer"]
-
-
 def _lookup_field(obj, dotted):
     cur = obj
     for part in dotted.split("."):
@@ -2491,73 +2132,6 @@ from from_step_projection import (  # noqa: E402
     contradiction_refusal as _contradiction_refusal,
     project_from_entries as _project_from_entries,
 )
-
-
-def _expand_nested_from_step(args: dict, history: list) -> tuple[dict, list]:
-    """Espande pattern `from_step:N` ANNIDATI dentro liste args (8/5/2026).
-
-    Caso d'uso: `paths_filter: ["from_step:2"]` — il PLANNER vuole passare
-    i path dello step 2 come filtro, ma `resolve_from_step` standard
-    riconosce solo top-level `from_step: int`. Senza questa espansione,
-    il valore literal "from_step:2" finisce nella lista paths_filter →
-    intersezione vuota → 0 entries (bug live bob al mare 8/5).
-
-    Sostituisce ogni stringa `"from_step:N"` o `"from_step=N"` dentro
-    valori lista degli args con la lista dei path estratti dallo step N.
-
-    Per `paths_filter` (semantica: lista path assoluti) estrae
-    `entry["path"]` da entries dello step N.
-    Per altri arg lista, estrae il singolare se matcha (urls, ids, ecc).
-
-    Idempotente: gli args senza pattern restano invariati. Errors append-only.
-    """
-    import re as _re
-    PATTERN = _re.compile(r"^\s*from_step\s*[:=]\s*(\d+)\s*$", _re.IGNORECASE)
-    errors: list[str] = []
-    if not isinstance(args, dict):
-        return args, errors
-    new_args = dict(args)
-    for arg_name, val in list(args.items()):
-        if not isinstance(val, list):
-            continue
-        if not any(isinstance(v, str) and PATTERN.match(v) for v in val):
-            continue
-        # Trovato almeno un placeholder. Espandi.
-        expanded: list = []
-        for v in val:
-            if isinstance(v, str) and (m := PATTERN.match(v)):
-                step_n = int(m.group(1))
-                if step_n < 1 or step_n > len(history):
-                    errors.append(
-                        f"{arg_name}: from_step={step_n} fuori range "
-                        f"(history len={len(history)})"
-                    )
-                    continue
-                step_obs = history[step_n - 1].get("observation") or {}
-                step_entries = step_obs.get("entries") if isinstance(step_obs, dict) else None
-                if not isinstance(step_entries, list):
-                    errors.append(
-                        f"{arg_name}: step {step_n} non ha entries (lista)"
-                    )
-                    continue
-                # Mappa entry → scalare per arg_name. paths_filter → path.
-                # Generico: se arg termina in 's', il singolare e' la chiave
-                # da estrarre (paths_filter → ricava 'path' speciale).
-                if arg_name == "paths_filter":
-                    singular = "path"
-                elif arg_name.endswith("s") and len(arg_name) > 1:
-                    singular = arg_name[:-1]
-                else:
-                    singular = arg_name
-                for e in step_entries:
-                    if isinstance(e, dict) and singular in e:
-                        sv = e[singular]
-                        if sv is not None:
-                            expanded.append(sv)
-            else:
-                expanded.append(v)
-        new_args[arg_name] = expanded
-    return new_args, errors
 
 
 def resolve_from_step(args, history, consumer_schema=None):
@@ -2719,70 +2293,6 @@ _INLINE_LIST_THRESHOLD = 3  # >= N dict in lista inline => richiedi reference (d
 _REFERENCE_ARG_NAMES = frozenset({"entries", "items", "matches", "results", "files", "paths"})
 
 _MALFORMED_REF_RE = re.compile(r"\{\{?step\d+\.[^{}]*[|?][^{}]*\}\}?|(?<!\{)\{step\d+\.[^{}]*\}(?!\})")
-
-
-def check_inline_data(args):
-    """Rifiuta args che contengono liste di dict inline non banali.
-
-    Il pianificatore deve usare {{stepN.field}} per riusare output di step
-    precedenti, mai re-incollare inline (fragile a quoting/escape e a token
-    waste). Sotto la soglia (N<3) accettiamo dati costruiti ad hoc dal modello.
-    """
-    if not isinstance(args, dict):
-        return None
-    for k, v in args.items():
-        if not isinstance(v, list):
-            continue
-        if not v or not isinstance(v[0], dict):
-            continue
-        # Per gli arg "data passing" canonici (entries, items, matches, ...)
-        # qualunque dict inline e' rifiutato: devono arrivare via reference.
-        # Per altri arg, soglia di tolleranza per dati costruiti ad hoc.
-        threshold = 1 if k in _REFERENCE_ARG_NAMES else _INLINE_LIST_THRESHOLD
-        if len(v) < threshold:
-            continue
-        return (
-            f"INLINE_DATA_REJECTED: hai passato '{k}' come {len(v)} dict inline. "
-            f"Per riusare l'output di un passo precedente DEVI usare la reference "
-            f"'{{{{stepN.{k}}}}}' (es. '{{{{step1.{k}}}}}'). "
-            f"Esempio corretto: {{ \"{k}\": \"{{{{step1.{k}}}}}\" }}. "
-            f"Riformula la chiamata."
-        )
-    return None
-
-
-def check_malformed_reference(args):
-    """Rileva placeholder malformati (graffa singola, pipe, ternario).
-
-    L'unica sintassi valida e' `{{stepN.field}}` puro. Tutto il resto e' un
-    template engine che il runtime non interpreta: il LLM ha confuso la
-    sintassi con Jinja o simili. Errore istruttivo, no loop.
-    """
-    if not isinstance(args, dict):
-        return None
-    def _scan(node, key_path=""):
-        if isinstance(node, str):
-            m = _MALFORMED_REF_RE.search(node)
-            if m:
-                return (
-                    f"MALFORMED_REFERENCE: arg '{key_path}' contiene un placeholder non valido: "
-                    f"'{m.group(0)}'. La SOLA sintassi ammessa e' `{{{{stepN.field}}}}` puro "
-                    f"(doppie graffe, niente pipe `|`, niente ternario `?`, niente espressioni). "
-                    f"Per filtrare/derivare dati usa uno step intermedio (es. chiama filter_entries "
-                    f"come step a se') e poi referenzia il suo output."
-                )
-        elif isinstance(node, dict):
-            for k, v in node.items():
-                err = _scan(v, f"{key_path}.{k}" if key_path else k)
-                if err:
-                    return err
-        elif isinstance(node, list):
-            for i, v in enumerate(node):
-                err = _scan(v, f"{key_path}[{i}]")
-                if err:
-                    return err
-        return None
-    return _scan(args)
 
 
 def extract_step_refs(args) -> set[int]:
@@ -6779,117 +6289,6 @@ def _bind_managed_dependency_resume(
     }
 
 
-def _maybe_remediate_obs(
-    obs: dict,
-    original_args: dict,
-    original_tool: str,
-    *,
-    catalog: list,
-    turn_id: str,
-    actor: str | None,
-    channel: str | None,
-    verbose: bool = False,
-) -> tuple | None:
-    """Tenta auto-remediation generica su un'observation.
-
-    Se `obs` ha un `error_class` registrato in
-    `auto_remediation.REMEDIATIONS`, invoca il prereq (executor o
-    builtin), retry l'executor originale, e ritorna
-    (prereq_step, prereq_obs, retry_obs).
-
-    Ritorna None se non c'e' remediation applicabile o se il prereq
-    fallisce (caller continua con `obs` originale).
-
-    Pattern install_on_demand generalizzato: stesso codice per
-    needs_content_fetch (describe_entries -> read_urls_html), futuro
-    needs_ocr, needs_embedding, ecc. Nuova riga in
-    `auto_remediation.REMEDIATIONS` = nuovo error_class supportato,
-    senza modificare questo helper.
-    """
-    try:
-        from auto_remediation import try_remediate, get_plan
-    except Exception:
-        return None
-    plan = get_plan(obs.get("error_class"))
-    if plan is None:
-        return None
-
-    def _invoke_prereq(tool_name: str, prereq_args: dict) -> dict:
-        # Dispatcher uniforme builtin vs executor reale.
-        if tool_name in _BUILTIN_TOOL_HANDLERS:
-            return _invoke_builtin_handler(
-                tool_name, prereq_args,
-                actor=actor, channel=channel, turn_id=turn_id,
-            )
-        _exec = next(
-            (e for e in catalog if e.name == tool_name), None,
-        )
-        if _exec is None:
-            return {"ok": False,
-                    "error": f"prereq tool {tool_name!r} non in catalog"}
-        return invoke_executor(
-            _exec, prereq_args,
-            timeout_s=(getattr(_exec, "timeout_s", None) or 120),
-            autonomy="supervised", turn_id=turn_id,
-            actor=actor, channel=channel,
-        )
-
-    result = try_remediate(obs, original_args,
-                            invoke_prereq=_invoke_prereq)
-    if result is None:
-        return None
-    prereq_obs, retry_args, plan_info = result
-    if not prereq_obs.get("ok"):
-        if verbose:
-            print(f"[auto_remediation] prereq {plan_info.get('prereq_tool')} "
-                  f"failed: {prereq_obs.get('error')!r}")
-        return None
-    # Costruisci StepLog audit per il prereq.
-    _rh_step = StepLog(step_num=0)  # caller imposta step_num corretto
-    _rh_step.chosen_tool = plan_info["prereq_tool"]
-    _rh_step.raw_args = (
-        {k: v for k, v in retry_args.items()
-         if k == plan.merge_field}
-        if plan.merge_field in retry_args else {}
-    )
-    _rh_step.resolved_args = dict(_rh_step.raw_args)
-    _rh_step.result = prereq_obs
-    _rh_step.vaglio_approved = True
-    if hasattr(_rh_step, "__dict__"):
-        _rh_step.__dict__["auto_remediation"] = plan_info["error_class"]
-
-    # Skip retry: usato per remediation fail-fast (dialog get_inputs).
-    # Il prereq_obs (es. needs_inputs decision) e' l'esito di questo step;
-    # il caller propaga senza ri-eseguire l'executor originale.
-    if plan_info.get("skip_retry"):
-        return (_rh_step, prereq_obs, prereq_obs)
-
-    # Retry dell'executor originale con args arricchiti. Dispatcher
-    # uniforme builtin vs executor reale (registry modulo-level).
-    if original_tool in _BUILTIN_TOOL_HANDLERS:
-        retry_obs = _invoke_builtin_handler(
-            original_tool, retry_args,
-            actor=actor, channel=channel, turn_id=turn_id,
-        )
-    else:
-        _orig_exec = next(
-            (e for e in catalog if e.name == original_tool), None,
-        )
-        if _orig_exec is None:
-            return None
-        try:
-            retry_obs = invoke_executor(
-                _orig_exec, retry_args,
-                timeout_s=(getattr(_orig_exec, "timeout_s", None) or 120),
-                autonomy="supervised", turn_id=turn_id,
-                actor=actor, channel=channel,
-            )
-        except Exception as ex:
-            retry_obs = {"ok": False,
-                          "error": f"{type(ex).__name__}: {ex}"}
-    return (_rh_step, prereq_obs, retry_obs)
-
-
 # --- L3 Engine v2 dispatcher (ADR 0164) ----------------------------------
 
 def _bounded_engine_llm_timeout(env_name: str, default: float) -> float:
@@ -6952,11 +6351,6 @@ def _llm_dependency_failure_kind(exc: Exception) -> str | None:
     if unavailable:
         return "provider_unavailable"
     return None
-
-
-def _llm_dependency_failure(exc: Exception) -> bool:
-    """Return whether an exception is a known dependency failure."""
-    return _llm_dependency_failure_kind(exc) is not None
 
 
 def _run_engine(
@@ -8855,31 +8249,6 @@ def _engine_failed(log) -> None:
     log.final_message = msg("ERR_ENGINE_INTERNAL")
     log.error_class = "engine_internal_error"
     log.match_source = "engine"
-
-
-def format_simple_answer(executor_name, result):
-    # §11 i18n: ogni ramo user-facing risolto via DB (it+en), niente hardcode.
-    if not result.get("ok"):
-        return msg("MSG_ANSWER_EXEC_ERROR", executor=executor_name,
-                   error=result.get("error", "?"))
-    content = result.get("content", "")
-    meta = result.get("metadata", {})
-    if executor_name == "get_now":
-        return msg("MSG_ANSWER_NOW", time=(meta.get("time") or content),
-                   tz=meta.get("timezone", "UTC"))
-    if executor_name == "read_files":
-        preview = (content or "")[:300] + ("…" if len(content) > 300 else "")
-        return msg("MSG_ANSWER_FILE_PREVIEW", path=meta.get("path", "?"),
-                   preview=preview)
-    if executor_name == "write_files":
-        return msg("MSG_ANSWER_BYTES_WRITTEN",
-                   bytes=meta.get("bytes_written", 0), path=meta.get("path", "?"))
-    if executor_name == "get_urls":
-        preview = (content or "")[:300] + ("…" if len(content) > 300 else "")
-        return msg("MSG_ANSWER_HTTP_GET", url=meta.get("url", "?"),
-                   status=meta.get("status", "?"), bytes=meta.get("bytes", 0),
-                   preview=preview)
-    return json.dumps(result, ensure_ascii=False)[:300]
 
 
 if __name__ == "__main__":
