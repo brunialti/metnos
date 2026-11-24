@@ -3096,36 +3096,16 @@ def submit_executor(executor, args, timeout_s=30, *, autonomy="supervised",
 @dataclass
 class StepLog:
     step_num: int
-    llm_text: str = ""
-    llm_thinking: str = ""
-    llm_in_tokens: int = 0
-    llm_out_tokens: int = 0
-    llm_latency_ms: int = 0
     chosen_tool: str = ""
     raw_args: dict = field(default_factory=dict)
     resolved_args: dict = field(default_factory=dict)
-    validation_failures: list = field(default_factory=list)
-    scope_violation: str | None = None
-    vaglio_approved: bool = False
     result: dict = field(default_factory=dict)
     error: str | None = None
-    # Telemetria fine (ADR 0080, 4/5/2026): le 4 sotto-componenti del
-    # tempo di turno fuori dal PLANNER LLM. Default None: campi nuovi sui
-    # turn JSONL, opzionali per non rompere la deserializzazione storica.
-    intent_ms: int | None = None     # intent extractor (LLM, tipicamente solo step 1)
-    vaglio_ms: int | None = None     # judge() (LLM o stub)
     exec_ms: int | None = None       # invoke_executor (sandbox + I/O)
-    rerank_ms: int | None = None     # re_rank_for_step (post-step ok)
-    prefilter_ms: int | None = None  # rank_adaptive (tipicamente solo step 1)
     # ADR 0099: True quando lo step e' iniettato deterministicamente dal
     # runtime (URL detection -> read_urls_html primo step), non scelto dal
     # PLANNER. Visibile in TurnLog JSONL per telemetria.
     seed_step: bool = False
-    # the design guide §4.4 estesa (8/5/2026 notte): marker per cap_max_per_turn
-    # rinforzato. Settato a "max_calls_per_turn" quando un tool non-action
-    # viene chiamato >= DEFAULT_CAP_MAX_PER_TURN volte nel turno con args
-    # near-identical (Jaccard >= 0.7).
-    loop_break_total: str | None = None
     # ADR 0149 (18/5/2026): canonical_query emessa dal PLANNER come
     # by-product del tool_call JSON (solo se METNOS_CANONICAL_QUERY=1).
     # Persistita per telemetria e riusata da mnestoma.canonical_query_log.
@@ -7320,7 +7300,6 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 _fp_step.chosen_tool = _fp_hit["executor"]
                 _fp_step.raw_args = dict(_fp_hit["args"])
                 _fp_step.resolved_args = dict(_fp_hit["args"])
-                _fp_step.vaglio_approved = True  # short-circuit, no vaglio (read-only)
                 _t_fp = time.perf_counter()
                 try:
                     _fp_obs = invoke_executor(
@@ -7566,7 +7545,4 @@ if __name__ == "__main__":
                    cap_steps=args.cap_steps, verbose=args.verbose)
     print(f"\n>>> {log.final_message}\n")
     if args.verbose:
-        total_in = sum(s.llm_in_tokens for s in log.steps)
-        total_out = sum(s.llm_out_tokens for s in log.steps)
-        total_lat = sum(s.llm_latency_ms for s in log.steps)
-        print(f"--- log: {len(log.steps)} step, llm {total_in}->{total_out} toks in {total_lat}ms, turn {(log.ts_end - log.ts_start)*1000:.0f}ms, kind={log.final_kind}")
+        print(f"--- log: {len(log.steps)} step, turn {(log.ts_end - log.ts_start)*1000:.0f}ms, kind={log.final_kind}")

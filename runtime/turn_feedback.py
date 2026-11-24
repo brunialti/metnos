@@ -83,25 +83,6 @@ def _canonical_from_turn(turn: dict) -> Optional[str]:
     return None
 
 
-def _was_fast_path_hit(turn: dict) -> bool:
-    """True se il turno e' stato risolto da un replay fast-path/cache
-    (nessun llm_in_tokens > 0 sugli step iniziali eccetto final_answer).
-    Euristica: se tutti gli step pre-final hanno llm_latency_ms=0 e
-    llm_in_tokens=0, e' stato playback puro. Campo audit del record.
-    """
-    steps = turn.get("steps") or []
-    if not steps:
-        return False
-    non_final = [s for s in steps
-                 if isinstance(s, dict) and s.get("chosen_tool") != "final_answer"]
-    if not non_final:
-        return False
-    return all(
-        (s.get("llm_in_tokens") or 0) == 0 and (s.get("llm_latency_ms") or 0) == 0
-        for s in non_final
-    )
-
-
 def _owner_scoped_feedback(function):
     @functools.wraps(function)
     def guarded(turn_id: str, *args, **kwargs):
@@ -136,14 +117,12 @@ def apply_feedback(turn_id: str, action: str, by: str = "user") -> dict:
         return record
 
     canonical = _canonical_from_turn(turn)
-    fast_path_hit = _was_fast_path_hit(turn)
     effects: list[dict] = []
 
     record = {
         "turn_id": turn_id, "action": action, "by": by,
         "ts": time.time(),
         "canonical": canonical,
-        "fast_path_hit": fast_path_hit,
         "effects": effects,
     }
     # Registriamo user_query + tool-sequence in entrambi i casi (ok / error)
