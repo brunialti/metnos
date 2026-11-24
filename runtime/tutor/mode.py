@@ -141,7 +141,9 @@ def classify_mode_decision(query: str, lang: str, *,
 
     is_followup = False
     context = str(conversation_context or "").strip()
-    if context:
+    # Action and unknown decisions return to the engine before follow-up is
+    # consumed, so their optional relation would have no effect.
+    if context and mode not in {"ACT", "UNKNOWN"}:
         relation, relation_reason = _invoke_closed_classifier(
             prompt_name="tutor_relation",
             executor=_RELATION,

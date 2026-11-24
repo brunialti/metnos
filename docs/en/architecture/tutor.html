@@ -88,6 +88,11 @@ An explanation may enter Tutor. An observation enters only when one registered
 view covers all the requested data; otherwise it continues through the normal
 Metnos engine.</p>
 
+<p>Conversation context does not change this first decision. When the request
+is an action or the intent remains unclear, Tutor returns it to the engine
+without another classification of the context. Other modes retain the check
+that recognizes follow-up questions.</p>
+
 <p>Grammar alone is not enough. “Show me the Services page” asks for an
 explanation of an interface surface; “show me the files in my folder” asks for
 real data. The target of the request, not the verb by itself, determines the

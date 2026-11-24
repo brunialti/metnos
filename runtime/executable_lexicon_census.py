@@ -452,7 +452,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'tutor/compose.py': ('ab5dc6262535f3659e10bf10e4ab9adad817d3d540f96422d4255016388f249f', (('comparison', 1),)),
     'tutor/gaps.py': ('85ca449498b7ee28472aa9ec1c6b493ff7759a68f36d23b0d1667a0b3f8ccdf8', (('comparison', 5), ('helper-argument', 2))),
     'tutor/handoff.py': ('f7502bda22f0cf44cccf07cdffe13ceb4181a8475d95c4584e436bc567bb0be4', (('comparison', 4),)),
-    'tutor/mode.py': ('d3f587370d89e817e18a8d5260c45cf65e25d89f15d80646a10dbb2023ab87e2', (('comparison', 2),)),
+    'tutor/mode.py': ('14cfcce538b78e07dd6b5bbdb5951f277d036ab01fd4eeec2fd86a721c4d0f48', (('comparison', 2), ('membership', 1))),
     'tutor/obligations.py': ('d2a17a84b175d27f5b57976bd7766bd0f31b60aaac8aa6f5bca3055fde843830', (('comparison', 1),)),
     'tutor/observation_views.py': ('3800a490fdc8c89c20f8030237167c7197a8fa5a86b37a96f8091de813b2ffd1', (('comparison', 3), ('helper-argument', 5))),
     'tutor/probe_worker.py': ('e2a4791a0e052e3558cd10f721ac4edcc5f2ce438dfea73e82b6787c8dbe9ad6', (('comparison', 1), ('helper-argument', 1))),
