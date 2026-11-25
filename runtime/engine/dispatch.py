@@ -4989,19 +4989,22 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
 
     navigating_acts = [step for step in post_login_acts
                        if not _e_una_precondizione(step)]
+    site_tools = {"open_sites", "login_sites", "act_sites", "read_sites"}
+    site_source_positions = {pos for pos, step in enumerate(steps, start=1)
+                             if getattr(step, "tool", "") in site_tools}
     recovery_goal = ""
-    if (want_login and dropped_acts and not navigating_acts
+    if (want_login and want_read and not navigating_acts
             and not structured_record_request):
-        # A rejected download cannot stand in for navigation. Recover the
-        # record goal only from an extract explicitly consuming the site read.
-        reads = {pos for pos, step in enumerate(steps, 1) if step.tool == "read_sites"}
+        # Recover the goal even if the planner omitted navigation entirely.
+        # The site steps below all map to the same canonical read.
         goals = set()
         for pos, step in enumerate(steps, 1):
             if step.tool != "extract_entries":
                 continue
             refs = _step_refs(step.args)
             instruction = step.args.get("instruction")
-            if (len(refs) == 1 and refs <= reads and next(iter(refs)) < pos
+            if (len(refs) == 1 and refs <= site_source_positions
+                    and next(iter(refs)) < pos
                     and isinstance(instruction, str) and instruction.strip()):
                 goals.add(instruction.strip())
         if len(goals) == 1:
@@ -5181,10 +5184,7 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
     # scartava tutti: una richiesta «leggi dal sito e crea un foglio» terminava
     # quindi con la sola sintesi della pagina.
     canonical_pos = len(new_steps)
-    site_tools = {"open_sites", "login_sites", "act_sites", "read_sites"}
     web_tools = {"find_urls", "read_urls_html", "read_urls_pdf", "get_urls"}
-    site_source_positions = {pos for pos, step in enumerate(steps, start=1)
-                             if getattr(step, "tool", "") in site_tools}
     absorbed_web_positions: set[int] = set()
     # Follow the original dependency graph once in execution order. An
     # autonomous URL/query starts a separate source and its consumers stay.
