@@ -533,6 +533,10 @@ def _resolve_open_field(entries: list, dimension: str) -> str | None:
             for k in e.keys():
                 if isinstance(k, str) and k not in keys:
                     keys.append(k)
+    return _match_open_field(keys, dimension)
+
+
+def _match_open_field(keys: list[str], dimension: str) -> str | None:
     if not keys:
         return None
     d = (dimension or "").strip().lower()
@@ -548,15 +552,23 @@ def _resolve_open_field(entries: list, dimension: str) -> str | None:
     return None
 
 
+def _closed_classes(args: dict, dimension: str):
+    return args.get("classes") or list(DEFAULT_CLASSES.get(dimension) or [])
+
+
+def _record_field_possible(args: dict, fields: set[str], dimension: str) -> bool:
+    # The field set may include keys beyond the runtime's first 20 rows.
+    return bool(_closed_classes(args, dimension) or
+                _match_open_field([key for key in fields if key], dimension))
+
+
 def handle_classify_entries(args, *, verbose: bool = False) -> dict:
     entries = (args or {}).get("entries")
     if not isinstance(entries, list):
         return {"ok": False, "error": "missing or invalid 'entries' (must be a list)"}
 
     dimension = (args or {}).get("dimension") or "relevance"
-    classes = (args or {}).get("classes")
-    if not classes:
-        classes = list(DEFAULT_CLASSES.get(dimension) or [])
+    classes = _closed_classes(args or {}, dimension)
     # Dimensione APERTA (4/6): nessun set CHIUSO di classi (es. dimension=
     # 'sender'/'domain'/'topic' → valori illimitati, data-derivati).
     # classify_entries è per tassonomie chiuse; su un campo aperto NON va in
@@ -801,4 +813,5 @@ def classify(items, *, dimension: str = "relevance", classes: list | None = None
 BUILTIN_INPROC_SPECS = [{
     "name": "classify_entries", "tool_spec": CLASSIFY_ENTRIES_TOOL,
     "affinity": ["classifica", "categorizza", "classify", "categorize", "entries"],
+    "record_field_possible": _record_field_possible,
 }]

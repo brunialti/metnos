@@ -197,12 +197,20 @@ Controlla:</p>
  <li>tipi dei campi e argomenti obbligatori;</li>
  <li>vincoli <code>requires_one_of</code>;</li>
  <li><code>from_step</code> rivolti soltanto a passi precedenti;</li>
- <li>placeholder che il runtime possa risolvere.</li>
+ <li>placeholder che il runtime possa risolvere;</li>
+ <li>colonne richieste rispetto ai campi dichiarati lungo il ramo che produce le righe.</li>
 </ul>
 
 <p>Se trova un errore, il componente di proposta pu&ograve; essere invocato una volta
-escludendo l'impronta del piano non valido. Il nuovo candidato viene poi
-sottoposto di nuovo alle guardie deterministiche.</p>
+escludendo l'impronta del piano non valido e indicando gli errori concreti.
+Il nuovo candidato viene poi sottoposto di nuovo alle guardie deterministiche
+ed &egrave; accettato solo se gli errori diminuiscono. Una colonna dimostrata assente
+ferma il piano prima di qualunque passo, anche quando proviene dalla cache.
+Per i campi aggiunti solo in certi casi il validatore usa le condizioni
+della trasformazione. Gli esempi di uscita descrivono record possibili
+e lasciano aperto l'elenco dei campi. Le intestazioni che dipendono dai
+valori o dai ruoli effettivi restano al controllo del proiettore durante
+l'esecuzione.</p>
 
 <h1 id="cap10">9. L3: proposta, esecuzione e recupero</h1>
 

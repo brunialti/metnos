@@ -33,13 +33,13 @@ sys.path.insert(0, os.environ.get("METNOS_RUNTIME") or next(
     if (p / "runtime" / "config.py").is_file()))
 from messages import get as _msg  # noqa: E402
 from executor_helpers import run_stdio  # noqa: E402
-from backends.files import google_workspace, local  # noqa: E402
+from backends import load as _load_backend  # noqa: E402
+from backends.files import local  # noqa: E402
 
 # §10.3 self-hosted default: `local` (.xlsx/.csv su path). `google_workspace`
 # (Google Sheets, richiede spreadsheet_id Drive) e' opt-in.
 _HANDLERS = {
     "local": local,
-    "google_workspace": google_workspace,
 }
 
 
@@ -50,6 +50,8 @@ def invoke(args):
                 "results": [], "used": 0, "n_written": 0}
     client = args.get("client") or "local"
     backend = _HANDLERS.get(client)
+    if backend is None and client == "google_workspace":
+        backend = _load_backend("files", client)
     if backend is None:
         return {"ok": False,
                 "error": _msg("ERR_NOT_APPLICABLE", what=f"client '{client}'"),

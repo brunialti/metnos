@@ -2902,28 +2902,28 @@ def write_spreadsheet(args: dict) -> dict:
             prefixed_cells = active_cell_count(written_rows)
             with path.open(file_mode, newline="", encoding="utf-8") as fh:
                 csv.writer(fh).writerows(neutralized_rows(written_rows))
+        elif not existed:
+            # Reuse the dependency-free create path, including its readback.
+            created_out = create_spreadsheet({**args, "path": str(path),
+                                               "sheet_name": sheet_name or "Sheet"})
+            if not created_out.get("ok"):
+                return {**created_out, "n_written": 0}
         else:
             import openpyxl
-            if existed:
-                wb = openpyxl.load_workbook(str(path))
-                # A named sheet that is not there yet is added: writing it in
-                # the first sheet would replace the rows the person kept there.
-                ws = (wb.active if not sheet_name
-                      else _worksheet(wb, sheet_name) or wb.create_sheet(sheet_name[:31]))
-                if mode == "overwrite":
-                    ws.delete_rows(1, ws.max_row)
-                else:
-                    first_row_has_data = any(
-                        cell.value is not None
-                        for cell in next(ws.iter_rows(min_row=1, max_row=1), ()))
-                    if first_row_has_data:
-                        written_rows = _drop_declared_header(
-                            rows, args.get("columns"))
+            wb = openpyxl.load_workbook(str(path))
+            # A named sheet that is not there yet is added: writing it in
+            # the first sheet would replace the rows the person kept there.
+            ws = (wb.active if not sheet_name
+                  else _worksheet(wb, sheet_name) or wb.create_sheet(sheet_name[:31]))
+            if mode == "overwrite":
+                ws.delete_rows(1, ws.max_row)
             else:
-                wb = openpyxl.Workbook()
-                ws = wb.active
-                if sheet_name:
-                    ws.title = sheet_name[:31]
+                first_row_has_data = any(
+                    cell.value is not None
+                    for cell in next(ws.iter_rows(min_row=1, max_row=1), ()))
+                if first_row_has_data:
+                    written_rows = _drop_declared_header(
+                        rows, args.get("columns"))
             for r in written_rows:
                 ws.append(_xlsx_text_cells(ws, r))
             wb.save(str(path))

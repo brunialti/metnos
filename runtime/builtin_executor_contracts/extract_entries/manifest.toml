@@ -22,6 +22,12 @@ digest = "sha256:4c6a93766132be39bbd3a04d20216e16219c6dcfd2e67311466d3ae59118e4c
 type = "object"
 required = ["from_step"]
 
+[args.record_schema]
+fields_arg = "fields"
+extra_fields_args = ["audit_fields"]
+mapping_args = ["structured_map", "structured_defaults"]
+additional_fields = ["_source_path", "_source_name", "_source_mtime", "_source_sha256", "_source_content_sha256", "_source_readable", "_source_file_type", "_source_domain", "_duplicate_paths", "_parse_diagnostic", "_source_scope_label", "_relevance_anchors", "_source_time_mentions", "_record_rejected"]
+
 [args.properties.source_metadata]
 type = "array"
 runtime_resolved = true

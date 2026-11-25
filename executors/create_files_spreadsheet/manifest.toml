@@ -36,6 +36,9 @@ from_step_alternatives = ["values", "entries"]
 # forniti dalla query) invece di create (che chiedeva un title da inventare).
 requires_one_of = [["values", "entries", "from_step", "title", "path"]]
 
+[args.record_schema]
+label_arg = "sheet_name"
+
 [args.properties.source_metadata]
 type = "array"
 items = { type = "object" }

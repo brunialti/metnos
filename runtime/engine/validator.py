@@ -6,10 +6,11 @@ Cattura errori prima dell'esecuzione:
   - requires_one_of violato
   - from_step out-of-range
   - placeholder ${stepN.field} non risolvibile
+  - colonna non prodotta sul ramo che fornisce le righe
 
 Riusa `validate_args` esistente + catalog lookup. Il Validator è attivo per
-default; se viene disabilitato esplicitamente, gli errori vengono catturati
-dall'Executor a runtime con il costo di una chiamata LLM sprecata.
+default; il controllo delle colonne dimostrate assenti resta anche al confine
+comune di esecuzione, prima di qualunque passo.
 
 §7.9 deterministic: zero LLM. Lookup catalog + schema check.
 
@@ -23,10 +24,11 @@ from typing import Optional
 
 from from_step_projection import (
     carries_upstream_payload, missing_applicable_input_groups, projection_can_fill,
-    required_source_context_fields,
+    required_source_context_fields, has_explicit_from_step_alternative,
 )
 from manifest_rules import UNIVERSAL_ARGS
 from messages import get as _msg
+from tabular_projection import unproduced_headers
 
 from .types import Framework
 
@@ -36,7 +38,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class ValidationError:
     step_idx: int
-    code: str  # tool_unknown | invalid_args | from_step_invalid | requires_one_of_violated
+    code: str  # tool_unknown | invalid_args | from_step_invalid | column_not_produced
     detail: str
 
 
@@ -61,6 +63,53 @@ def _is_placeholder(value) -> bool:
     return False
 
 
+def _input_fields(args: dict, schema: dict, rows: list) -> Optional[set[str]]:
+    entries = args.get("entries")
+    if isinstance(entries, list) and entries and all(isinstance(row, dict) for row in entries):
+        return {key for row in entries for key in row if isinstance(key, str)}
+    source = args.get("from_step")
+    if (type(source) is int and 1 <= source <= len(rows)
+            and not has_explicit_from_step_alternative(args, schema)):
+        return rows[source - 1]
+    return None
+
+
+def _output_fields(args: dict, schema: dict, rows: list, executor) -> Optional[set[str]]:
+    """Follow only declared producers/transforms; unknown schemas stay unknown."""
+    policy = schema.get("record_schema") or {}
+    if policy.get("fields_arg"):
+        names = args.get(policy["fields_arg"])
+        if not isinstance(names, list) or not names or _is_placeholder(names):
+            return None
+        fields = {name for name in names if isinstance(name, str)}
+        for key in policy.get("extra_fields_args", []):
+            extra = args.get(key) or []
+            if not isinstance(extra, list) or _is_placeholder(extra):
+                return None
+            fields.update(name for name in extra if isinstance(name, str))
+        for key in policy.get("mapping_args", []):
+            mapping = args.get(key) or {}
+            if not isinstance(mapping, dict):
+                return None
+            fields.update(mapping)
+        return fields | set(policy.get("additional_fields", []))
+    if policy.get("preserves_input"):
+        incoming = _input_fields(args, schema, rows)
+        if incoming is None:
+            return None
+        fields = set(incoming)
+        key = policy.get("added_field_arg")
+        if key:
+            name = args.get(key) or policy.get("added_field_default")
+            if not isinstance(name, str) or _is_placeholder(name):
+                return None
+            possible = getattr(executor, "record_field_possible", None)
+            if possible is None or possible(args, incoming, name):
+                fields.add(name)
+        return fields
+    return None
+
+
 class Validator:
     """Typecheck framework prima di Executor.run()."""
 
@@ -72,15 +121,18 @@ class Validator:
 
     def check(self, framework: Framework) -> ValidationResult:
         errors: list[ValidationError] = []
+        rows: list[Optional[set[str]]] = []
         for i, step in enumerate(framework.steps, start=1):
             # Tool exist? (final_answer è virtual, ammesso)
             if step.tool == "final_answer":
+                rows.append(None)
                 continue
             exec_obj = self._catalog_by_name.get(step.tool)
             if exec_obj is None:
                 errors.append(ValidationError(
                     step_idx=i, code="tool_unknown",
                     detail=f"tool '{step.tool}' non nel catalog"))
+                rows.append(None)
                 continue
             # from_step bounds
             fs = step.args.get("from_step")
@@ -95,6 +147,21 @@ class Validator:
             if err:
                 errors.append(ValidationError(
                     step_idx=i, code="invalid_args", detail=err))
+            if not err and {"columns", "column_specs"} <= set(schema.get("properties") or {}):
+                fields = _input_fields(step.args, schema, rows)
+                if fields is not None and not _is_placeholder(step.args.get("column_specs") or
+                                                              step.args.get("columns")):
+                    missing = unproduced_headers(fields, step.args.get("columns"),
+                                                 step.args.get("column_specs"))
+                    if missing:
+                        label_arg = (schema.get("record_schema") or {}).get("label_arg")
+                        label = step.args.get(label_arg) if label_arg else None
+                        columns = ", ".join(missing)
+                        errors.append(ValidationError(i, "column_not_produced", _msg(
+                            "ERR_TABULAR_PROJECTION_AMBIGUOUS",
+                            columns=f"{label}: {columns}" if label else columns,
+                            fields=", ".join(sorted(fields)))))
+            rows.append(_output_fields(step.args, schema, rows, exec_obj))
         return ValidationResult(ok=not errors, errors=errors)
 
     @staticmethod

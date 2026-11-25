@@ -262,6 +262,8 @@ def _render_recovery_signal(intent: Intent, lang: str = "it") -> str:
     enter the prompt; no snippets or result URLs are included.
     """
     signal = getattr(intent, "_recovery_signal", None)
+    if isinstance(signal, dict) and signal.get("kind") == "plan_validation":
+        return "\n\n" + json.dumps({"invalid_plan": signal.get("errors", [])}, ensure_ascii=False)
     if isinstance(signal, dict) and signal.get("kind") == "partition_destination":
         from prompt_loader import get as _prompt_get
         # The public facts stay structural. Local repair supplies a bounded,

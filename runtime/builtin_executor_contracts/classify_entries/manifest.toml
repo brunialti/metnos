@@ -15,11 +15,16 @@ en = "SCOPO: Classifies entries into a closed set of classes. PATTERN: natural r
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:20707ffa3cac82b7c7623f053f3d09433145a46f0d0ad2f319d75c46ca2dfc44"
+digest = "sha256:d4c5c7d758380127e0a4af74c3a6e819125bfa94549ffc561f283776df76b462"
 
 [args]
 type = "object"
 required = ["from_step"]
+
+[args.record_schema]
+preserves_input = true
+added_field_arg = "dimension"
+added_field_default = "relevance"
 
 [args.properties.from_step]
 type = "integer"

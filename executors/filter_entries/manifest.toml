@@ -22,6 +22,9 @@ type     = "object"
 required = []
 requires_one_of = [["from_step", "entries"]]
 
+[args.record_schema]
+preserves_input = true
+
 [args.properties.source_metadata]
 type = "array"
 items = { type = "object" }

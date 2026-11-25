@@ -203,6 +203,7 @@ def _early_report(state: _State, result) -> dict:
         ("error", "terminator", "capability_missing"),
         ("needs_inputs", "record_kind", "missing_input"),
         ("error", "partition_destination", "wrong_args"),
+        ("error", "validator", "invalid_args"),
     }:
         raise MeasureError("measure_terminal_not_reached")
     # The terminator combines several refusals. Its text cannot disambiguate them.

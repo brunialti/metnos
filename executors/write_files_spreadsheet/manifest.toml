@@ -27,7 +27,7 @@ en = "SCOPO: writes a local sheet, creating it if missing. PATTERN: write_files_
 
 [code]
 files  = ["write_files_spreadsheet.py"]
-digest = "sha256:d66077763e6c22860a416820412c347a5e737a427100320432f314b88e361594"
+digest = "sha256:0609e9b6ae41e78ba58e05142e12556b52f49ca0021718ed0fc20815a1a0ce49"
 
 [args]
 type     = "object"
@@ -35,6 +35,9 @@ required = []
 # Una fonte dati fra: matrice diretta `values`, oppure `entries` (da `from_step`)
 # + `columns`. from_step soddisfa il vincolo (risolto a entries dal runtime).
 requires_one_of = [["values", "entries", "from_step"]]
+
+[args.record_schema]
+label_arg = "sheet_name"
 
 [args.properties.entries]
 type    = "array"
@@ -162,6 +165,11 @@ schema_inline = """
 [[capabilities]]
 name = "metnos:write"
 hint = ["spreadsheet:local"]
+
+[[capabilities]]
+name = "fs:write"
+hint = ["~/**", "/tmp/**"]
+when = { arg = "client", values = ["local"] }
 
 [[capabilities]]
 name = "provider:access"

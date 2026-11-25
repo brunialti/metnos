@@ -23,6 +23,9 @@ digest = "sha256:7847d28c286ef83dcd49518936f91b24f229bb0f9316c1c56f223d774f371ae
 type     = "object"
 required = ["entries", "by"]
 
+[args.record_schema]
+preserves_input = true
+
 [args.properties.entries]
 type        = "array"
 

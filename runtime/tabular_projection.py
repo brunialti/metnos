@@ -446,6 +446,21 @@ def compile_projection(entries: list[dict], columns: Iterable[str] | None = None
     return _legacy_projection(entries, headers, fields, field_roles)
 
 
+def unproduced_headers(fields: Iterable[str], columns=None, column_specs=None) -> tuple[str, ...]:
+    """Headers proved impossible from a declared record schema, without values.
+
+    Reuse the actual writer's identity resolution. A legacy semantic label may
+    still resolve from values or runtime roles: leave that decision to execution.
+    """
+    try:
+        compile_projection([dict.fromkeys(fields)], columns, column_specs)
+    except TabularProjectionError as error:
+        if column_specs:
+            return error.unresolved
+        return tuple(header for header in error.unresolved if not _concepts(header))
+    return ()
+
+
 def _transform(value: Any, operation: str) -> Any:
     if operation == "identity":
         return value

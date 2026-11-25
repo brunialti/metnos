@@ -15,7 +15,7 @@ Espone:
 import os
 import sys
 import tomllib
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -453,6 +453,15 @@ def builtin_contract_executor(name: str, module_path: Path,
     manifest, path, signed_by, generation_id, description, args_schema = (
         _localized_builtin_contract(name, module_path, current_lang=current_lang)
     )
+    record_field_possible = None
+    if ((args_schema.get("record_schema") or {}).get("added_field_arg")
+            and module_path.stem in _INPROC_TOOL_MODULE_PATHS):
+        module = _inproc_tool_module(module_path.stem)
+        if module_path == Path(module.__file__):
+            record_field_possible = next(
+                (spec.get("record_field_possible")
+                 for spec in getattr(module, "BUILTIN_INPROC_SPECS", ())
+                 if spec.get("name") == name), None)
     return Executor(
         name=name,
         version=str(manifest.get("version") or "1.0.0"),
@@ -494,6 +503,7 @@ def builtin_contract_executor(name: str, module_path: Path,
         intelligence=_intelligence_kind(manifest),
         transport="in-process",
         output_schema=_declared_output_schema(manifest),
+        record_field_possible=record_field_possible,
         execution_policy=_execution_policy(manifest),
         execution_policy_declared=isinstance(manifest.get("execution"), dict),
         presentation=_normalize_presentation(manifest),
@@ -919,6 +929,8 @@ class Executor:
     prerequisites: tuple[ExecutorPrerequisite, ...] = ()
     # A signed reference, never an executable plan supplied in observations.
     lre_plan: str = ""
+    # Optional pure check from the registered, verified builtin implementation.
+    record_field_possible: Callable[[dict, set[str], str], bool] | None = None
 
     def has_capability(self, name_prefix: str) -> bool:
         return any(c.get("name", "").startswith(name_prefix) for c in self.capabilities)

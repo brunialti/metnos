@@ -17,6 +17,7 @@ import os
 import re
 import time
 from contextvars import ContextVar
+from copy import copy
 from dataclasses import dataclass
 from functools import wraps
 from pathlib import Path
@@ -8593,6 +8594,11 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         catalog=catalog,
     )
 
+    def _column_errors(plan):
+        from .validator import Validator
+        return [error for error in Validator(catalog).check(plan).errors
+                if error.code == "column_not_produced"]
+
     def _execute_with_lre_boundary(
         framework_to_run: Framework,
     ) -> tuple[Optional[DispatchResult], Optional[RunResult]]:
@@ -8605,6 +8611,17 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         framework_to_run = _partition_plan_to_served_form(
             framework_to_run, catalog, query=query)
         _measure("observe", "normalize_partition_plan", framework_to_run)
+
+        # All routes (including cached plans and recovery) meet this boundary
+        # before any executor or durable admission can leave a partial result.
+        column_errors = _column_errors(framework_to_run)
+        if column_errors:
+            return DispatchResult(
+                final_text="\n".join(error.detail for error in column_errors),
+                final_kind="error", match_source="validator",
+                framework_hash=compute_framework_hash(framework_to_run),
+                elapsed_ms=int((time.time() - t_start) * 1000),
+                framework=framework_to_run, error_class="invalid_args"), None
 
         prohibited = _prohibited_plan_verbs(framework_to_run, query)
         if prohibited:
@@ -8816,6 +8833,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
             _turn_measure("L0", "ban")
             log.info("[L0 fastpath] REJECT: cached plan rejected by an accepted change")
             fp_hit = None
+        if fp_hit is not None and _column_errors(fp_hit.framework):
+            _fp.delete(fp_hit.fp_id)
+            fp_hit = None
         if fp_hit is not None:
             if verbose:
                 log.info("[L0 fastpath] hit (%s, sim=%.2f): %s",
@@ -8931,6 +8951,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
         if ap_hit is not None and _accepted_rejection(ap_hit.framework, query):
             _turn_measure("L1", "ban")
             log.info("[L1 autopath] REJECT: cached plan rejected by an accepted change")
+            ap_hit = None
+        if ap_hit is not None and _column_errors(ap_hit.framework):
             ap_hit = None
         if ap_hit is not None:
             if verbose:
@@ -9135,8 +9157,14 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                           len(vres.errors))
             failed_hash = compute_framework_hash(framework)
             _turn_measure("proposal", "validator")
+            repair_intent = copy(intent)
+            repair_intent._recovery_signal = {
+                "kind": "plan_validation",
+                "errors": [{"step": error.step_idx, "code": error.code,
+                            "detail": error.detail[:2000]} for error in vres.errors[:8]],
+            }
             framework2 = proposer.propose(
-                query=query, intent=intent, pool=pool_names,
+                query=query, intent=repair_intent, pool=pool_names,
                 excluded_hashes=excluded | {failed_hash},
                 llm_call=llm_call_wise, lang=lang, catalog=catalog,
                 prior_steps=seed_state or ())
@@ -9148,9 +9176,8 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 # specifico). Ri-applicale — sono idempotenti.
                 framework2 = _apply_deterministic_structure_guards(
                     framework2, intent, query, catalog)
-                # La ri-proposta si accetta solo se MIGLIORA. Il re-propose e'
-                # cieco (esclude l'hash fallito, non dice che cosa non andava),
-                # quindi puo' tornare un piano diverso e peggiore: misurato il
+                # La ri-proposta si accetta solo se MIGLIORA: anche col motivo
+                # concreto puo' tornare un piano diverso e peggiore, misurato il
                 # 6/8 su «trova i file .md ... e leggili», dove il piano scartato
                 # era corretto e il rifatto sceglieva find_files_hash (duplicati)
                 # → «Nessun risultato trovato». Stesso criterio del re-propose

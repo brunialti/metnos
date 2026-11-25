@@ -187,12 +187,19 @@ anti-autopath; later positive feedback can remove the corresponding exclusion.</
  <li>field types and required arguments;</li>
  <li><code>requires_one_of</code> constraints;</li>
  <li><code>from_step</code> references to earlier steps only;</li>
- <li>placeholders that the runtime can resolve.</li>
+ <li>placeholders that the runtime can resolve;</li>
+ <li>requested columns against the declared fields along the branch producing the rows.</li>
 </ul>
 
 <p>If it finds an error, the proposal component may be called once with the
-invalid plan's fingerprint excluded. The new candidate then crosses the
-deterministic guards again.</p>
+invalid plan's fingerprint excluded and the concrete errors supplied.
+The new candidate then crosses the deterministic guards again and is accepted
+only if its error count decreases. A column proved absent stops the plan before
+any step, including plans retrieved from a cache. For a field that a
+transformation adds conditionally, the validator uses the conditions of
+the transformation. Output examples leave the list of fields open.
+Headers that depend on actual
+values or roles remain subject to the projector's checks during execution.</p>
 
 <h1 id="cap10">9. L3: proposal, execution, and recovery</h1>
 
