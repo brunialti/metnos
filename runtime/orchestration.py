@@ -2114,7 +2114,7 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
                         on_complete.get("source_request_id") or ""),
                     "target_device": device or "",
                 })
-        if getattr(run, "gate_dialog_id", ""):
+        if run.final_kind == "ask" or getattr(run, "gate_dialog_id", ""):
             from engine.dispatch import _inject_gate_resume_if_paused
             _inject_gate_resume_if_paused(
                 run, on_complete.get("original_query") or "",
@@ -2132,6 +2132,19 @@ def _resume_executor_gate_tail(on_complete: dict, values: dict, *,
         last_result = (run.steps[-1].result
                        if run.steps and isinstance(run.steps[-1].result, dict)
                        else {})
+        if last_result.get("decision") == "needs_inputs":
+            sender = f"{channel or 'http'}:{actor or 'host'}"
+            if on_complete.get("conversation_id"):
+                sender += f":{on_complete['conversation_id']}"
+            dialog = orchestrate_needs_inputs(
+                last_result, sender_id=sender, actor=actor or "host",
+                channel=channel or "http", origin_turn_id=continuation_id,
+                owner_user_id=str(on_complete.get("owner_user_id") or ""))
+            if not isinstance(dialog, dict) or not dialog.get("ok"):
+                return complete(_shape_result_for_chat(dialog), run=run,
+                                failure=dialog or {"ok": False})
+            return complete(dialog.get("final_message_hint")
+                            or _msg("MSG_ORCH_DIALOG_DONE"), run=run)
         # La presentazione dichiarata dall'executor e' piu' informativa del
         # bullet generico di una entry tecnica sites (solo session_id/stato).
         if last_result.get("final_message_hint"):

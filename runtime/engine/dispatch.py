@@ -9353,10 +9353,9 @@ def run_turn(*, query: str, intent: Intent, catalog: list,
                 durable, run2 = _execute_with_lre_boundary(framework_alt)
                 if durable is not None:
                     return durable
-                # Gate in PAUSA (final_kind='ask' + gate_dialog_id): la pipeline
-                # attende il consenso umano → cabla il resume e ritorna la
-                # richiesta d'input, NON un errore. §2.11.
-                if getattr(run2, "gate_dialog_id", ""):
+                # Any input pause keeps the recovered plan's tail, including
+                # executor-owned forms that have no gate_dialog_id.
+                if run2.final_kind == "ask" or getattr(run2, "gate_dialog_id", ""):
                     _inject_gate_resume_if_paused(
                         run2, query, runtime_ctx, framework=framework_alt, catalog=catalog)
                     return DispatchResult(
