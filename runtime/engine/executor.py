@@ -925,15 +925,17 @@ def _referenced_producer(step, history: list):
     if isinstance(fs, str) and fs.isdigit():
         fs = int(fs)
     if isinstance(fs, int):
-        prod = next((s for s in history
-                     if getattr(s, "step_idx", None) == fs), None)
-        if prod is None and 1 <= fs <= len(history):
-            prod = history[fs - 1]
-        return prod
+        if 1 <= fs <= len(history):
+            producer = history[fs - 1]
+            if getattr(producer, "kind", None) != "skipped":
+                return producer
+        return None
     # Gli entries-consumer senza from_step vengono auto-cablati dall'ultimo
     # carrier a monte: replica la stessa scelta per la provenienza.
     if getattr(step, "tool", "") in _PATH_PRESERVING_TRANSFORMS:
         for prod in reversed(history):
+            if getattr(prod, "kind", None) == "skipped":
+                continue
             res = prod.result if isinstance(prod.result, dict) else {}
             if isinstance(res.get("entries"), list):
                 return prod
@@ -958,11 +960,10 @@ def _referenced_steps(args: object, history: list) -> list:
     numbers += [int(m.group(1)) for m in _STEP_REF_RE.finditer(blob)]
     steps: list = []
     for n in dict.fromkeys(numbers):
-        prod = next((s for s in history if getattr(s, "step_idx", None) == n), None)
-        if prod is None and 1 <= n <= len(history):
+        if 1 <= n <= len(history):
             prod = history[n - 1]
-        if prod is not None and prod not in steps:
-            steps.append(prod)
+            if getattr(prod, "kind", None) != "skipped" and prod not in steps:
+                steps.append(prod)
     return steps
 
 
@@ -1462,7 +1463,8 @@ def _resolve_one_filler(name: str, spec, llm_call: Optional[Callable],
 
 # ── Step condition (skip-guard) ───────────────────────────────────────────
 
-def _mutating_input_is_empty(step: StepSpec, history: list[StepRun]) -> bool:
+def _mutating_input_is_empty(step: StepSpec, history: list[StepRun], *,
+                             reference_steps: list[StepRun] | None = None) -> bool:
     """True se `step` e' un MUTANTE che CONSUMA una lista d'input (from_step /
     entries / template / entries-consumer) e tale lista e' VUOTA.
 
@@ -1488,8 +1490,9 @@ def _mutating_input_is_empty(step: StepSpec, history: list[StepRun]) -> bool:
             idx = int(fs) - 1
         except (TypeError, ValueError):
             return False
-        if 0 <= idx < len(history):
-            res = history[idx].result if isinstance(history[idx].result, dict) else {}
+        slots = history if reference_steps is None else reference_steps
+        if 0 <= idx < len(slots):
+            res = slots[idx].result
             return not _step_list_payload(res)
         return False
     if isinstance(args.get("entries"), list):
@@ -1500,29 +1503,29 @@ def _mutating_input_is_empty(step: StepSpec, history: list[StepRun]) -> bool:
     return False
 
 
-def _step_condition_passes(step: StepSpec, history: list[StepRun]) -> bool:
+def _step_condition_passes(step: StepSpec, history: list[StepRun], *,
+                           reference_steps: list[StepRun] | None = None) -> bool:
     """Skip-guard di uno step. Due regole:
     1. opt-in: step.if_prev_entries_nonempty=True + producer referenziato
        vuoto (oppure ultimo step per il solo auto-wire).
     2. AUTO (strutturale): mutante che consuma una lista d'input VUOTA."""
     if step.if_prev_entries_nonempty:
-        if not history:
+        slots = history if reference_steps is None else reference_steps
+        if not slots:
             return True
-        producer = history[-1]
+        producer = history[-1] if history else None
         source = (step.args or {}).get("from_step")
         if source is not None:
             try:
                 source_index = int(source) - 1
             except (TypeError, ValueError):
                 source_index = -1
-            if 0 <= source_index < len(history):
-                producer = history[source_index]
-        result = producer.result if isinstance(producer.result, dict) else {}
-        if not _step_list_payload(result):
+            if 0 <= source_index < len(slots):
+                producer = slots[source_index]
+        if producer is not None and not _step_list_payload(producer.result):
             return False
-    if _mutating_input_is_empty(step, history):
-        return False
-    return True
+    return not _mutating_input_is_empty(
+        step, history, reference_steps=reference_steps)
 
 
 # ── Final message renderer ────────────────────────────────────────────────
@@ -1556,17 +1559,21 @@ def _render_final_message(template: str, history: list[StepRun]) -> str:
         # Universal §7.9: se entries non vuote → render summary (auto entries
         # list, no placeholder count). Se result ha "summary" pre-rendered →
         # usa quello. Else count fallback.
-        last = history[-1]
+        last_index = next((i for i in range(len(history), 0, -1)
+                           if getattr(history[i - 1], "kind", None) != "skipped"), 0)
+        if not last_index:
+            return ""
+        last = history[last_index - 1]
         r = last.result if isinstance(last.result, dict) else {}
         if isinstance(r.get("summary"), str) and r["summary"].strip():
-            template = f"${{step{last.step_idx}.summary}}"
+            template = f"${{step{last_index}.summary}}"
         elif "entries" in r and isinstance(r["entries"], list) and r["entries"]:
             # Trigger auto-render via summary path (None → entries list)
-            template = f"${{step{last.step_idx}.summary}}"
+            template = f"${{step{last_index}.summary}}"
         elif "value" in r:
-            template = f"${{step{last.step_idx}.value}}"
+            template = f"${{step{last_index}.value}}"
         else:
-            template = f"${{step{last.step_idx}.@count}}"
+            template = f"${{step{last_index}.@count}}"
     if not template:
         return ""
     def _sub_one(result, path, *, step):
@@ -2197,7 +2204,8 @@ def _presentation_tokens(presentation: dict | None, *, wide: bool) -> int:
 
 def _finalize_answer_text(framework, steps: list, query: str,
                           llm_fast, presentation: dict | None = None, *,
-                          empty_mutation_skipped: bool = False) -> str:
+                          empty_mutation_skipped: bool = False,
+                          reference_steps: list[StepRun] | None = None) -> str:
     """FINALIZER unico (ADR 0177 T5, CP2·M2): l'UNICA fonte del testo di un
     turno `answer`. Strategia dichiarata, in ordine:
 
@@ -2236,22 +2244,34 @@ def _finalize_answer_text(framework, steps: list, query: str,
     if receipt:
         return receipt
     if empty_mutation_skipped:
-        # The actual skip guard, rather than the wording of a proposed
-        # template, establishes that the requested effect did not take place.
+        # A skipped branch does not erase effects completed by other branches.
+        from pipeline_effects import pipeline_effect_counts
+
+        mutations = 0
+        for step in reversed(steps):
+            counts = pipeline_effect_counts([step])
+            if counts and counts["mutations"]:
+                hint = _last_self_presentation([step])
+                if hint:
+                    return hint
+                mutations += counts["mutations"]
+        if mutations:
+            return _msg("MSG_DEGENERATE_FINAL_MUTATIONS", n=mutations)
         return _deterministic_zero_result(steps) or _msg("MSG_NO_RESULTS")
     # A terminal content projection carries external text, not another
     # template.  Do not expand literal ${...}/{{...}} found in a file or
     # reinterpret numeric/empty content as a count or failed rendering.
     content_ref = _STEPREF_RE.fullmatch(framework.final_message or "")
+    slots = steps if reference_steps is None else reference_steps
     if content_ref and content_ref.group(2) == "@content":
         position = int(content_ref.group(1)) - 1
-        if 0 <= position < len(steps) and steps[position].ok:
-            result = steps[position].result
+        if 0 <= position < len(slots) and slots[position].ok:
+            result = slots[position].result
             if isinstance(result, dict):
                 content = _read_content(result)
                 if content or isinstance(result.get("content"), str):
                     return content
-    rendered = _render_final_message(framework.final_message, steps)
+    rendered = _render_final_message(framework.final_message, slots)
     # 2. count-only → bullets (universal §7.9)
     if steps:
         last_res = steps[-1].result
@@ -2732,6 +2752,12 @@ class Executor:
         # le consuma. Copia per-run: il recovery ri-esegue con lo stesso seed.
         if self.seed_steps:
             result.steps = list(self.seed_steps)
+        reference_steps = list(result.steps)
+
+        def record(observation: StepRun) -> None:
+            result.steps.append(observation)
+            reference_steps.append(observation)
+
         result.framework_hash = compute_framework_hash(framework)
         t_start = time.time()
         _parallel_pending: dict[int, _ParallelCall] = {}
@@ -2767,8 +2793,16 @@ class Executor:
                 break
 
             # Branching: skip se condizione step non passa
-            if not _step_condition_passes(step, result.steps):
-                empty_mutation_skipped |= _mutating_input_is_empty(step, result.steps)
+            if not _step_condition_passes(
+                    step, result.steps, reference_steps=reference_steps):
+                empty_mutation_skipped |= _mutating_input_is_empty(
+                    step, result.steps, reference_steps=reference_steps)
+                # Keep the plan position without recording an invocation or effect.
+                reference_steps.append(StepRun(
+                    step_idx=i + 1, tool=step.tool, args={}, result={"entries": []},
+                    ok=False, latency_ms=0, kind="skipped",
+                ))
+                result.skipped_step_count += 1
                 continue
 
             # Dedup «semina» (ADR 0177 M1, §7.9 backstop deterministico): se
@@ -2794,7 +2828,8 @@ class Executor:
                 result.final_text = _finalize_answer_text(
                     framework, result.steps, query, self.llm_fast,
                     presentation=(runtime_ctx or {}).get("presentation"),
-                    empty_mutation_skipped=empty_mutation_skipped)
+                    empty_mutation_skipped=empty_mutation_skipped,
+                    reference_steps=reference_steps)
                 result.final_kind = "answer"
                 break
 
@@ -2851,21 +2886,22 @@ class Executor:
                 log.warning("Executor: %s names the rows of step %s twice, "
                             "differently: not run", step.tool,
                             _step_args.get("from_step"))
-                result.steps.append(StepRun(
+                record(StepRun(
                     step_idx=len(result.steps) + 1, tool=step.tool,
                     args=_step_args, ok=False, latency_ms=0, result=_refusal))
                 continue
             # Resolve in ordine: from_step → stepref → fillers → runtime
             args = _resolve_from_step(
-                _step_args, result.steps,
+                _step_args, reference_steps,
                 consumer_schema=self._schema_map.get(step.tool))
             if step.tool == "filter_entries":
                 source_pos = _step_args.get("from_step")
                 if isinstance(source_pos, str) and source_pos.isdigit():
                     source_pos = int(source_pos)
                 if (isinstance(source_pos, int)
-                        and 1 <= source_pos <= len(result.steps)
-                        and result.steps[source_pos - 1].tool == "extract_entries"):
+                        and 1 <= source_pos <= len(reference_steps)
+                        and reference_steps[source_pos - 1].tool == "extract_entries"
+                        and reference_steps[source_pos - 1].kind != "skipped"):
                     from filter_field_resolver import (
                         resolve_period_filter_field, site_collection_periods,
                     )
@@ -2878,7 +2914,7 @@ class Executor:
                     periods = site_collection_periods(plan_steps, source_pos, query)
                     if periods:
                         args = resolve_period_filter_field(
-                            args, result.steps[source_pos - 1].result, periods)
+                            args, reference_steps[source_pos - 1].result, periods)
             _context_errors = args.pop(
                 _FROM_STEP_CONTEXT_ERRORS_KEY, None)
             if isinstance(_context_errors, list) and _context_errors:
@@ -2888,8 +2924,8 @@ class Executor:
                     # The consumer has not run: ask which identity is meant.
                     log.info("Executor: %s asks to choose an identity",
                              step.tool)
-                    result.steps.append(StepRun(
-                        step_idx=len(result.steps) + 1, tool=step.tool,
+                    record(StepRun(
+                        step_idx=i + 1, tool=step.tool,
                         args=args, result=_choice, ok=False, latency_ms=0,
                     ))
                     result.final_kind = "ask"
@@ -2920,7 +2956,7 @@ class Executor:
                     "Executor: %s ambiguous required source context: %s",
                     step.tool, fields)
                 step_idx = len(result.steps) + 1
-                result.steps.append(StepRun(
+                record(StepRun(
                     step_idx=step_idx, tool=step.tool, args=args,
                     result=failure, ok=False, latency_ms=0,
                 ))
@@ -2997,7 +3033,7 @@ class Executor:
                         args["entries"] = _pe
                         break
             question_template = args.get("prompt") if step.tool == "get_approval" else None
-            args = _resolve_stepref(args, result.steps, self._schema_map.get(step.tool))
+            args = _resolve_stepref(args, reference_steps, self._schema_map.get(step.tool))
             args = _resolve_fillers(args, framework.fillers, self.llm_fast, query)
             args = _resolve_runtime_placeholders(args, runtime_ctx or {})
             if question_template:
@@ -3014,9 +3050,9 @@ class Executor:
                         target = self._catalog_map.get(following.tool)
                         if target is None:
                             continue
-                        preview_args = _resolve_from_step(dict(following.args or {}), result.steps,
+                        preview_args = _resolve_from_step(dict(following.args or {}), reference_steps,
                             consumer_schema=self._schema_map.get(following.tool))
-                        preview_args = _resolve_stepref(preview_args, result.steps,
+                        preview_args = _resolve_stepref(preview_args, reference_steps,
                             self._schema_map.get(following.tool))
                         preview, refused = server_filesystem.fixed_refusal_preview(
                             runtime_ctx.get("owner_user_id") or runtime_ctx.get("actor") or "host",
@@ -3025,7 +3061,7 @@ class Executor:
                             break
                 options = {"fixed_note": preview, "refused_files": refused} if preview else {}
                 args["prompt"] = _partition_question_text(
-                    question_template, args.get("prompt"), result.steps, **options)
+                    question_template, args.get("prompt"), reference_steps, **options)
             # Resolver EXEC-ONLY (backend/self_recipient/calendar): dipendono da
             # runtime ctx/creds → override deterministico LLM-invisibile. Registro
             # ArgTransform scope="exec-only" (ADR 0155/0163/0136; razionali
@@ -3125,7 +3161,7 @@ class Executor:
                     skip_result["skipped"] = skip_reason
                     lat_ms = 0
                     step_idx = len(result.steps) + 1
-                    result.steps.append(StepRun(
+                    record(StepRun(
                         step_idx=step_idx, tool=step.tool, args=args,
                         result=skip_result,
                         ok=True, latency_ms=lat_ms,
@@ -3172,7 +3208,7 @@ class Executor:
                 # Salta invoke, lascia auto-remediation o errore propagare
                 lat_ms = 0
                 step_idx = len(result.steps) + 1
-                result.steps.append(StepRun(
+                record(StepRun(
                     step_idx=step_idx, tool=step.tool, args=args,
                     result=r, ok=False, latency_ms=lat_ms,
                 ))
@@ -3201,7 +3237,7 @@ class Executor:
                     log.info("[scheduled-notify-guard] skip %s: pipeline a "
                              "vuoto, notifica soppressa (run schedulato, §2.8)",
                              _exec_tool)
-                    result.steps.append(StepRun(
+                    record(StepRun(
                         step_idx=i + 1, tool=_exec_tool, args=args,
                         result={"ok": True, "ok_count": 0,
                                 "skipped": "scheduled_noop_notify",
@@ -3293,7 +3329,7 @@ class Executor:
                 if not _ok_g:
                     log.warning("[vaglio guard] BLOCCO pre-invoke %s: %s",
                                 _exec_tool, _why_g)
-                    result.steps.append(StepRun(
+                    record(StepRun(
                         step_idx=i + 1, tool=_exec_tool, args=args,
                         result={"ok": False, "error_class": "vaglio_guard",
                                 "error": _why_g or "forbidden"},
@@ -3309,7 +3345,7 @@ class Executor:
             # Producer via from_step:N O placeholder ${stepN}/{{stepN}} (§4.1).
             # Marker letto e rimosso da invoke_executor prima del placement.
             if (_parallel_call is None
-                    and _references_server_producer(step, result.steps)):
+                    and _references_server_producer(step, reference_steps)):
                 args = {**args, "_colocate_server": True}
             from execution_effects import resolve_execution_effect
             _execution_effect = resolve_execution_effect(
@@ -3401,12 +3437,12 @@ class Executor:
                 except Exception as _rse:
                     log.debug("remember_scope_args noop: %r", _rse)
 
-            _shown_as = _inherited_presentation(_step_args, result.steps, r)
+            _shown_as = _inherited_presentation(_step_args, reference_steps, r)
             if _shown_as:
                 r = {**r, "_presentation_contract": _shown_as}
 
             _host = (r.get("_ran_on_device") or "server") if isinstance(r, dict) else "server"
-            _data_host = _data_host_for_step(step, result.steps, _host)
+            _data_host = _data_host_for_step(step, reference_steps, _host)
             from frozen_plan_consent import prepare_resume, redact_args, redact_result
             _frozen_plan_resume = prepare_resume(
                 self._catalog_map.get(_exec_tool), args, r)
@@ -3417,7 +3453,7 @@ class Executor:
                           host=_host, data_host=_data_host,
                           execution_effect=_execution_effect,
                           frozen_plan_resume=_frozen_plan_resume)
-            result.steps.append(sr)
+            record(sr)
             if sr.ok:
                 result.ok_count += 1
 
@@ -3515,7 +3551,8 @@ class Executor:
             result.final_text = _finalize_answer_text(
                 framework, result.steps, query, self.llm_fast,
                 presentation=(runtime_ctx or {}).get("presentation"),
-                empty_mutation_skipped=empty_mutation_skipped)
+                empty_mutation_skipped=empty_mutation_skipped,
+                reference_steps=reference_steps)
         if result.final_kind == "answer":
             notices = list(dict.fromkeys(
                 row.result["_list_partial_notice"] for row in result.steps

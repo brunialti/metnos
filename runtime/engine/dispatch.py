@@ -8156,6 +8156,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
     # stateful (per esempio un codice monouso nel browser). Se il callback
     # rilancia lo stesso executor, conserva la coda sul result osservato invece
     # di rieseguire l'intera query e perdere sessione/cursor/handle.
+    history_start = 1 + getattr(run, "skipped_step_count", 0)
     if run and framework is not None:
         paused_input = next((
             step for step in reversed(getattr(run, "steps", []) or [])
@@ -8200,7 +8201,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
                     and callback.get("executor") == paused_tool)):
                 paused_idx = int(getattr(paused_input, "step_idx", 0) or 0)
                 history_pos = next(
-                    (pos for pos, item in enumerate(run.steps, start=1)
+                    (pos for pos, item in enumerate(run.steps, start=history_start)
                      if item is paused_input), paused_idx)
                 max_history_pos = (
                     history_pos + len(framework.steps) - paused_idx)
@@ -8366,7 +8367,7 @@ def _inject_gate_resume_if_paused(run, query: str, runtime_ctx,
             # posizione reale nella history: dopo il nuovo consenso quel result
             # diventera' il seed 1 e tutta la coda traslera' di conseguenza.
             history_pos = next(
-                (pos for pos, item in enumerate(run.steps, start=1)
+                (pos for pos, item in enumerate(run.steps, start=history_start)
                  if item is paused), paused_idx)
             max_history_pos = history_pos + len(framework.steps) - paused_idx
             idx_map = {old: old - history_pos + 1

@@ -171,6 +171,8 @@ class RunResult:
     # persistere il contesto di ripresa nel dialog (on_complete
     # resume_engine_gate); "" se nessun gate in pausa.
     gate_dialog_id: str = ""
+    # Skipped plan slots before a pause, excluded from reported observations.
+    skipped_step_count: int = 0
 
 
 # ── Structural error vocabulary and replanning policy (§7.3) ─────────────
