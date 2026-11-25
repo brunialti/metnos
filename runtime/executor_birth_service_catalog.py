@@ -493,10 +493,8 @@ SERVICE_SOURCE_V1 = tuple(sorted((
             "runtime.metnos_http_server", "--host", "0.0.0.0", "--port", "8770",
             environment=_target_environment(
                 *_TARGET_DATA_ENVIRONMENT_V1,
-                ("METNOS_ENGINE", "v3"),
                 ("METNOS_EXECUTOR_MAX_CLASS", "3"),
                 ("METNOS_EXECUTOR_PARALLEL", "1"),
-                ("METNOS_INTENT_CLASSIFIER", "1"),
                 ("METNOS_PREFILTER_RULES", "1"),
                 ("METNOS_PROPOSER_FAST_CONFIDENCE", "0.70"),
                 ("METNOS_PROPOSER_GRAMMAR", "1"),

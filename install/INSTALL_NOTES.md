@@ -449,8 +449,9 @@ llama_bin = "/srv/metnos-engines/llama/bin/llama-server"
 
 ### 5.13 Private runtime settings
 
-The signed HTTP unit selects `METNOS_ENGINE=v3` and inherits no extra environment. Instance
-choices go in `runtime.toml`, so that no personal account name enters the public catalog.
+The HTTP unit does not select a runtime engine; the runtime has one engine. The signed unit
+inherits no extra environment. Instance choices go in `runtime.toml`, so that no personal
+account name enters the public catalog.
 Defaults when a key is absent:
 
 ```toml

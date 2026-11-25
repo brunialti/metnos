@@ -568,10 +568,12 @@ def test_renderer_domain_rejects_ambiguous_multi_value_tokens(name, values) -> N
         ])
 
 
-def test_signed_http_target_preserves_the_production_v3_engine() -> None:
+def test_signed_http_target_omits_unused_environment_declarations() -> None:
     entry = next(item for item in _entries() if item.entry_id == "service-http")
     environment = {item.name: item.value for item in entry.target_environment}
-    assert environment["METNOS_ENGINE"] == "v3"
+    assert "METNOS_ENGINE" not in environment
+    assert "METNOS_INTENT_CLASSIFIER" not in environment
+    assert environment["METNOS_PROPOSER_VERB_FILTER"] == "1"
 
 
 def test_signed_durable_target_uses_the_central_scheduler_without_fixed_lanes():

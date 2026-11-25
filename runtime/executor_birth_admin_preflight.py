@@ -251,41 +251,41 @@ _SERVICE_BOUNDING_STATUS_V1 = {
 # required unit that stops took the whole stack down and nothing started it
 # again. Only that relation changes; commands, users and privileges do not.
 _EXPECTED_SERVICE_SOURCE_IDENTITY_V1 = (
-    "sha256:1f0145d06f0e82e64d4e377ef8b05215a87ec4d60e55d195b96c26d726e14522"
+    "sha256:6048ca721f17276415640219a494195d20ed536a7baf1230ef3c3503fd16e19a"
 )
 # Reviewed fixed recipes for optional remote companions. These pins are never
 # computed from a candidate in the administrative process.
 _EXPECTED_REMOTE_SERVICE_SOURCE_IDENTITIES_V1 = {
     ('llm',):
-        'sha256:5cdaea40b8af6cbffe62747cc470d439293f91499db636ba1bd3b6638c298e74',
+        'sha256:8aa70629c1c99b4474149a85d5d61674de6a755429b2983117fae03cb0d842f0',
     ('photon',):
-        'sha256:c6c3a439cbe4b1a95686095acb35528ea3aeb85620412ce51f0ab75012f2831f',
+        'sha256:a26e1de3c2c393a99e1b835d83b822c77be40f44b465cd237791010fc06d1b6b',
     ('playwright',):
-        'sha256:9ec5c8acec297798a1f3e620238de787eca22b0101afd75b4537ad6ce6084de5',
+        'sha256:a7fc2f50e0878b8bf889f85d52c95bcfb7eede06fdf27cb8bf55945e1eb59efb',
     ('searxng',):
-        'sha256:ea78189854b401ac2ada45e1adf654071fc08ff81dada64903dec8c391d1d9af',
+        'sha256:1fca7336688d33b94c722650f71b77b9858b44b1b0ea148e8cd60e6b61e91c6a',
     ('llm', 'photon'):
-        'sha256:73c5111505fa10c24fe67abb9e62b18265b3f64dda62154c49e6c03b2c6773cb',
+        'sha256:53b49580de37cf7af4a618778b9f4b8de18568ae60835cdf9c45f33ddbdeed3c',
     ('llm', 'playwright'):
-        'sha256:aa507f51629a498463a86ea06f617242c3b6f93828b04b113c66e924d8a71c07',
+        'sha256:55694244ae820e1582fc65ef453a04a8ff3b1e3ddef401a6bb022485f74a770e',
     ('llm', 'searxng'):
-        'sha256:fa6dc01ec04a40ef3e943390102cb8902128c1938913fed6a42b0a000e179532',
+        'sha256:d0b15a0c750079602aa08f63d763022a5014e47096c990c17bf93437455da927',
     ('photon', 'playwright'):
-        'sha256:a69539d3792f0852f16db2143bc4390735f75ee344cf4dcfac859d25976cb44b',
+        'sha256:c1d1ab770674fcb7480af222ba5d2b8665365dc81769a1c42ef3bfaef6b81431',
     ('photon', 'searxng'):
-        'sha256:e37f46f99e98db853f8be15921525216e28f41b03e9cda8013198102d4dcf510',
+        'sha256:4fa9a4aaf4bb09d0ffc563de7d66ed792c26cd99b3db0e9c353391913b3ca487',
     ('playwright', 'searxng'):
-        'sha256:68add83b9a6a76abdeaa452b99822f364dfa8102256b105e8f633db7a1e0c3fb',
+        'sha256:22ddb9405fac13127699ce1965eb0896f05b9ea4bfe046ed9d544efa17d4acff',
     ('llm', 'photon', 'playwright'):
-        'sha256:ec0ad878ee5c82714b2210e521bb1cbb6f73c72ee8fbfcea73a7d56e1e85ed3c',
+        'sha256:1248e9e4e17d77cc08007b83a5c2f652d0c9f917d4aa6d616ccf859823fb3a60',
     ('llm', 'photon', 'searxng'):
-        'sha256:c03c59bc41b5f0f0924f5b6b1f717fc2031f81d5c59bcb1f2e34774f5e9dcf7a',
+        'sha256:82faa9299c759ae5d56838dc3b92b668cd949c794cffe8c283de4dc0ccca25a3',
     ('llm', 'playwright', 'searxng'):
-        'sha256:3cf90062a74b195432206005af7497e7028bf510d8719346fae595cd31c925cf',
+        'sha256:225a0ad4d7cb6796d72adf11668b8226a4378d903bcf6e17a130264228b2b60a',
     ('photon', 'playwright', 'searxng'):
-        'sha256:e162b8a5ec343fa1c81f3b58090a2ee240286e94fb24c22849bf58f05ae65f9d',
+        'sha256:8802f978375b042522b5fc8c08c78063a3feb9a411a5e1498c83ce0c21ff0c10',
     ('llm', 'photon', 'playwright', 'searxng'):
-        'sha256:6f2ffe579d6db7366698773bc0658c847eef303555217a11e02d2566dfb1a4dc',
+        'sha256:9207f2c6d9a7032209ac73bf5e4f38069e04dd2e74717b9f5dde51c5cceaa815',
 }
 _ISOLATED_G6C_NAMESPACE_RE_V1 = re.compile(r"[0-9a-f]{16}")
 _ISOLATED_G6C_SOURCE_IDENTITY_V1 = (
@@ -913,7 +913,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:9073d8c22a315478814be6acc5cb58131b6feec791978eae5673cf18d82158ee"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:66af90a0f2290615bf464d91d5579c6240af367057c1ab274bf989d92f0877c4"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

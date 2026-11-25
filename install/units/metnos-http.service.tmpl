@@ -31,11 +31,6 @@ Environment=METNOS_USER_STATE=@STATE_DIR@
 Environment=METNOS_LANG=@LANG@
 Environment=METNOS_HTTP_HOST=@HTTP_HOST@
 Environment=METNOS_HTTP_PORT=@PORT@
-# Engine — the production-tested routing config (ADR 0161/0164 + §11
-# routing determinism). Without these a fresh install falls back to the
-# bare "simple" engine and uncovered queries return errors. Keep in sync
-# with the reference instance.
-Environment=METNOS_ENGINE=metis
 # Byte-deterministic describe_entries: one-shot llama-completion from the SAME
 # llama.cpp release as the managed llama-server (version-aligned by build).
 # When absent (wired to an existing endpoint, or an old release without the
@@ -46,7 +41,6 @@ Environment=METNOS_PROPOSER_GRAMMAR=1
 Environment=METNOS_PROPOSER_VERB_FILTER=1
 Environment=METNOS_PROPOSER_FAST_CONFIDENCE=0.70
 Environment=METNOS_PREFILTER_RULES=1
-Environment=METNOS_INTENT_CLASSIFIER=1
 # Central executor scheduler. Signed per-executor classes are maximums;
 # startup hardware/provider profiles and operational caps may only lower them.
 Environment=METNOS_EXECUTOR_PARALLEL=1

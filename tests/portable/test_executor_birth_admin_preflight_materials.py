@@ -1054,15 +1054,15 @@ def test_unknown_launcher_bounding_set_is_refused(value: str) -> None:
             _with_launcher_bounding(_catalog_bytes(), value))
 
 
-@pytest.mark.parametrize("engine", ("v3", "metis"))
-def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None:
+@pytest.mark.parametrize("engine", (None, "v3", "metis"))
+def test_product_recipe_pin_admits_current_recipe_and_rejects_reintroduced_engine(engine) -> None:
     original = catalog.decode_service_catalog_v1(_catalog_bytes())
     entries = tuple(
-        dataclasses.replace(entry, target_environment=tuple(
-            dataclasses.replace(value, value=engine)
-            if value.name == "METNOS_ENGINE" else value
-            for value in entry.target_environment
-        )) if entry.entry_id == "service-http" else entry
+        dataclasses.replace(entry, target_environment=tuple(sorted(
+            (*entry.target_environment,
+             catalog.ServiceEnvironmentV1("METNOS_ENGINE", engine)),
+            key=lambda value: value.name,
+        ))) if entry.entry_id == "service-http" and engine is not None else entry
         for entry in original.entries
     )
     encoded = catalog._encode_service_catalog_v1(entries, original.legacy_bindings)
@@ -1070,7 +1070,7 @@ def test_product_recipe_pin_admits_v3_and_rejects_rehashed_metis(engine) -> None
     descriptor = preflight._decode_deployment_descriptor_v1(
         assembler.encode_deployment_descriptor_v1(_deployment_record())
     )
-    if engine == "v3":
+    if engine is None:
         assert preflight._service_source_identity_v1(autonomous, descriptor) == (
             preflight._EXPECTED_SERVICE_SOURCE_IDENTITY_V1
         )
