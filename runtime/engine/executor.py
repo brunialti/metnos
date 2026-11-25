@@ -2568,6 +2568,9 @@ class _ParallelCall:
         return max(0, int((end - self.submitted_at) * 1000))
 
 
+DEFAULT_MAX_STEPS = 12
+
+
 class Executor:
     """Esegue Framework deterministicamente. SHARED fra tutti gli engine."""
 
@@ -2578,7 +2581,7 @@ class Executor:
                  llm_call_fast: Optional[Callable] = None,
                  vaglio_judge: Optional[Callable] = None,
                  vaglio_guard: Optional[Callable] = None,
-                 max_steps: int = 12,
+                 max_steps: int = DEFAULT_MAX_STEPS,
                  seed_steps: Optional[list] = None,
                  catalog: Optional[list] = None):
         self.invoke = invoke_executor
@@ -2763,16 +2766,15 @@ class Executor:
         _parallel_pending: dict[int, _ParallelCall] = {}
         empty_mutation_skipped = False
 
-        # Il cap storico resta il confine dei piani LLM.  Solo framework
-        # canonici costruiti nel runtime possono chiedere un budget maggiore;
-        # anche per loro esiste un hard ceiling operativo centralizzato.  Il
+        # Il cap storico resta il confine dei piani LLM. Il runtime può elevare
+        # il budget per passaggi canonici verificati, entro un limite assoluto. Il
         # marker non è deserializzabile da Framework.from_dict, quindi non è
         # un modo per il proposer di auto-estendere il proprio budget.
         effective_max_steps = self.max_steps
         try:
             runtime_step_cap = int(
                 getattr(framework, "runtime_step_cap", 0) or 0)
-            hard_max_steps = max(12, min(
+            hard_max_steps = max(DEFAULT_MAX_STEPS, min(
                 128, int(os.environ.get(
                     "METNOS_ENGINE_RUNTIME_MAX_STEPS", "32"))))
             if runtime_step_cap > 0:

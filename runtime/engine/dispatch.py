@@ -28,8 +28,8 @@ from .types import (
 )
 from .partition_plans import PartitionDestinationError
 from .executor import (
-    Executor, compute_execution_fingerprint, compute_framework_hash,
-    resolve_query_canonical_args,
+    DEFAULT_MAX_STEPS, Executor, compute_execution_fingerprint,
+    compute_framework_hash, resolve_query_canonical_args,
 )
 from .routing_pool import build_routing_pool
 from .partition_sheets import complete_partition_sheets
@@ -4800,8 +4800,20 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
 
     login_entry_acts = ([s for s in original_acts if _is_login_entry_action(s)]
                         if want_login else [])
-    post_login_acts = ([s for s in original_acts if s not in login_entry_acts]
-                       if want_login else original_acts)
+    dropped_acts = []
+    post_login_acts = []
+    for step in original_acts:
+        if step in login_entry_acts:
+            continue
+        destination = step.args.get("dst_dir")
+        named = [part.casefold() for part in (
+            destination.strip(), Path(destination.strip()).name) if part] \
+            if isinstance(destination, str) else []
+        if named and not any(part in (query or "").casefold() for part in named):
+            log.info("[site-guard] act_sites with an unrequested destination dropped")
+            dropped_acts.append(step)
+            continue
+        post_login_acts.append(step)
 
     # Una ricerca nominata DOPO l'accesso appartiene alla sessione autenticata,
     # non al crawler pubblico find_urls. Conserva la frase naturale come fine di
@@ -4977,7 +4989,31 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
 
     navigating_acts = [step for step in post_login_acts
                        if not _e_una_precondizione(step)]
-    if structured_record_request and not navigating_acts:
+    recovery_goal = ""
+    if (want_login and dropped_acts and not navigating_acts
+            and not structured_record_request):
+        # A rejected download cannot stand in for navigation. Recover the
+        # record goal only from an extract explicitly consuming the site read.
+        reads = {pos for pos, step in enumerate(steps, 1) if step.tool == "read_sites"}
+        goals = set()
+        for pos, step in enumerate(steps, 1):
+            if step.tool != "extract_entries":
+                continue
+            refs = _step_refs(step.args)
+            instruction = step.args.get("instruction")
+            if (len(refs) == 1 and refs <= reads and next(iter(refs)) < pos
+                    and isinstance(instruction, str) and instruction.strip()):
+                goals.add(instruction.strip())
+        if len(goals) == 1:
+            from detection_lexicon import native_ready_forms
+
+            goal = goals.pop()
+            verbs = native_ready_forms("sites.search_action_verb")
+            if verbs and not is_goal_navigation_request(goal):
+                goal = f"{verbs[0]} {goal}"
+            if is_goal_navigation_request(goal):
+                recovery_goal = goal
+    if (structured_record_request or recovery_goal) and not navigating_acts:
         # Se nel piano si entra con le credenziali, ci si entra per vedere la
         # PROPRIA area: e' il motivo per cui si fa un accesso. Dichiararlo
         # risparmia al pilota di dedurlo da un possessivo nella frase, che in
@@ -4998,13 +5034,10 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
         chiedenti = [chunk for chunk in clausole
                      if chunk and _chiede_una_collezione(chunk)]
         post_login_acts.append(StepSpec(tool="act_sites", args={
-            "action": chiedenti[-1] if chiedenti else query,
-            "_goal_mode": True,
+            "action": recovery_goal or (chiedenti[-1] if chiedenti else query),
+            **({"_goal_mode": True} if not recovery_goal else {}),
             **({"ambito": "personale"} if want_login else {}),
         }))
-        want_act = True
-
-    dropped_acts: list = []
 
     def _append_acts(source_steps) -> None:
         from playwright_sidecar.action_resolver import preserve_goal_qualifiers
@@ -5019,18 +5052,6 @@ def _ensure_site_session_precursor(framework: Framework, intent, query: str,
             for step in source_steps)
         for original_act in source_steps:
             original_args = dict(getattr(original_act, "args", {}) or {})
-            destination = original_args.get("dst_dir")
-            named = [part.casefold() for part in (
-                destination.strip(), Path(destination.strip()).name) if part] \
-                if isinstance(destination, str) else []
-            if named and not any(part in (query or "").casefold() for part in named):
-                # A folder the request does not name is no request to save
-                # files there (live Fineco 3279176c, 3/11/2026: an invented
-                # download after the collection ended the turn before the
-                # sheet).
-                log.info("[site-guard] act_sites with an unrequested destination dropped")
-                dropped_acts.append(original_act)
-                continue
             if structured_record_request:
                 action = str(original_args.get("action") or "")
                 if not original_args.get("value_ref") and is_goal_navigation_request(action):
@@ -7076,6 +7097,7 @@ def _bind_site_record_navigation(framework: Framework) -> Framework:
         parent = source(position, ("entries", "text", "texts", "data"))
         if parent is None or steps[parent - 1].tool != "read_sites":
             continue
+        steps[parent - 1].args["include_screenshot"] = False
         parent = source(parent, ("session_ids",))
         while parent is not None:
             ancestor = steps[parent - 1]
@@ -7089,6 +7111,15 @@ def _bind_site_record_navigation(framework: Framework) -> Framework:
                     and not ancestor.args.get("dst_dir")
                     and is_goal_navigation_request(action)):
                 ancestor.args["_record_mode"] = True
+                # Account for the linked session prerequisites. Navigation and
+                # every operation on the records still share the ordinary budget.
+                opener = source(parent, ("session_ids",))
+                has_login = opener is not None and steps[opener - 1].tool == "login_sites"
+                if has_login:
+                    opener = source(opener, ("session_ids",))
+                if opener is not None and steps[opener - 1].tool == "open_sites":
+                    framework.runtime_step_cap = max(
+                        framework.runtime_step_cap, DEFAULT_MAX_STEPS + 2 + int(has_login))
                 break
             parent = source(parent, ("session_ids",))
     return framework
@@ -7377,9 +7408,11 @@ GUARD_PIPELINE: tuple = (
           adr="0177"),
     Guard("bind_site_record_navigation",
           lambda fw, i, q, c: _bind_site_record_navigation(fw),
-          scope="cross-clause", writes=frozenset({"args._record_mode"}),
+          scope="cross-clause", writes=frozenset({"args._record_mode",
+                                                 "args.include_screenshot",
+                                                 "framework.runtime_step_cap"}),
           reads=frozenset({"step.tool", "step.args"}),
-          rationale="dopo le riscritture del grafo, read→extract lega l'osservazione dei record alla sola navigazione sorgente; nessuna esaustività o modifica del goal",
+          rationale="lega l'osservazione dei record alla navigazione sorgente e legge il testo senza allegare screenshot intermedi",
           adr="sites-record-observation"),
     Guard("resolve_named_folder",
           lambda fw, i, q, c: _resolve_named_folder(fw, i, q),
