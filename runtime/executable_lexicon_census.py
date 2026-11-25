@@ -198,7 +198,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/__init__.py': ('fa4fbb1ff233bc4ea49e407983c0fb2ab97ad5032ff605da1979dc564ece5165', (('comparison', 1),)),
     'engine/autopath.py': ('c81ef3355bd374e67a4567d08916bea0bd39c94fe1699edf968cd21269d22650', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),
-    'engine/dispatch.py': ('66927c98dd874c7310a73c75d9f48da5ee597c1e5d51839a749111260b6096c7', (('comparison', 268), ('helper-argument', 58), ('iteration', 5), ('membership', 8), ('prefix-suffix', 3), ('regex', 3))),
+    'engine/dispatch.py': ('9ae653bc927002cd0fdf6140bb60f69dfd415b71d5f0238b33f1df7a741f2122', (('comparison', 271), ('helper-argument', 58), ('iteration', 4), ('membership', 8), ('prefix-suffix', 3), ('regex', 3))),
     'engine/executor.py': ('fc36ec2f8dc643e4477666e900092879a326438ffd2a1449270eccaa5741dba5', (('comparison', 83), ('helper-argument', 14), ('iteration', 5), ('membership', 3), ('prefix-suffix', 2), ('regex', 3))),
     'engine/fastpath.py': ('03b28bea1fc58fd85502d407b2ba423ca3c30d807b1fe957c62666017573bd0a', (('comparison', 5), ('iteration', 1))),
     'engine/fastpath_promote.py': ('cf53597bd2db6d7bdeec60f5b9ace2ca89d391ba5b23a9b5eea60ed3a49ad1fa', (('comparison', 4),)),

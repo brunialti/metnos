@@ -308,6 +308,9 @@
  replace them in the answer.</p>
  <p>When a step is skipped because its branch is empty, later steps still
  receive rows from the references specified in the plan.</p>
+ <p>When Metnos creates a single local XLSX file without an explicit path,
+ it writes the requested sheets derived from the same rows into that file.
+ If the user names a second file for a sheet, Metnos writes the sheet there.</p>
  <p><strong>The model indicates, the code copies.</strong> On list pages the code
  splits rows into numbered fields; the model chooses, once per list shape, which
  column is number, date, amount and status, and the code copies the values as
