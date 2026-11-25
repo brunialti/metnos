@@ -177,6 +177,12 @@ def _report(state: _State, plan: dict, *, shape: str, admission: str,
     }
     if boundary is not None:
         report["boundary"] = boundary
+    try:
+        from engine.turn_diagnostics import _state
+        if _state.get() and _state.get().get("candidates"):
+            report["candidates"] = _state.get()["candidates"]
+    except Exception:
+        pass
     return report
 
 

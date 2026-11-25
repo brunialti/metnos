@@ -206,7 +206,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/guard_stats.py': ('feaa61f7511dc6e15486fa96ee8df9ffdaf997c2491475ce03c0adb30bb016e3', (('comparison', 1),)),
     'engine/parallel_steps.py': ('8eba4b51f294891328191fb4fea78d03875f20bdcd1d2687def294a12116c726', (('comparison', 4),)),
     'engine/proposer.py': ('456902387fe5129699e3a651e37663cd7a34beab77ca99066c4eacc97a2d6b64', (('comparison', 12), ('helper-argument', 4), ('iteration', 2), ('membership', 1), ('prefix-suffix', 1))),
-    'engine/proposer_metis.py': ('50078f1e30fe50611ebe4f9652b486a091907f29bf6770190f4c7af42fe1e4dc', (('comparison', 5), ('helper-argument', 1), ('membership', 1))),
+    'engine/proposer_metis.py': ('7fd7b480dce22c736c09293a8f22feaf25a4f370a655d61ddbbe34744a0f464b', (('comparison', 5), ('helper-argument', 1), ('membership', 1))),
     'engine/recovery.py': ('a05dbd704823b37f91755aa39d419cacd04dbdf87318821b149561fa02c32204', (('comparison', 5),)),
     'engine/recovery_metis.py': ('57631eb1419f1bcf8f2a914265bc8b43b1633f10d43fe8c82a290a90804845f0', (('comparison', 28), ('helper-argument', 1), ('membership', 1))),
     'engine/routing_pool.py': ('7813b78b365433116f56aea33a5538ba97342f8a55c3d99b0aec8813ea849f2e', (('comparison', 13), ('iteration', 1))),
@@ -622,8 +622,8 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/planning_repair.py': ('5ffc90866185a59ce8f0ff3c2e188b2e823fb4f4193f51459b1b5c8bccc2a5be', (('comparison', 2), ('iteration', 1), ('regex', 2))),
     'list_outcomes.py': ('3f93ff3c9a4f080743d92b3c6f489ccac1320528ede5d8c49f3b506fd5f5aeb4', (('comparison', 3), ('iteration', 2), ('membership', 3))),
     'durable_workloads/internal_runners.py': ('103855524c1fc62d701cee5b6f055fe9723c52b5231d2bdcadef3cfb91a5c216', (('comparison', 1),)),
-    'planning_measure.py': ('06fc18985398bdb9d54e5171b37de7d24970a504eb11e2f0fb64f07d2c1ce60a', (('comparison', 9), ('membership', 3), ('regex', 2))),
-    'engine/turn_diagnostics.py': ('647d550aa53dc4f39c506f22b038bd69aa95f618135bb000b9d214661e4be0cb', (('comparison', 2), ('membership', 1))),
+    'planning_measure.py': ('d74274a651d6bd67f54ece67724f5018cc50823fc885abfc68792a8e58ee8133', (('comparison', 9), ('membership', 3), ('regex', 2))),
+    'engine/turn_diagnostics.py': ('6cba1207e399c370109d47f010440eff6eadcf317d9e8c30f0937e63e9488bec', (('comparison', 3), ('membership', 1))),
 }
 
 VALUE_BOUND_SEED_GATE_FINGERPRINTS: Mapping[str, int] = {

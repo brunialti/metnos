@@ -12,6 +12,8 @@ def observe(event, value=None):
             return
         if event in ("L0", "L1"):
             data["memory"][event] = value
+        elif event == "candidates":
+            data.setdefault("candidates", []).append(value)
         elif event == "proposal":
             data["proposals"] += 1
             if data["proposals"] > 1:

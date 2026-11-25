@@ -30,6 +30,7 @@ from collections import OrderedDict
 from typing import Optional, Callable, Sequence
 
 from .types import Intent, Framework
+from . import turn_diagnostics
 from .proposer import (SimpleProposer, _iter_balanced_json_objects,
                        _render_excluded_signal, _render_recovery_signal,
                        _render_tool_pool,
@@ -206,14 +207,34 @@ class MetisProposer:
                 catalog: Optional[list] = None,
                 exclude_tools: tuple = (),
                 prior_steps: Sequence = ()) -> Optional[Framework]:
+        calls = 0
+        candidates = ranked = []
+        original_call = llm_call
+        def counted(*args, **kwargs):
+            nonlocal calls
+            calls += 1
+            return original_call(*args, **kwargs)
+        def selected(fw):
+            try:
+                choice = getattr(fw, "_metis_choice", {"scores": []})
+                turn_diagnostics.observe("candidates", {
+                    **choice, "generated": len(candidates) or int(calls > 0 and fw is not None),
+                    "llm_calls": calls, "chosen": choice.get("chosen", 0 if fw else -1),
+                    "reason": ("none" if fw is None else "rejected" if ranked and fw is not ranked[0]
+                               else "score" if ranked else "fallback")})
+            except Exception:
+                pass
+            return fw
+        if llm_call is not None:
+            llm_call = counted
         if not query or llm_call is None:
-            return None
+            return selected(None)
         if intent.kind in {"conversation", "metnos_help"}:
-            return self._simple.propose(
+            return selected(self._simple.propose(
                 query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
                 lang=lang, catalog=catalog, exclude_tools=exclude_tools,
-                prior_steps=prior_steps)
+                prior_steps=prior_steps))
         # exclude_tools (guard get_inputs-misroute in dispatch): rimuovi dal
         # pool PRIMA del render/grammar e propaga a SimpleProposer (i tool
         # esclusi possono rientrare come universal-helper → SimpleProposer li
@@ -248,7 +269,8 @@ class MetisProposer:
                         log.info(
                             "MetisProposer: retry serving cached alternative "
                             "(hash=%s) without LLM call", h[:8])
-                        return cached
+                        ranked = cached_list
+                        return selected(cached)
 
         candidates = self._generate_candidates(
             query=query, intent=intent, pool=pool,
@@ -258,11 +280,11 @@ class MetisProposer:
 
         if not candidates:
             # Fallback a SimpleProposer (preserva produzione anche su LLM fail).
-            return self._simple.propose(
+            return selected(self._simple.propose(
                 query=query, intent=intent, pool=pool,
                 excluded_hashes=excluded_hashes, llm_call=llm_call,
                 lang=lang, catalog=catalog, exclude_tools=tuple(_excl),
-                prior_steps=prior_steps)
+                prior_steps=prior_steps))
 
         ranked = self._rank_by_telos(candidates, intent=intent, lang=lang)
         self._cache_put(cache_key, ranked)
@@ -272,7 +294,7 @@ class MetisProposer:
             for fw in ranked:
                 h = compute_framework_hash(fw)
                 if h not in excluded_hashes:
-                    return fw
+                    return selected(fw)
             if excluded_hashes:
                 # Tutti i candidati sono in excluded_hashes: rispetta il
                 # contratto del Protocol (proposer.py: «rispetta excluded_hashes»)
@@ -281,10 +303,10 @@ class MetisProposer:
                 # termina onesto (§2.8). Prima si ritornava ranked[0] escluso:
                 # il validator (dispatch.py) accettava framework2==framework
                 # senza ri-validarlo (B1, esame 9/6/2026).
-                return None
+                return selected(None)
         except Exception:
             pass
-        return ranked[0] if ranked else candidates[0]
+        return selected(ranked[0] if ranked else candidates[0])
 
     def _generate_candidates(self, *, query, intent, pool,
                               excluded_hashes, llm_call, lang, catalog,
@@ -460,6 +482,12 @@ class MetisProposer:
             except Exception:
                 score = 0.0
             scored.append((score, fw))
+        try:
+            scores = [score for score, _ in scored]
+            for index, (_, fw) in enumerate(scored):
+                fw._metis_choice = {"chosen": index, "scores": scores}
+        except Exception:
+            pass
         scored.sort(key=lambda x: -x[0])
         return [fw for _, fw in scored]
 
