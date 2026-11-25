@@ -206,7 +206,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'engine/guard_stats.py': ('feaa61f7511dc6e15486fa96ee8df9ffdaf997c2491475ce03c0adb30bb016e3', (('comparison', 1),)),
     'engine/parallel_steps.py': ('8eba4b51f294891328191fb4fea78d03875f20bdcd1d2687def294a12116c726', (('comparison', 4),)),
     'engine/proposer.py': ('456902387fe5129699e3a651e37663cd7a34beab77ca99066c4eacc97a2d6b64', (('comparison', 12), ('helper-argument', 4), ('iteration', 2), ('membership', 1), ('prefix-suffix', 1))),
-    'engine/proposer_metis.py': ('7fd7b480dce22c736c09293a8f22feaf25a4f370a655d61ddbbe34744a0f464b', (('comparison', 5), ('helper-argument', 1), ('membership', 1))),
+    'engine/proposer_metis.py': ('73dee1c39a012a18c2da4f72b1fa968d65436a4f4c7f76a86da2f641dcc3eb44', (('comparison', 5), ('helper-argument', 1), ('membership', 1))),
     'engine/recovery.py': ('a05dbd704823b37f91755aa39d419cacd04dbdf87318821b149561fa02c32204', (('comparison', 5),)),
     'engine/recovery_metis.py': ('57631eb1419f1bcf8f2a914265bc8b43b1633f10d43fe8c82a290a90804845f0', (('comparison', 28), ('helper-argument', 1), ('membership', 1))),
     'engine/routing_pool.py': ('7813b78b365433116f56aea33a5538ba97342f8a55c3d99b0aec8813ea849f2e', (('comparison', 13), ('iteration', 1))),

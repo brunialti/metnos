@@ -85,7 +85,7 @@ def _n_candidates(intent=None) -> int:
     sulla GPU SINGOLA → costo dominante del turno) e ne sceglie uno via telos-rank
     euristico. Su query ad ALTA confidenza e NON-compound la prima proposta è
     affidabile → N=1 (niente spreco, ~3-5x più veloce). Budget hedge N=ceiling su:
-      - COMPOUND (>=2 azioni): champion+challenger full-pool (invariato);
+      - COMPOUND (>=2 actions): alternative deferred until reproposal;
       - verbo d'AZIONE side-effecting (anti producer-bias, 9/6/2026): il
         gating-confidence era MORTO (B2, vedi _is_action_verb) → il segnale
         reale e' il verbo stesso. La spesa EFFETTIVA del budget la decide
@@ -388,12 +388,18 @@ class MetisProposer:
         (stesso prompt ±hash escluso → stesso output). NON e' il verb-filter
         morbido B8: la generazione #1 resta full-pool e l'hedge e' un
         candidato AGGIUNTIVO che il rank confronta, non una restrizione
-        dell'unica proposta. COMPOUND: comportamento invariato (N call
-        full-pool: il piano deve coprire tutte le clausole)."""
+        dell'unica proposta. Compound plans generate one candidate per
+        proposal; a rejected cached plan seeds the deferred alternative."""
         out: list[Framework] = []
         seen_hashes: set[str] = set(excluded_hashes or set())
         verb = (getattr(intent, "verb", "") or "").lower().strip()
         is_compound = len(getattr(intent, "actions", None) or []) >= 2
+        previous = []
+        if is_compound:
+            n = 1
+            if excluded_hashes:
+                previous = self._cache_get(
+                    self._cache_key(query, intent, lang, catalog)) or []
         # Pool hedge = SOLI tool del verbo d'azione (la GBNF aggiunge sempre
         # `final_answer`). None = hedge non applicabile.
         hedge_pool = None
@@ -414,7 +420,7 @@ class MetisProposer:
                        == verb for fw in out):
                     break  # gia' azione-first: hedge superfluo (latenza)
                 cur_pool = hedge_pool
-            elif i > 0:
+            elif i > 0 or previous:
                 # B15 — challenger COMPOUND: diversita' STRUTTURALE per
                 # COSTRUZIONE (§7.9), non per speranza. Il primo tool dei
                 # candidati gia' generati esce dal pool del challenger
@@ -422,10 +428,9 @@ class MetisProposer:
                 # solo segnale testuale non basta (misura 10/6: 3/3 stessa
                 # sequenza) e una seconda call full-pool e' un quasi-
                 # duplicato → spreco. Cosi' l'alternativa parte da un tool
-                # fratello (es. read_* vs find_*) e il telos-rank confronta
-                # due strade REALI; se il challenger e' peggiore il campione
-                # vince comunque (sort stabile, pari merito → primo).
-                _firsts = {(fw.steps[0].tool or "") for fw in out
+                # fratello (es. read_* vs find_*). For compound plans the
+                # first plan was already rejected: generate the alternative now.
+                _firsts = {(fw.steps[0].tool or "") for fw in (out or previous)
                            if fw.steps and fw.steps[0].tool
                            and fw.steps[0].tool != "final_answer"}
                 if _firsts:

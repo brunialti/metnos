@@ -596,6 +596,11 @@ is a boolean, defaulting to <code>false</code>.
 override their respective file settings; only the exact environment value
 <code>1</code> enables nightly Telos activity.</p>
 
+<p>For requests with multiple actions, the planner generates one plan first.
+If that plan is rejected, it generates the alternative with the first tool
+excluded from the grammar. Measurements count each call in the proposal or
+reproposal that makes it; scores and acceptance checks remain unchanged.</p>
+
 <p>The SMTP account is resolved when a request needs to send mail, not when HTTP
 starts. An explicit account still takes precedence; the selected name and the
 credentials exposed to the sandbox belong to the same account. An invalid

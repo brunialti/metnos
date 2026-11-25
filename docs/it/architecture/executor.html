@@ -670,6 +670,11 @@ sezione <code>[mail]</code> &egrave; una stringa non vuota, con valore predefini
 prevalgono sui rispettivi valori nel file; per Telos soltanto il valore esatto
 <code>1</code> nell'ambiente abilita l'attivit&agrave; notturna.</p>
 
+<p>Per le richieste con più azioni il pianificatore genera prima un solo piano.
+Se quel piano viene rifiutato, genera l'alternativa escludendo il primo strumento
+dalla grammatica. Le misure contano le chiamate nella proposta o nella riproposta
+che le effettua; punteggi e controlli di accettazione restano invariati.</p>
+
 <p>Il conto SMTP viene risolto quando una richiesta deve inviare posta, non
 all'avvio di HTTP. Un conto esplicito continua a prevalere; il nome risolto e
 le credenziali esposte alla sandbox appartengono allo stesso conto. Un valore
