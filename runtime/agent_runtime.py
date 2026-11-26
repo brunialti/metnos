@@ -7183,9 +7183,8 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
     # Chat-driven placement (ADR 0034): risolvi il PC bersaglio UNA volta, QUI,
     # PRIMA di fast_path e engine — così ENTRAMBI i path instradano al device e
     # il controllo di connessione è anticipato e onesto. `_placement_target` =
-    # nome device (o None = server); `_query_for_planning` = query senza l'adjunct
-    # di destinazione (per il pattern-match fast_path e per il planning). Nessun
-    # PC citato → None + query invariata → comportamento IDENTICO a prima.
+    # nome device (o None = server). Planning keeps the redacted request:
+    # removing a placement adjunct can also remove the machine being asked about.
     _placement_target = None
     _device_named = False
     _query_for_planning = user_query_for_run
@@ -7253,9 +7252,7 @@ def run_turn(user_query, *, model=None, k=None, k_min=5, k_max=8, progress=None,
                 log.ts_end = time.time(); log.write(); return log
             if _tr.target != _td_mod.SERVER:
                 _placement_target = _tr.device_name
-                # The name leaves the query below: the fact must not.
-                _device_named = _tr.explicit
-            _query_for_planning = _tr.cleaned_query or user_query_for_run
+            _device_named = _tr.explicit
             if _tr.explicit:  # destinazione appiccicosa: solo su riferimento esplicito
                 _cts_mod.set_last_target(
                     _target_scope, _tr.target, _tr.device_name,

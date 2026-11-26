@@ -21,7 +21,7 @@ LINUX_ONLY = pytest.mark.skipif(
 )
 
 
-@pytest.mark.parametrize("version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18"))
+@pytest.mark.parametrize("version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18", "255.4-1ubuntu8.19"))
 def test_exact_supported_manager_version(version):
     assert preflight.parse_systemd_manager_version_v1(
         f"Version={version}\n".encode(),
@@ -29,7 +29,7 @@ def test_exact_supported_manager_version(version):
 
 
 @pytest.mark.parametrize("raw", (
-    b"Version=255.4-1ubuntu8.19\n", b"Version=255.4\n",
+    b"Version=255.4-1ubuntu8.20\n", b"Version=255.4\n",
     b"Version=255.5\n", b"Version=255.4-1ubuntu8.18 extra\n",
     b"Version=255.4-1ubuntu8.18\nVersion=255.4-1ubuntu8.18\n",
     b"Version=255.4-1ubuntu8.18\r\n",
@@ -116,7 +116,7 @@ def _cutover_entry(monkeypatch, reply, *, executable=None):
 
 @LINUX_ONLY
 @pytest.mark.parametrize("reply", (
-    (0, b"Version=255.4-1ubuntu8.19\n", b""),
+    (0, b"Version=255.4-1ubuntu8.20\n", b""),
     (0, b"Version=255.5\n", b""),
     (0, b"Version=255.4-1ubuntu8.18\nVersion=255.4-1ubuntu8.18\n", b""),
     (1, b"Version=255.4-1ubuntu8.18\n", b""),
@@ -132,7 +132,7 @@ def test_unsupported_or_unavailable_manager_refuses_before_reserve_and_quiescenc
 
 
 @LINUX_ONLY
-@pytest.mark.parametrize("version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18"))
+@pytest.mark.parametrize("version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18", "255.4-1ubuntu8.19"))
 def test_supported_manager_reaches_next_port_without_reserving_or_stopping(
     monkeypatch, version,
 ):

@@ -35,7 +35,7 @@ except ImportError:  # pragma: no cover - exercised by the Windows CI lane
     fcntl = None  # type: ignore[assignment]
 
 
-SUPPORTED_SYSTEMD_VERSIONS = ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18")
+SUPPORTED_SYSTEMD_VERSIONS = ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18", "255.4-1ubuntu8.19")
 OWNERSHIP_ROOT = Path("/var/lib/metnos/executor-birth")
 AUTHORITY_ROOT = OWNERSHIP_ROOT / "authorities-v1"
 CHAIN_ROOT = OWNERSHIP_ROOT / "chain-v1"
@@ -913,7 +913,7 @@ _REQUIRED_MANIFEST_PATHS = {
 _BIRTH_CLOSED_SOURCE_REVIEW_DOMAIN = (
     b"metnos.executor-birth.closed-python-source-review/v1\0"
 )
-_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:bf20b43705362e87a641f78b82e164f0520d821a6c09162e2375162f5ef00207"
+_BIRTH_CLOSED_SOURCE_REVIEW_SHA256 = "sha256:7c3b00fe553b2d6c88ee601f816524eb808d4c5fa7c442f8a6190df8cf781549"
 _SOURCE_REVIEW_PIN_VALUE_V1 = (
     rb'(?:(?:"sha256:" \+ "0" \* 64)|(?:"sha256:[0-9a-f]{64}"))'
 )

@@ -1627,7 +1627,7 @@ def test_product_candidate_preparation_authenticates_before_archive(monkeypatch,
     assert events == ["authenticate", "capture", "capture", "bind"]
 
 
-@pytest.mark.parametrize("manager_version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18"))
+@pytest.mark.parametrize("manager_version", ("255.4-1ubuntu8.17", "255.4-1ubuntu8.18", "255.4-1ubuntu8.19"))
 def test_cutover_prerequisite_is_derived_from_captured_facts(monkeypatch, manager_version) -> None:
     graph = _bound_graph()
     transaction = _receipts_complete_transaction(graph)

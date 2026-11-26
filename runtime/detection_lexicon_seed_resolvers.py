@@ -234,7 +234,7 @@ def register_detection() -> None:
         ],
         "local_marker": [
             "su questo pc", "su questo computer", "su questa macchina",
-            "sul mio pc", "sul mio computer", "sul mio portatile",
+            "sul mio pc", "del mio pc", "sul mio computer", "sul mio portatile",
             "sul mio fisso", "localmente", "in locale", "qui sul pc",
             "sul pc locale",
         ],
@@ -250,7 +250,7 @@ def register_detection() -> None:
         "locative_anchor": ["on", "onto"],
         "nominal_anchor": ["the", "of", "from"],
         "local_marker": [
-            "on this pc", "on this computer", "on this machine", "on my pc",
+            "on this pc", "on this computer", "on this machine", "on my pc", "of my pc",
             "on my computer", "on my laptop", "on my machine", "locally",
         ],
         "server_adjunct": ["on the server", "on server", "server side"],

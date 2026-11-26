@@ -4463,9 +4463,12 @@ def test_manager_version_is_exact() -> None:
     assert preflight.parse_systemd_manager_version_v1(
         b"Version=255.4-1ubuntu8.17\n",
     ) == "255.4-1ubuntu8.17"
+    assert preflight.parse_systemd_manager_version_v1(
+        b"Version=255.4-1ubuntu8.19\n",
+    ) == "255.4-1ubuntu8.19"
     _invalid(
         preflight.parse_systemd_manager_version_v1,
-        b"Version=255.4-1ubuntu8.19\n",
+        b"Version=255.4-1ubuntu8.20\n",
     )
 
 
