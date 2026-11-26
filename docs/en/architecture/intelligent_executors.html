@@ -312,6 +312,10 @@
  it writes the requested sheets derived from the same rows into that file.
  When the sheet containing all rows has no name and the file has detail sheets, Metnos calls it “All”.
  If the user names a second file for a sheet, Metnos writes the sheet there.</p>
+ <p>When the request assigns a calculated column to a single sheet, the branch
+ that calculates the column writes it to that sheet. If a branch cannot supply
+ a column requested for its sheet, Metnos stops the plan before execution.
+ The message names the sheet, the missing column and only the public fields available.</p>
  <p><strong>The model indicates, the code copies.</strong> On list pages the code
  splits rows into numbered fields; the model chooses, once per list shape, which
  column is number, date, amount and status, and the code copies the values as

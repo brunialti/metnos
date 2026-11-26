@@ -245,6 +245,36 @@ def _fields_from_schema_marker(
     return out
 
 
+def scoped_column_owners(query: str, labels: set[str], columns: set[str]) -> dict[str, str]:
+    """Bind a calculated column only when the request names its tab and header."""
+    if len(labels) < 2 or not columns or not query:
+        return {}
+
+    def literal(value: str):
+        return re.compile(rf"(?<![\w-]){re.escape(value)}(?![\w-])", re.IGNORECASE)
+
+    # A header repeated elsewhere may be common to multiple tabs.
+    patterns = {name: literal(name) for name in columns}
+    unique = {name: pattern for name, pattern in patterns.items() if len(pattern.findall(query)) == 1}
+    if not unique or _dl.match("parser.compound.shared_schema", query):
+        return {}
+    tab_names = {name: literal(name) for name in labels}
+    owners = {}
+    for clause in re.split(r"[;\n]|(?<=[.!?。！？؟])\s+", query):
+        for start, stop in _dl.phrase_spans("parser.compound.schema_marker", clause):
+            if _dl.match("parser.grounding.negation", clause[:start]):
+                continue
+            tabs = [name for name, pattern in tab_names.items() if pattern.search(clause[:start])]
+            if len(tabs) != 1:
+                continue
+            tail = clause[stop:].lstrip(" \t:«“‘\"'`")
+            declared = derive_sink_fields(clause) if "," in tail else []
+            for name in sorted(unique, key=lambda key: clause.casefold().find(key.casefold())):
+                if unique[name].match(tail) or name.casefold() in declared:
+                    owners[name] = tabs[0]
+    return owners
+
+
 def derive_sink_fields(query: str) -> list[str]:
     """Ricava le colonne dichiarate naturalmente per un sink tabellare.
 

@@ -74,6 +74,7 @@ COMPOUND_CONCEPTS = (
     "parser.compound.field_stop",
     "parser.compound.field_cut",
     "parser.compound.schema_marker",
+    "parser.compound.shared_schema",
     "parser.compound.schema_restriction",
     "parser.compound.tabular_noun",
     "parser.compound.with_connector",
@@ -206,6 +207,7 @@ _KINDS = {
     "parser.compound.field_stop": "phrases",
     "parser.compound.field_cut": "phrases",
     "parser.compound.schema_marker": "phrases",
+    "parser.compound.shared_schema": "phrases",
     "parser.compound.schema_restriction": "phrases",
     "parser.compound.tabular_noun": "phrases",
     "parser.compound.with_connector": "phrases",
@@ -534,6 +536,9 @@ def register_all() -> None:
     R("parser.compound.schema_marker", "phrases", match_mode="word",
       it=["colonne", "colonna", "campi", "intestazioni", "voci", "dati"],
       en=["columns", "column", "fields", "headers", "data"])
+    R("parser.compound.shared_schema", "phrases", match_mode="word",
+      it=["stesse colonne", "stessi campi", "stesse intestazioni"],
+      en=["same columns", "same fields", "same headers"])
     R("parser.compound.schema_restriction", "phrases", match_mode="word",
       it=["solo", "soltanto", "solamente"], en=["only", "just"])
     R("parser.compound.tabular_noun", "phrases", match_mode="word",

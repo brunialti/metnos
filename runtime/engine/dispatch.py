@@ -6733,63 +6733,87 @@ def _bind_sheet_writes_to_their_source(framework: Framework, query: str = "") ->
     return framework
 
 
-def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
+def _propagate_sink_schema_to_extract(framework: Framework, query: str = "", catalog=()) -> Framework:
     """Propagate declared column sources, keeping display headers separate.
 
     Explicit extract fields are record keys, while legacy ``columns`` are
     presentation labels.  Only ``column_specs.source`` can extend an explicit
-    schema.  Legacy headers may bootstrap a missing or empty schema.  Follow
-    the existing entry lineage; never merge different keys by meaning.
+    schema. Calculated keys belong to the branch that adds them. Legacy
+    headers may bootstrap a missing or empty schema.
     """
+    from compound_decomposer import scoped_column_owners
+    from from_step_projection import has_explicit_from_step_alternative
+    from tabular_projection import scope_sheet_columns
+
+    contracts = {executor.name: executor for executor in catalog or () if getattr(executor, "name", None)}
     steps = list(getattr(framework, "steps", None) or [])
     changed = False
     for extract_index, extract in enumerate(steps):
-        if (extract.tool or "") != "extract_entries":
+        schema = getattr(contracts.get(extract.tool), "args_schema", {}) or {}
+        fields_arg = (schema.get("record_schema") or {}).get("fields_arg")
+        if not fields_arg and extract.tool == "extract_entries":
+            fields_arg = "fields"
+        if not fields_arg:
             continue
         extract_args = dict(extract.args or {})
-        fields = list(extract_args.get("fields") or [])
-        lineage = {extract_index + 1}
+        fields = list(extract_args.get(fields_arg) or [])
+        base = {name for name in fields if isinstance(name, str)}
+        lineage = {extract_index + 1: set()}
         last_carrier = extract_index + 1
+        sinks = []
+        derived = set()
         required: list[tuple[str, bool]] = []
         for index in range(extract_index + 1, len(steps)):
             step = steps[index]
             tool = step.tool or ""
             args = dict(step.args or {})
             source = args.get("from_step")
-            consumes_lineage = (
-                isinstance(source, int) and source in lineage
-            ) or (source is None and last_carrier in lineage)
-            if tool in _ENTRY_CARRIER_TRANSFORMS and consumes_lineage:
-                lineage.add(index + 1)
-                last_carrier = index + 1
+            carrier = last_carrier if source is None else source
+            if type(carrier) is not int or carrier not in lineage:
                 continue
-            if tool in _TABULAR_SINKS and consumes_lineage:
-                specs = args.get("column_specs")
-                if specs:
-                    # Specs take precedence at the sink too. Malformed specs
-                    # must not silently fall back to legacy display labels;
-                    # ordinary sink validation remains authoritative.
-                    if isinstance(specs, list):
-                        for spec in specs:
-                            if not isinstance(spec, dict):
-                                continue
-                            key = spec.get("source")
-                            if isinstance(key, str) and key.strip():
-                                item = (key.strip(), True)
-                                if item not in required:
-                                    required.append(item)
-                elif not fields:
-                    columns = args.get("columns")
-                    if isinstance(columns, list):
-                        for column in columns:
-                            if isinstance(column, str) and column.strip():
-                                item = (column, False)
-                                if item not in required:
-                                    required.append(item)
+            executor = contracts.get(tool)
+            schema = getattr(executor, "args_schema", {}) or {}
+            policy = schema.get("record_schema") or {}
+            if has_explicit_from_step_alternative(args, schema):
+                continue
+            branch = lineage[carrier]
+            if policy.get("preserves_input") or tool in _ENTRY_CARRIER_TRANSFORMS:
+                additions = set(branch) if policy.get("preserves_input") else set()
+                field = args.get(policy.get("added_field_arg")) or policy.get("added_field_default")
+                if isinstance(field, str) and field.strip() and "${" not in field:
+                    derived.add(field)
+                    possible = getattr(executor, "record_field_possible", None)
+                    if possible is None or possible(args, base | branch, field):
+                        additions.add(field)
+                lineage[index + 1] = additions
+                last_carrier = index + 1
+            elif policy.get("label_arg") or tool in _TABULAR_SINKS:
+                label = args.get(policy.get("label_arg"))
+                sinks.append((step, label if isinstance(label, str) else "", branch))
+
+        owners = scoped_column_owners(query, {label for _, label, _ in sinks if label}, derived)
+        owners = {key: owner for key, owner in owners.items()
+                  if any(label == owner and key in branch for _, label, branch in sinks)}
+        for step, label, branch in sinks:
+            args = step.args or {}
+            scope_sheet_columns(args, label, base | branch, owners)
+            specs = args.get("column_specs")
+            if specs:
+                if isinstance(specs, list):
+                    required.extend((spec["source"].strip(), True) for spec in specs
+                                    if isinstance(spec, dict) and isinstance(spec.get("source"), str)
+                                    and spec["source"].strip())
+            elif not fields and isinstance(args.get("columns"), list):
+                required.extend((column, False) for column in args["columns"]
+                                if isinstance(column, str) and column.strip())
         if not required:
             continue
         merged = list(fields)
         for key, exact in required:
+            # A calculation belongs to its branch. Asking the shared reader to
+            # extract it would make a sibling look able to supply it too.
+            if key in derived:
+                continue
             # Explicit source identity is case-sensitive. Strip whitespace as
             # extract_entries and compile_projection already do. Legacy
             # bootstrap preserves its historical case-insensitive spelling.
@@ -6812,7 +6836,7 @@ def _propagate_sink_schema_to_extract(framework: Framework) -> Framework:
             else:
                 merged.append(key)
         if merged != fields:
-            extract_args["fields"] = merged
+            extract_args[fields_arg] = merged
             extract.args = extract_args
             changed = True
     if changed:
@@ -7414,11 +7438,11 @@ GUARD_PIPELINE: tuple = (
           rationale="le schede nominate che condividono le righe usano il file locale appena creato o il foglio sorgente",
           adr="0177"),
     Guard("propagate_sink_schema_to_extract",
-          lambda fw, i, q, c: _propagate_sink_schema_to_extract(fw),
-          scope="cross-clause", writes=frozenset({"args.fields"}),
-          reads=frozenset({"step.tool", "args.from_step", "args.fields",
-                           "args.columns", "args.column_specs"}),
-          rationale="schema dataflow: le sorgenti esplicite delle colonne estendono extract; le intestazioni legacy inizializzano solo uno schema assente",
+          lambda fw, i, q, c: _propagate_sink_schema_to_extract(fw, q, c),
+          scope="cross-clause", writes=frozenset({"args.fields", "args.columns", "args.column_specs"}),
+          reads=frozenset({"query", "catalog", "step.tool", "args.from_step", "args.fields",
+                           "args.columns", "args.column_specs", "args.@record_schema"}),
+          rationale="le colonne comuni seguono i campi estratti e le colonne calcolate esplicite seguono la scheda che le produce",
           adr="0177"),
     Guard("enforce_complete_sink_cardinality",
           lambda fw, i, q, c: _enforce_complete_sink_cardinality(fw, c),

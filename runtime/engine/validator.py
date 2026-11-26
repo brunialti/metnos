@@ -157,10 +157,11 @@ class Validator:
                         label_arg = (schema.get("record_schema") or {}).get("label_arg")
                         label = step.args.get(label_arg) if label_arg else None
                         columns = ", ".join(missing)
+                        visible_fields = sorted(field for field in fields if not field.startswith("_"))
                         errors.append(ValidationError(i, "column_not_produced", _msg(
                             "ERR_TABULAR_PROJECTION_AMBIGUOUS",
                             columns=f"{label}: {columns}" if label else columns,
-                            fields=", ".join(sorted(fields)))))
+                            fields=", ".join(visible_fields))))
             rows.append(_output_fields(step.args, schema, rows, exec_obj))
         return ValidationResult(ok=not errors, errors=errors)
 

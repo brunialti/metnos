@@ -461,6 +461,31 @@ def unproduced_headers(fields: Iterable[str], columns=None, column_specs=None) -
     return ()
 
 
+def scope_sheet_columns(args: dict, sheet: str, fields: set[str], owners: dict[str, str]) -> None:
+    """Keep an explicitly assigned calculation on the sheet that produces it."""
+    key = "column_specs" if args.get("column_specs") else "columns"
+    columns = args.get(key)
+    if not owners or not sheet or not isinstance(columns, list) or not columns:
+        return
+    missing = set(unproduced_headers(fields, args.get("columns"), args.get("column_specs")))
+    foreign = {name.casefold() for name, owner in owners.items() if owner != sheet}
+    kept, represented = [], set()
+    for column in columns:
+        header = column.get("header") if isinstance(column, dict) else column
+        source = column.get("source") if isinstance(column, dict) else column
+        if not isinstance(header, str) or not isinstance(source, str):
+            return  # The writer validates malformed specifications.
+        if header in missing and header.casefold() == source.casefold() and source.casefold() in foreign:
+            continue
+        kept.append(column)
+        represented.update((header.casefold(), source.casefold()))
+    for name, owner in owners.items():
+        if owner == sheet and name in fields and name.casefold() not in represented:
+            kept.append({"header": name, "source": name} if key == "column_specs" else name)
+    if kept and kept != columns:
+        args[key] = kept
+
+
 def _transform(value: Any, operation: str) -> Any:
     if operation == "identity":
         return value
