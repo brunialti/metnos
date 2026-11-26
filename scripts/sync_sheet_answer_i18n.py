@@ -17,6 +17,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'MSG_TABLE_ALL_ROWS_SHEET': ('Tutti', 'All'),
     'MSG_TABLE_VERIFIED_ROWS_SINGLE': (
         'Nel foglio sono state scritte {rows} righe di dati.',
         '{rows} data rows were written in the sheet.'),

@@ -6673,10 +6673,13 @@ def _bind_sheet_writes_to_their_source(framework: Framework, query: str = "") ->
     # An automatically placed workbook has no filename until create returns.
     # Its row source distinguishes further tabs from unrelated reports.
     row_source = created.get("from_step")
+    first_sheet = created.get("sheet_name")
+    workbook_path = f"${{step{created_at}.path}}"
     owns_rows = (type(row_source) is int and 0 < row_source < created_at
                  and (created.get("client") or "local") == "local"
                  and not (created.get("path") or created.get("spreadsheet_id"))
-                 and mentioned(created.get("sheet_name")))
+                 and (not first_sheet or mentioned(first_sheet)))
+    bound_detail = False
     for index, step in enumerate(steps):
         args = step.args if isinstance(step.args, dict) else {}
         if (not sheet_tool(step.tool, "write")
@@ -6685,14 +6688,16 @@ def _bind_sheet_writes_to_their_source(framework: Framework, query: str = "") ->
                 or (args.get("client") or "local") != "local"):
             continue
         path = args.get("path")
-        if path:
+        if path and path != workbook_path:
             if not owns_rows or not isinstance(path, str) or "${" in path or PureWindowsPath(path).drive:
                 continue
             destination = Path(path)
             if (destination.suffix.casefold() != ".xlsx" or mentioned(destination.stem)
                     or (destination.parent not in (Path("."), Path("/")) and mentioned(str(destination.parent)))):
                 continue
-        sources, seen, pending = set(), set(), list(_step_refs(args))
+        # A workbook handle identifies the destination, never the source of rows.
+        row_args = {key: value for key, value in args.items() if key != "path"}
+        sources, seen, pending = set(), set(), list(_step_refs(row_args))
         while pending:
             position = pending.pop()
             if position in seen or not 1 <= position <= index:
@@ -6710,11 +6715,21 @@ def _bind_sheet_writes_to_their_source(framework: Framework, query: str = "") ->
         if (owns_rows and created_at <= index and row_source in seen
                 and mentioned(args["sheet_name"]) and not sources):
             # Keep from_step for the records and resolve the workbook separately.
-            step.args = {**args, "path": f"${{step{created_at}.path}}"}
+            step.args = {**args, "path": workbook_path}
+            bound_detail = True
         elif not path and len(sources) == 1 and None not in sources:
             # `path` names the workbook for the writer; its `spreadsheet_id`
             # is resolved by the runtime and never taken from a plan.
             step.args = {**args, "path": sources.pop()}
+    if bound_detail and not first_sheet:
+        from messages import get as message
+        from tabular.compile import _sheet_name
+
+        used = {str(s.args.get("sheet_name") or "").strip().casefold() for s in steps
+                if (s.args or {}).get("path") == workbook_path}
+        steps[created_at - 1].args = {
+            **created, "sheet_name": _sheet_name(message("MSG_TABLE_ALL_ROWS_SHEET"), used),
+        }
     return framework
 
 
@@ -7393,7 +7408,7 @@ GUARD_PIPELINE: tuple = (
           adr="0177"),
     Guard("bind_sheet_writes_to_their_source",
           lambda fw, i, q, c: _bind_sheet_writes_to_their_source(fw, q),
-          scope="cross-clause", writes=frozenset({"args.path"}),
+          scope="cross-clause", writes=frozenset({"args.path", "args.sheet_name"}),
           reads=frozenset({"query", "step.tool", "args.from_step", "args.sheet_name",
                            "args.spreadsheet_id", "args.path", "args.range", "args.client"}),
           rationale="le schede nominate che condividono le righe usano il file locale appena creato o il foglio sorgente",
