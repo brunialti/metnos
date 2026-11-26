@@ -200,13 +200,12 @@ def _number(value, locale: str, currency: str, *, monetary: bool):
         return None
     try:
         number = Decimal(raw)
-        # Excel/Sheets only preserve 15 significant decimal digits. Do not
-        # silently round identifiers or high precision amounts into numbers.
-        digits = number.as_tuple().digits
-        significant = len(digits)
-        while significant > 1 and digits[significant - 1] == 0:
-            significant -= 1
-        if not number.is_finite() or significant > 15:
+        if not number.is_finite() or re.match(r"[+-]?0\d", raw):
+            return None
+        # Count every written digit, including trailing/fractional zeros,
+        # without expanding a numeric value with an enormous exponent.
+        _, digits, exponent = number.as_tuple()
+        if max(len(digits), 1 - exponent) + max(exponent, 0) > 15:
             return None
         if number == number.to_integral() and abs(number) <= 999_999_999_999_999:
             return int(number)

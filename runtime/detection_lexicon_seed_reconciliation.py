@@ -39,6 +39,7 @@ GATE_CONCEPTS = {
     "date_only_field": "reconciliation.gate.date_only_field",
     "period_date_field": "reconciliation.gate.period_date_field",
     "datetime_field": "reconciliation.gate.datetime_field",
+    "amount_field": "reconciliation.gate.amount_field",
 }
 
 CONCEPTS = (
@@ -379,6 +380,10 @@ def register_all() -> None:
                 r"\b(?:exact\s+match|probable\s+match|"
                 r"only\s+(?:email|calendar))\b",
             ],
+        },
+        "amount_field": {
+            "it": [r"(^|_)(?:importo|importi|totale|prezzo|costo|saldo|entrate|uscite)($|_)"],
+            "en": [r"(^|_)(?:amount|total|price|cost|balance|debit|credit)($|_)"],
         },
         "date_only_field": {
             "it": [

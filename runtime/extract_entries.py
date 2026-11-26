@@ -1433,7 +1433,7 @@ def _declare_truncation(result: dict, *, what: str, cap_field: str,
 
 
 def _handle_extract_entries(args, *, verbose: bool = False,
-                            collection_complete: bool = True) -> dict:
+                            collection_complete: bool = True, reconciliation_lexicon=None) -> dict:
     a = args or {}
     entries = a.get("entries")
     if entries is None and isinstance(a.get("texts"), list):
@@ -1464,7 +1464,6 @@ def _handle_extract_entries(args, *, verbose: bool = False,
     # resources.  Freeze one complete, native-ready family before doing any
     # inference or projection; a missing/partial locale must not create a
     # hybrid record or apply caller-provided natural-language state markers.
-    reconciliation_lexicon = _reconciliation_lex.load()
     if reconciliation_lexicon is None:
         return {
             "ok": False,
@@ -2480,7 +2479,17 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     collection_complete = not any(
         any(item.get(key) is True for key in ("partial", "collection_partial", "truncated"))
         for item in inherited)
-    result = _handle_extract_entries(a, verbose=verbose, collection_complete=collection_complete)
+    lexicon = _reconciliation_lex.load()
+    result = _handle_extract_entries(a, verbose=verbose, collection_complete=collection_complete,
+                                     reconciliation_lexicon=lexicon)
+    from tabular.compile import _number
+    if lexicon is not None:
+        for record in result.get("entries") or []:
+            for field, value in record.items():
+                if lexicon.matches_gate("amount_field", _field_key(field)):
+                    number = _number(value, "", "", monetary=False)
+                    record[field] = (number if number is not None else
+                                     str(value) if type(value) in (int, float) else value)
     local = []
     scope = uuid4().hex
     for index, truncation in enumerate(result.get("truncations") or []):
