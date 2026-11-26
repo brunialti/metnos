@@ -116,6 +116,7 @@ GROUNDING_CONCEPTS = (
     "parser.grounding.copy_word",
     "parser.grounding.copy_verb",
     "parser.grounding.definite_determiner",
+    "parser.grounding.disjunction",
 )
 
 # A request may ask for independent comparisons inside each partition.
@@ -163,6 +164,7 @@ _KINDS = {
     "parser.grounding.copy_word": "phrases",
     "parser.grounding.copy_verb": "phrases",
     "parser.grounding.definite_determiner": "phrases",
+    "parser.grounding.disjunction": "phrases",
     "parser.ordering.mode_verb": "mapping",
     "parser.ordering.group_connector": "phrases",
     "parser.ordering.sort_connector": "phrases",
@@ -725,6 +727,8 @@ def register_all() -> None:
           "ogni", "ciascuna", "sua", "sue", "loro"],
       en=["the", "this", "that", "these", "those", "each", "every", "its",
           "their"])
+    R("parser.grounding.disjunction", "phrases", match_mode="word",
+      it=["o", "oppure"], en=["or", "either"])
 
 
 def _all_seed_rows_ready() -> bool:

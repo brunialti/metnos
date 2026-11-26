@@ -81,6 +81,13 @@
  risultati. Un elemento non trovato, un servizio indisponibile o un guasto
  chiudono il turno con la causa concreta, senza un'altra chiamata al modello.</p>
 
+ <p>Una guardia legge anche gli operatori d'insieme dichiarati dal contratto:
+ una ricerca di foto «con A e B» richiede entrambe le persone. L'operatore
+ <code>or</code> scritto dal pianificatore resta soltanto se la richiesta
+ esprime una disgiunzione riconosciuta dal lessico; altrimenti vale il
+ predefinito <code>and</code>. La guardia non aggiunge un <code>or</code>
+ che il pianificatore ha omesso.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">Ciclo limitato di un executor intelligente</title>

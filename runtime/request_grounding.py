@@ -35,7 +35,7 @@ Both are read here from the sentence, with registered words and no model:
   every «copy» in it follows a definite determiner («the copy», «each copy»).
 
 A manifest marks the arguments this applies to with `semantic_type`
-(`kept_by_age`, `copy_mode`): no tool is named here. Where the sentence says
+(`kept_by_age`, `copy_mode`, `set_operator`): no tool is named here. Where the sentence says
 something this reader cannot settle (two ages, an age in a form it does not
 know), the planner's value is left as it is.
 
@@ -523,7 +523,7 @@ def apply_to_framework(framework, query: str, catalog):
     if not steps or not query:
         return framework
     schemas = _schemas(catalog)
-    stays = named_only = said = None
+    stays = named_only = said = disjunction = None
     for step in steps:
         schema = schemas.get(getattr(step, "tool", None) or "")
         if schema is None:
@@ -542,6 +542,15 @@ def apply_to_framework(framework, query: str, catalog):
                 named_only = copy_only_named(query) if named_only is None else named_only
                 if named_only:
                     del args[name]
+        for name in _marked(schema, "set_operator"):
+            if args.get(name) == "or" and _has_default(schema, name):
+                if disjunction is None:
+                    lexicon = _lexicons.load_family("grounding")
+                    words = [word for sentence in _sentence_tokens(query) for word in sentence]
+                    disjunction = lexicon is None or bool(_occurrences(
+                        words, _phrases(lexicon, "parser.grounding.disjunction")))
+                if not disjunction:
+                    del args[name]
         if args != (step.args or {}):
             step.args = args
     return framework
@@ -554,10 +563,11 @@ def guards(guard_type) -> tuple:
         lambda framework, _intent, query, catalog: apply_to_framework(
             framework, query, catalog),
         scope="per-clause",
-        writes=frozenset({"args.@kept_by_age", "args.@copy_mode"}),
+        writes=frozenset({"args.@kept_by_age", "args.@copy_mode", "args.@set_operator"}),
         reads=frozenset({"catalog", "step.tool", "args.@kept_by_age",
-                         "args.@copy_mode"}),
-        rationale="an argument marked kept_by_age or copy_mode takes what the "
+                         "args.@copy_mode", "args.@set_operator"}),
+        rationale="an argument marked kept_by_age, copy_mode or set_operator takes what the "
                   "sentence says: which record of a group stays by its age; "
-                  "a copy that is only named is not a request to copy",
+                  "a copy that is only named is not a request to copy; "
+                  "a union requires a disjunction in the request",
         adr="0138"),)

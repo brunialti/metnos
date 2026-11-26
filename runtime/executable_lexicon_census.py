@@ -615,7 +615,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'durable_workloads/partitioned_invocation.py': ('9ee7b83de9d3b915163095d77ed5675826527b18fea695a9aa7713f8e075ff37', (('comparison', 2),)),
     'engine/partition_plans.py': ('f6135c13f320c9e3dcb469ad698d25ab749139b936ab8f11b42f5a19e730135a', (('comparison', 18), ('helper-argument', 2), ('iteration', 1), ('prefix-suffix', 3), ('regex', 7))),
     'partitioned_runs.py': ('15cb4c6279fbf4f3be9da68d380f8b57f4e77997bb7268028cec0980ad36f292', (('comparison', 21), ('iteration', 4), ('membership', 1), ('prefix-suffix', 2), ('regex', 2))),
-    'request_grounding.py': ('279d05b17ee653d316c0ef9e7ad84909175e177663392547e06aca562f8d7231', (('comparison', 5), ('helper-argument', 1), ('iteration', 2), ('regex', 1))),
+    'request_grounding.py': ('42a5c5fa51587ff30f582066bc7838f72b31be4e0b7e2eb998b331c67a07c636', (('comparison', 6), ('helper-argument', 1), ('iteration', 2), ('regex', 1))),
     'undo_words.py': ('10cf1d99ebf5bf74c2e0d6b69446c71d6a31304f2c8bba58563ab34b030b6b52', (('comparison', 8), ('iteration', 1), ('regex', 1))),
     'vocabulary_dossier.py': ('c9a64377dac240248692b730799585bd0e06be38dfdb806cc1a94f1e0244bf52', (('comparison', 1), ('iteration', 1), ('regex', 1))),
     'engine/partition_sheets.py': ('b2e416b9ad7e726a681129f82207071cf97afaf0d760d1a7fd5209f6a3fec059', (('comparison', 2), ('iteration', 1), ('membership', 1))),

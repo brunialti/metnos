@@ -80,6 +80,12 @@
  A missing item, an unavailable service, or an operational failure ends the
  turn with its concrete cause, without another model call.</p>
 
+ <p>A guard also reads set operators declared by the contract: a photo
+ search “with A and B” requires both people. An <code>or</code> written by
+ the planner is kept only when the request contains a disjunction recognized
+ by the lexicon; otherwise the <code>and</code> default applies. The guard
+ does not add an <code>or</code> that the planner omitted.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">The intelligent executor loop</title>

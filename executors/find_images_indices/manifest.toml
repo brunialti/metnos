@@ -94,6 +94,7 @@ en = "List of registered names; `names_op=and` requires every face in one photo,
 
 [args.properties.names_op]
 type        = "string"
+semantic_type = "set_operator"
 enum        = ["and", "or"]
 default     = "and"
 
