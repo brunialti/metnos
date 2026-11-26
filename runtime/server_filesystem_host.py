@@ -244,7 +244,10 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
     envelope = {'action': 'execute', 'owner': owner, 'manifest': manifest, 'args': args, 'turn_id': turn_id}
     if operation == 'list':
         broker.check(requested[0][0], 'read', directory=True)
-        return _exchange(binding, envelope, authority, timeout_s=_remaining(deadline))
+        result = _exchange(binding, envelope, authority, timeout_s=_remaining(deadline))
+        if result.get('error_code') == 'ERR_FS_PERMISSION_REQUIRED' and authority.last_denial is not None:
+            result.update(authority.last_denial)
+        return result
     specs = server.capped(server.write_specs(args) if operation == 'write' else
                           server.copy_specs(args) if operation == 'copy' else
                           server.dir_paths(args) if operation == 'mkdir' else
@@ -254,6 +257,7 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
     # asked about once, at the first path that goes to the host.
     host_answer = None if operation in permissions.SERVER_OPERATIONS else 'ok'
     for index, spec in enumerate(specs):
+        authority.last_denial = None
         source_fd = None
         reply = {}
         sent = False
@@ -323,11 +327,14 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                 entry['_filesystem_backend'] = 'native' if native else 'host'
             results.append(entry)
         except (OSError, ValueError, TypeError, LookupError) as exc:
+            if str(exc) == 'ERR_FS_PERMISSION_REQUIRED' and authority.last_denial is not None:
+                exc.permission_result = authority.last_denial
             if operation == 'move':
                 failed.append(server.move_failure(index, spec, exc))
             else:
                 error = server.error_result(exc)
                 failed.append({'index': index, 'error': error['error'], 'error_code': error['error_code'],
+                               **({'_permission_denied': error['_permission_denied']} if '_permission_denied' in error else {}),
                                **({'path': spec} if operation == 'mkdir' else {})})
             if sent:
                 # The host had the item when this side stopped waiting: what

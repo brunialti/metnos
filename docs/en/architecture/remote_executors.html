@@ -147,6 +147,13 @@ opens <strong>System &rsaquo; Server permissions</strong>, selects the account a
 the path and read and/or write access. This page is independent of devices and
 also serves tasks that run entirely on the server.</p>
 
+<p>If a permission is missing, Metnos names the access required and, when
+the account can see it, the folder to enter in the form. For a linked archive
+it also gives the name used in the request. Before starting a long task it
+checks the destinations already known from the plan, including permission to
+overwrite existing files when required. It checks the others
+when the step has their paths.</p>
+
 <p><strong>Grant permissions</strong> verifies that Metnos can use the path with
 the requested rights before recording the grant. This check does not read file
 contents or modify files. If access is unavailable, the grant is not saved.

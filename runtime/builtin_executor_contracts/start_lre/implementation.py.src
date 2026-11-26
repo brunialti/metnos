@@ -547,6 +547,10 @@ def submit_automatic_lre(
                 "ERR_LRE_SUBMISSION_FAILED",
                 error_class="operation_failed",
             )
+        from filesystem_preflight import check as check_filesystem
+        denied = check_filesystem(framework, executors, owner_user_id, target_device=target_device)
+        if denied is not None:
+            return denied
         request_key = _request_key(source_request_id, turn_id)
         adapter = invocation_plan_adapter(executor)
         if adapter is not None:

@@ -233,6 +233,12 @@ def place(owner, value):
     return str(Path(value).resolve())
 
 
+def _named_place(owner, value):
+    """The same person's name before following any link."""
+    import person_files
+    return os.path.normpath(os.path.join(str(person_files.root(owner)), os.path.expanduser(value)))
+
+
 def move_rows(args):
     """The rows of a settled move (see `settled`): ``{src, dst}`` to move, or
     ``{src, refused, error}`` that the tool would refuse and nothing executes;
@@ -300,13 +306,15 @@ def _settled_moves(owner, args):
     from backends.files import local
     from messages import get as _msg
 
-    rows = []
+    rows, originals = [], dict(args.get("_filesystem_original_paths") or {})
     for index, entry in enumerate(entries):
         source = entry.get("path") or entry.get("src") if isinstance(entry, dict) else None
         if not isinstance(source, str) or not source.strip():
             rows.append({"refused": "ERR_ARG_MISSING", "error": _msg("ERR_ARG_MISSING", arg=f"entries[{index}].path")})
             continue
         src = Path(place(owner, source))
+        if str(src) != _named_place(owner, source):
+            originals[str(src)] = source
         if entry.get("kind") == "dir":
             rows.append({"src": str(src), "refused": "ERR_REFUSE_MOVE", "error": _msg("MSG_MOVE_CAUSE_FOLDER")})
             continue
@@ -319,10 +327,14 @@ def _settled_moves(owner, args):
             rows.append({"src": str(src), "refused": "ERR_TEMPLATE_FAIL",
                          "error": _msg("ERR_TEMPLATE_FAIL", stage="placeholder", reason=str(exc))})
             continue
-        rows.append({"src": str(src), "dst": place(owner, destination),
+        target = place(owner, destination)
+        if target != _named_place(owner, destination):
+            originals[target] = destination
+        rows.append({"src": str(src), "dst": target,
                      **{key: entry[key] for key in ("sha256", "size", "mtime") if key in entry}})
     rest = {key: value for key, value in args.items() if key not in {"entries", "dst_template", "from_step"}}
-    return {**rest, "entries": rows, "dst_template": _SETTLED_MOVE}
+    return {**rest, "entries": rows, "dst_template": _SETTLED_MOVE,
+            **({"_filesystem_original_paths": originals} if originals else {})}
 
 
 def settled(owner, operation, args):
@@ -347,7 +359,9 @@ def settled(owner, operation, args):
     if len(final) != len(given):
         return args
     rest = {key: value for key, value in args.items() if key not in {"entries", "path_template", "from_step"}}
-    return {**rest, "paths": final}
+    originals = {**(args.get("_filesystem_original_paths") or {}),
+                 **{real: original for real, original in zip(final, given) if real != _named_place(owner, original)}}
+    return {**rest, "paths": final, **({"_filesystem_original_paths": originals} if originals else {})}
 
 
 def requests(operation, args):
@@ -426,10 +440,21 @@ class LocalAuthority:
     def __init__(self, owner, manifest, args, *, db_path=None):
         self.owner, self.manifest, self.args, self.db_path = owner, manifest, args, db_path
         self._connection = None
+        self.last_denial = None
 
     def check(self, path, action, **kwargs):
-        permissions.require(self.owner, "server", path, action, conn=self._connection,
-                            db_path=self.db_path, manifest=self.manifest, args=self.args, **kwargs)
+        try:
+            permissions.require(self.owner, "server", path, action, conn=self._connection,
+                                db_path=self.db_path, manifest=self.manifest, args=self.args, **kwargs)
+        except permissions.PermissionError as exc:
+            if str(exc) == "ERR_FS_PERMISSION_REQUIRED":
+                originals = self.args.get("_filesystem_original_paths")
+                original = originals.get(path) if isinstance(originals, dict) else None
+                self.last_denial = permission_result(self.owner, self.manifest, self.args,
+                    [{"path": path, "original": original, "action": action, **kwargs}],
+                    conn=self._connection, db_path=self.db_path)
+                exc.permission_result = self.last_denial
+            raise
 
     def checkpoint(self, row):
         from undo import row_checkpoint
@@ -1248,9 +1273,128 @@ def outside_tool_scope(manifest, args, observation):
     return None
 
 
+def _permission_text(denied):
+    """Render already screened folder facts; never parse an error message."""
+    from messages import get as message
+    groups = {}
+    for item in denied:
+        key = (item["path"], item["action"])
+        group = groups.setdefault(key, dict(item))
+        if not group.get("original") and item.get("original"):
+            group["original"] = item["original"]
+        for flag in ("recursive", "overwrite"):
+            group[flag] = group.get(flag, False) or item.get(flag, False)
+    details = []
+    for item in groups.values():
+        name = item["path"]
+        if name is None:
+            details.append(message("MSG_FS_PERMISSION_UNNAMED",
+                right=message("MSG_FS_READ" if item["action"] == "read" else "MSG_FS_WRITE")))
+            continue
+        if item.get("original"):
+            name = message("MSG_FS_PERMISSION_ALIAS", path=name, original=item["original"])
+        details.append(message("MSG_FS_PERMISSION_FOLDER", path=name,
+            right=message("MSG_FS_READ" if item["action"] == "read" else "MSG_FS_WRITE"),
+            subfolders=message("MSG_FS_PERMISSION_YES" if item.get("recursive") else "MSG_FS_PERMISSION_NO"),
+            overwrite=message("MSG_FS_PERMISSION_OVERWRITE") if item.get("overwrite") else ""))
+    return message("MSG_FS_PERMISSION_SERVER", details="; ".join(details)) if details else message("ERR_FS_PERMISSION_REQUIRED")
+
+
+def permission_result(owner, manifest, args, denied, *, conn=None, db_path=None):
+    """A server refusal from actual failed checks, with only listable names.
+
+    Each check supplies path, action, original (optional) and the same boolean
+    directory/recursive/overwrite flags as `filesystem_permissions.require`.
+    This describes a refusal; it never grants access or replaces that check.
+    """
+    from pathlib import Path
+    import person_files
+    own = str(person_files.root(owner))
+    persons = str(person_files.root(owner).parent)
+
+    def visible(path):
+        # A visible alias never makes service state or another account public.
+        for name in {path, str(Path(path).resolve())}:
+            io.reserved(name)
+            if name.startswith(persons + "/") and not (name == own or name.startswith(own + "/")):
+                return False
+            if permissions.server_excluded(owner, name, "read"):
+                return False
+        for folder in (path, os.path.dirname(path)):
+            try:
+                permissions.require(owner, "server", folder, "read", directory=True,
+                    conn=conn, db_path=db_path, manifest=manifest, args=args)
+                return True
+            except permissions.PermissionError:
+                pass
+        return False
+
+    def alias(path, original):
+        if not original or place(owner, original) != path:
+            return None
+        named = _named_place(owner, original)
+        if not named.startswith(own + "/"):
+            return None
+        current = Path(own)
+        for part in Path(named).relative_to(own).parts:
+            current = current / part
+            if current.is_symlink():
+                # Listing this parent reveals the link, never its unknown
+                # descendants. Name only the archive reached by that link.
+                permissions.require(owner, "server", str(current.parent), "read", directory=True,
+                    conn=conn, db_path=db_path, manifest=manifest, args=args)
+                target = str(current.resolve())
+                io.reserved(target)
+                if (target.startswith(persons + "/") and not target.startswith(own + "/")
+                        or permissions.server_excluded(owner, target, "read")):
+                    return None
+                label = str(current) if os.path.isabs(original) else str(current.relative_to(own))
+                return target, label
+        return None
+
+    safe = []
+    for item in denied:
+        if not isinstance(item, dict) or item.get("action") not in {"read", "write"}:
+            continue
+        hidden = {"path": None, "action": item["action"]}
+        try:
+            path = permissions.normalize_path(item["path"], "posix")
+            original = item.get("original")
+            original = original if isinstance(original, str) else None
+            io.reserved(path)
+            folder = path if item.get("directory") else os.path.dirname(path)
+            named = original if folder == path else os.path.dirname(original) if original else None
+            # A grant's folder must exist, including when creating parents.
+            while folder != "/" and not os.path.isdir(folder):
+                folder = os.path.dirname(folder)
+                named = os.path.dirname(named) if named else None
+            known_alias = alias(path, original)
+            if not visible(folder):
+                if known_alias is None:
+                    safe.append(hidden)
+                    continue
+                folder, named = known_alias
+            elif named and (place(owner, named) != folder or not visible(_named_place(owner, named))):
+                named = None
+            shallow = {"path": folder, "kind": "folder", "path_style": "posix",
+                       "can_read": 1, "can_write": 1, "can_overwrite": 1, "recursive": 0}
+            recursive = not permissions.permits([shallow], path, item["action"],
+                **{flag: bool(item.get(flag)) for flag in ("directory", "recursive", "overwrite")})
+            safe.append({"path": folder, "original": named if named != folder else None,
+                         "action": item["action"], "recursive": recursive,
+                         "overwrite": bool(item.get("overwrite"))})
+        except Exception:
+            safe.append(hidden)  # A failed diagnostic never replaces the original refusal.
+    return {"ok": False, "ok_count": 0, "fail_count": 1, "results": [], "failed": [],
+            "error_code": "ERR_FS_PERMISSION_REQUIRED", "error": _permission_text(safe),
+            "error_class": "filesystem_permission", "_permission_denied": safe}
+
+
 def error_result(error):
     from messages import get as _msg
     code = str(error) if isinstance(error, permissions.PermissionError) else "ERR_FS_IO"
+    if code == "ERR_FS_PERMISSION_REQUIRED" and getattr(error, "permission_result", None) is not None:
+        return error.permission_result
     text = (_msg("ERR_FS_TOO_MANY", count=error.count, cap=MAX_ITEMS) if isinstance(error, TooMany)
             else _msg(code))
     return {"ok": False, "ok_count": 0, "fail_count": 1, "results": [], "failed": [],
@@ -1266,20 +1410,37 @@ def move_failure(index, row, error):
     """One row of a move not done, in the shape the tool gives it."""
     from backends.files import local
     from messages import get as message
+    detail = {}
     if "refused" in row:
         code, text = row["refused"], row["error"]
     else:
         failure = error_result(error)
+        detail = {"_permission_denied": failure["_permission_denied"]} if "_permission_denied" in failure else {}
         code = _MOVE_CAUSES.get(failure["error_code"], failure["error_code"])
         text = local._move_cause(code, None) if code != failure["error_code"] else failure["error"]
     return {"index": index, **{key: row[key] for key in ("src", "dst") if key in row},
             "error_class": next(("refused_" + cause for cause in ("folder", "system_file")
                                  if code == "ERR_REFUSE_MOVE" and text == message("MSG_MOVE_CAUSE_" + cause.upper())), ""),
-            "error_code": code, "error": text}
+            "error_code": code, "error": text, **detail}
 
 
 def batch_result(owner, manifest, args, turn_id, operation, results, failed):
     attention = {"error_class": "publication_ambiguous"} if any(row.get("_unsure") for row in failed) else {}
+    denied = [item for row in failed for item in row.get("_permission_denied", [])]
+    if denied:
+        # One explanation for the folder, rather than the same path per file.
+        from messages import get as message
+        text = _permission_text(denied)
+        for row in failed:
+            if "_permission_denied" in row:
+                row["error"] = message("MSG_FS_PERMISSION_ITEM")
+        attention_permission = {"_permission_denied": denied}
+        if failed[0].get("error_code") == "ERR_FS_PERMISSION_REQUIRED" and not attention:
+            attention_permission["error"] = text
+        else:
+            next(row for row in failed if "_permission_denied" in row)["error"] = text
+    else:
+        attention_permission = {}
     if operation == "move":
         from backends.files import local
         folders = sorted({folder for entry in results for folder in entry.get("_dirs_created") or []},
@@ -1289,7 +1450,7 @@ def batch_result(owner, manifest, args, turn_id, operation, results, failed):
             for key in ("error", "error_code", "error_class"):
                 value.pop(key, None)  # Declared row refusals, not a failed invocation.
         value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
-        return {**value, **attention}
+        return {**value, **attention, **attention_permission}
     value = {"ok": not failed, "ok_count": len(results), "fail_count": len(failed),
              "entries" if operation == "read" else "results": results, "failed": failed,
              "dirs_created": [folder for entry in results for folder in entry.get("dirs_created") or []]
@@ -1301,7 +1462,7 @@ def batch_result(owner, manifest, args, turn_id, operation, results, failed):
         value.update(document_parse.summarize(results, deduplicate=bool(args.get("deduplicate_content"))))
     if operation in {"copy", "write", "delete", "mkdir"}:
         value["_filesystem"] = {"owner": owner, "manifest": manifest, "args": args, "turn_id": turn_id}
-    return {**value, **attention}
+    return {**value, **attention, **attention_permission}
 
 
 # One group of a server-only operation has at most this long, as one call to
@@ -1388,7 +1549,8 @@ def _failure(operation, index, item, error, *, timed_out=False):
     if operation == "move":
         return move_failure(index, item, error)
     failure = error_result(error)
-    return {"index": index, "error": failure["error"], "error_code": failure["error_code"], "path": item}
+    return {"index": index, "error": failure["error"], "error_code": failure["error_code"], "path": item,
+            **({"_permission_denied": failure["_permission_denied"]} if "_permission_denied" in failure else {})}
 
 
 def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None, authority=None, source_fd=None,

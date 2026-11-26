@@ -7,6 +7,14 @@ import sys
 
 ROOT = Path(__file__).resolve().parents[1]
 TRANSLATIONS = {
+    "MSG_FS_PERMISSION_SERVER": ("In Sistema → Permessi del server concedi: {details}.", "In System → Server permissions grant: {details}."),
+    "MSG_FS_PERMISSION_FOLDER": ("{right} sulla cartella «{path}», Includi sottocartelle: {subfolders}{overwrite}", "{right} on folder “{path}”, Include subfolders: {subfolders}{overwrite}"),
+    "MSG_FS_PERMISSION_ALIAS": ("{path} (nome usato: {original})", "{path} (given name: {original})"),
+    "MSG_FS_PERMISSION_YES": ("sì", "yes"),
+    "MSG_FS_PERMISSION_NO": ("no", "no"),
+    "MSG_FS_PERMISSION_OVERWRITE": (", Consenti sovrascrittura: sì", ", Allow overwrite: yes"),
+    "MSG_FS_PERMISSION_ITEM": ("Permesso mancante: vedi l’indicazione per la cartella.", "Missing permission: see the folder instruction."),
+    "MSG_FS_PERMISSION_UNNAMED": ("{right} sul percorso richiesto", "{right} on the requested path"),
     "MSG_FS_PERMISSIONS": ("Permessi", "Permissions"),
     "MSG_FS_DEVICES": ("Dispositivi", "Devices"),
     "MSG_FS_EXPLANATION": ("Autorizza soltanto i file e le cartelle che vuoi usare con Metnos. I permessi del sistema operativo continuano a valere. Le concessioni e le revoche vengono registrate.", "Authorize only the files and folders you want to use with Metnos. Operating system permissions still apply. Grants and revocations are recorded."),
