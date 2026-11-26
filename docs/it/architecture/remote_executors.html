@@ -211,6 +211,15 @@ qualcosa, una cartella mancante viene creata, e l'origine si toglie solo dopo
 che il file ha il nome nuovo sullo stesso disco o ne esiste una copia
 verificata.</p>
 
+<p>Anche scrivere o copiare sul server crea le cartelle di destinazione
+mancanti, entro i diritti concessi; se si chiede di non crearle, la cartella
+deve gi&agrave; esistere. L'annullamento toglie prima i file e poi le cartelle
+create, dalla pi&ugrave; profonda, se sono ancora vuote e le stesse. Se un errore
+lascia cartelle perch&eacute; il permesso &egrave; stato revocato durante il lavoro,
+la risposta dichiara quali sono rimaste e perch&eacute;. Se nessun file &egrave;
+riuscito, quelle cartelle non hanno una ricevuta di annullamento: si possono
+togliere a mano o chiedere a Metnos di toglierle dopo aver ridato il permesso.</p>
+
 <p>I trasferimenti controllano dimensione e impronta dei dati; il file diventa
 visibile con una sostituzione atomica e una sovrascrittura conserva una copia
 per l'annullamento. Il server ricontrolla i diritti prima della modifica finale;
@@ -231,7 +240,7 @@ sul server accetta fino a 32 MiB per file e restituisce fino a 200.000 caratteri
 entro il limite della risposta. PDF, DOCX e XLSX vengono interpretati in un
 processo isolato, senza accesso ad altri file personali. Una lettura limitata
 viene indicata come incompleta. L'elenco è limitato a 1.000 voci, 256 KiB e
-64 livelli. Nelle estensioni e nelle copie remote la cartella di destinazione
+64 livelli. Nelle copie verso un dispositivo la cartella di destinazione
 deve esistere; copie di interi alberi, percorsi con caratteri jolly, collegamenti
 e percorsi riservati all'applicazione vengono rifiutati esplicitamente.
 Le operazioni sul server negli spazi già autorizzati seguono le regole

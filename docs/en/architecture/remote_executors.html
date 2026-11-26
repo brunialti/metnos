@@ -199,6 +199,15 @@ before anything is touched, a missing folder is created, and the source is
 removed only after the file has its new name on the same disk or a verified
 copy exists.</p>
 
+<p>Writing or copying on the server also creates missing destination folders
+within granted rights; when folder creation is disabled, the parent must
+already exist. Undo removes the files first, then the created folders, deepest
+first, provided they are still empty and unchanged. If a failure leaves folders
+because permission was revoked during the work, the response states which
+folders remain and why. If no file succeeded, those folders have no undo
+receipt: they can be removed manually or by asking Metnos after restoring
+permission.</p>
+
 <p>Transfers check size and data digests; an atomic replacement publishes the
 file and overwrites preserve an undo backup. The server rechecks grants before
 the final mutation; the device refreshes signed authority within five seconds.
@@ -218,7 +227,7 @@ return at most 256 KiB. Automatic document reading on the server accepts up to
 PDF, DOCX and XLSX are interpreted in an isolated process with no access to
 other personal files. Limited reads are reported as incomplete.
 Listing is bounded to 1,000 entries, 256 KiB and depth 64.
-For extensions and remote copies, the destination parent must already exist;
+For copies to a device, the destination parent must already exist;
 directory-tree copies, globs, links and reserved application paths are
 explicitly refused. Server operations within existing scopes follow the
 ordinary server rules.</p>

@@ -13,6 +13,17 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'MSG_FS_FOLDERS_UNNAMED': (
+        'cartelle del percorso richiesto il cui nome non è visibile',
+        'folders in the requested path whose names are not visible'),
+    'MSG_FS_FOLDERS_LEFT': (
+        'Sono rimaste le cartelle create: {folders}. Non ho potuto toglierle: {reason}',
+        'The created folders remain: {folders}. I could not remove them: {reason}'),
+    'MSG_FS_FOLDERS_LEFT_NO_UNDO': (
+        'Sono rimaste le cartelle create: {folders}. Non ho potuto toglierle: {reason} '
+        'Non è disponibile l’annullamento: puoi toglierle tu o chiederlo a Metnos.',
+        'The created folders remain: {folders}. I could not remove them: {reason} '
+        'Undo is unavailable: you can remove them yourself or ask Metnos to do it.'),
     # A folder to create whose path meets a file, not a folder.
     'ERR_FS_NOT_A_FOLDER': (
         'Non ho creato la cartella: nel percorso c\'è un file con lo stesso nome di una delle cartelle.',

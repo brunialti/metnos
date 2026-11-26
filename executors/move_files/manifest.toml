@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "move_files"
-version     = "0.13.0"
+version     = "0.13.1"
 # C7 CP4: backend local pathlib/os puro → gira anche su Windows
 # (mutanti validati e2e device 5/7). Senza dichiarazione, placement
 # rifiuterebbe un device Windows (F1).
@@ -92,8 +92,8 @@ type        = "boolean"
 default     = true
 
 [args.properties.parents.description]
-it = "Se true (default), crea la cartella di destinazione mancante, anche nelle cartelle concesse quando sposta. Per una copia su percorsi autorizzati aggiuntivi o remoti la cartella deve già esistere."
-en = "If true (default), create a missing destination folder, also in granted folders when moving. For a copy to additional authorized or remote paths, the folder must already exist."
+it = "Se true (default), crea la cartella di destinazione mancante anche nelle cartelle concesse sul server, sia per spostare sia per copiare. Se false, la cartella deve già esistere."
+en = "If true (default), create a missing destination folder also in granted server folders, for both moves and copies. If false, the folder must already exist."
 
 [args.properties.allow_dirs]
 type        = "boolean"

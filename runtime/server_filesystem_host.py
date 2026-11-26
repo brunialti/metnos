@@ -212,7 +212,7 @@ def _single_args(operation, args, spec):
     return {**args, 'paths': [spec]}
 
 
-def _knows(binding, operation, deadline):
+def _knows(binding, operation, deadline, *, feature=None):
     """Refuse at once an operation the running host was not built with.
 
     The host is restarted from the new release only after the cutover; until
@@ -225,7 +225,9 @@ def _knows(binding, operation, deadline):
             raise
         reply = {}
     known = reply.get('operations') if isinstance(reply, dict) else None
-    if not isinstance(known, list) or operation not in known:
+    features = reply.get('features') if isinstance(reply, dict) else None
+    if (not isinstance(known, list) or operation not in known
+            or feature is not None and (not isinstance(features, list) or feature not in features)):
         raise permissions.PermissionError('ERR_FS_HOST_OUTDATED')
 
 
@@ -253,9 +255,10 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                           server.dir_paths(args) if operation == 'mkdir' else
                           server.move_rows(args) if operation == 'move' else server.paths(args))
     results, failed = [], []
-    # An operation older hosts already serve needs no question; a newer one is
-    # asked about once, at the first path that goes to the host.
-    host_answer = None if operation in permissions.SERVER_OPERATIONS else 'ok'
+    # Ask once at the first host path, including when an existing operation
+    # now needs parent creation and its corresponding undo.
+    feature = 'file_parents_v1' if operation in {'write', 'copy'} else None
+    host_answer = None if operation in permissions.SERVER_OPERATIONS or feature else 'ok'
     for index, spec in enumerate(specs):
         authority.last_denial = None
         source_fd = None
@@ -284,7 +287,7 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                 native = _workspace(target)
             if not native and host_answer is None:
                 try:
-                    _knows(binding, operation, deadline)
+                    _knows(binding, operation, deadline, feature=feature)
                     host_answer = 'ok'
                 except permissions.PermissionError as exc:
                     host_answer = str(exc)
@@ -335,7 +338,14 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
                 error = server.error_result(exc)
                 failed.append({'index': index, 'error': error['error'], 'error_code': error['error_code'],
                                **({'_permission_denied': error['_permission_denied']} if '_permission_denied' in error else {}),
-                               **({'path': spec} if operation == 'mkdir' else {})})
+                               **({'path': spec} if operation == 'mkdir' else
+                                  {'path': os.path.dirname(spec['dst'])} if operation == 'copy'
+                                  and error['error_code'] == 'ERR_FS_PARENT_MISSING' else {})})
+            rows = reply.get('failed') or []
+            if len(rows) == 1 and rows[0].get('dirs_created'):
+                failed[-1].update({key: rows[0][key] for key in
+                    ('dirs_created', '_dirs_created_ids', 'dirs_cleanup_error_code')})
+                failed[-1]['_filesystem_backend'] = 'native' if native else 'host'
             if sent:
                 # The host had the item when this side stopped waiting: what
                 # it did is not known here (`_unsure`, never said undone).
@@ -348,9 +358,9 @@ def execute(owner, manifest, args, turn_id, *, timeout_s=30, db_path=None):
         finally:
             if source_fd is not None:
                 os.close(source_fd)
-    result = server.batch_result(owner, manifest, args, turn_id, operation, results, failed)
+    result = server.batch_result(owner, manifest, args, turn_id, operation, results, failed, db_path=db_path)
     if '_filesystem' in result:
-        backends = {entry['_filesystem_backend'] for entry in results}
+        backends = {entry['_filesystem_backend'] for entry in results + failed if '_filesystem_backend' in entry}
         result['_filesystem']['backend'] = next(iter(backends)) if len(backends) == 1 else 'mixed'
     return result
 
@@ -382,7 +392,7 @@ def undo(pattern, results, *, actor=None, db_path=None, timeout_s=30):
             backend = entry.get('_filesystem_backend', context['backend'])
             if backend not in {'native', 'host'}:
                 raise permissions.PermissionError('ERR_FS_AUTHORITY_INVALID')
-            item = {**results, 'results': [entry], '_filesystem': {**context, 'backend': backend}}
+            item = {**results, 'results': [entry], 'failed': [], '_filesystem': {**context, 'backend': backend}}
             if backend == 'host':
                 # One item crosses: the call's other rows (a call served in
                 # groups may hold more than one request carries) stay here.
@@ -415,7 +425,8 @@ def handle(request, authority, source_fd=None):
     if request['action'] == 'known_folders':
         return {'ok': True, 'known_folders': device_paths.local_known_folders(_owner_home())}
     if request['action'] == 'operations':
-        return {'ok': True, 'operations': sorted(permissions.OPERATIONS | permissions.SERVER_OPERATIONS)}
+        return {'ok': True, 'operations': sorted(permissions.OPERATIONS | permissions.SERVER_OPERATIONS),
+                'features': ['file_parents_v1']}
     if request['action'] == 'size':
         path = request['path']
         authority.check(path, 'read')
