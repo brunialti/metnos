@@ -46,6 +46,7 @@ import detection_lexicon as _detlex  # lessici NL traducibili (gemello i18n)
 import detection_lexicon_seed_runtime_safety as _runtime_safety_lexicon
 import detection_lexicon_seed_residual_am as _residual_am_lexicon
 from config import DEFAULT_TIMEZONE
+from executor_helpers import collect_disks as _collect_host_disks
 from credential_intake import (
     credential_pairs_for_storage,
     scrub_sensitive_text as _scrub_credentials,
@@ -2200,6 +2201,7 @@ def _canonicalize_remote_data_plane(args: dict) -> dict:
 # valore sovrascrive sempre (runtime-owned: il planner non può valorizzarlo
 # e un leak coercito non deve sopravvivere).
 _RUNTIME_ARG_SOURCES = {
+    "host_disks": _collect_host_disks,
     # ADR 0199 (rev. 24/7 sera): form credenziale dichiarati dai domini,
     # collezionati server-side e iniettati in `set_credentials`.
     "credential_forms": lambda: _import_credentials().credential_form_kinds(),

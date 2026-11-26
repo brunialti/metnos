@@ -116,7 +116,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'admin_chat_commands.py': ('a88a306af700787c6b2b11f73bab9c25a069d2062d7570f2e369e3974240d74b', (('comparison', 11),)),
     'admitted_module_v1.py': ('4e8397a4a89db733434b2a50118f592129ecd3d429a2448ed6f0e671181cb518', (('comparison', 4), ('helper-argument', 1), ('prefix-suffix', 2))),
     'agent_mirror.py': ('870f4556a8cd0bcc06eeda1d834549ecfb560fdd5eb3dee87b0170f9d63fe875', (('helper-argument', 4),)),
-    'agent_runtime.py': ('c27b32b64c88659dc04be67a6a9e8de8cb6e2f3340babcab3e234b0d8e540a94', (('comparison', 131), ('helper-argument', 1), ('iteration', 5), ('membership', 7), ('prefix-suffix', 2), ('regex', 3))),
+    'agent_runtime.py': ('729a3606a9d9db153ee0343f2351054427ad6ebd56cf194097b02f87e25710d0', (('comparison', 131), ('helper-argument', 1), ('iteration', 5), ('membership', 7), ('prefix-suffix', 2), ('regex', 3))),
     'agent_server.py': ('14faa41b18dbd6a44a77af8ca40b2aa94d132c12eed348976eac5cfda78cb14e', (('comparison', 11), ('helper-argument', 5))),
     'agentic_executor.py': ('8320cd919ebc831aba7deade7477217ce278367974f4d65bb1cc0b7fe8a826f3', (('comparison', 3),)),
     'alignment_engine.py': ('ae8b5551fc8590e1a6bfeda9436b312c8e854d1728921d46fd699175a0484bb7', (('comparison', 6),)),
@@ -268,7 +268,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_birth_snapshot.py': ('3d1e6c7501b550879e73e6dd4cd19ae9a4ac87e2fd70a6a5483d56fc5c497cbd', (('comparison', 4), ('helper-argument', 1))),
     'executor_birth_template_table_v1.py': ('78f2c14fe9d16338faadee2a6c9f3c4abf3337a6c910b97045035634b7e937d8', (('helper-argument', 1),)),
     'executor_catalog_identity.py': ('1edab6d0f794c26c0d8fab8411bc50151cfecb7e4c4286acc11d531b256004e0', (('comparison', 3), ('helper-argument', 2))),
-    'executor_helpers.py': ('715e8c91ddd459d9d0ba918d4c680b898e11e28b16b69d9e3b94ed65ddee93fb', (('comparison', 5), ('helper-argument', 1))),
+    'executor_helpers.py': ('1ff9b87d02bf9041045450f315bdff5967177bc8d0fc1c7200338b81492d0bbe', (('comparison', 5), ('helper-argument', 2), ('iteration', 1), ('prefix-suffix', 1))),
     'executor_metadata.py': ('7c34d98fb7bf46acd765cd5f12b2f30159c400c2813eb2af8bfb9e1b4750c368', (('comparison', 7), ('iteration', 1), ('prefix-suffix', 1))),
     'executor_scheduler.py': ('b4d3206cbae1afe77b676b978462dd117f718e63c701c776026b157bda98d857', (('comparison', 17),)),
     'executor_standard.py': ('f331dff6a923b4ed1b5090c404e9687ddfac2a863e6aeba4cbb7051d19eab90e', (('comparison', 16), ('membership', 3))),
@@ -342,7 +342,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'nightly_orchestrator.py': ('94f31bc1ae7177c6fc8ed34d7dcf4c1abf004ded0cf9050517bc76809aa4f57d', (('comparison', 5), ('helper-argument', 1), ('iteration', 1), ('membership', 1), ('prefix-suffix', 3))),
     'nlu.py': ('a3d7dac0348b73354b4464d84931d4509c7d306176bb86bf5f28835d2ece085d', (('comparison', 3),)),
     'observability.py': ('149e32b25e0a0d99a18d8d66abb4d64bac91fd1b8754fb8bd307a8db3953d60a', (('comparison', 5),)),
-    'orchestration.py': ('3ee8338a6d6344c1d7347258c8a4e8988d60a93c69fe4305ba790067c7deedff', (('comparison', 93), ('helper-argument', 3), ('iteration', 2), ('membership', 11))),
+    'orchestration.py': ('16292252fd4dbcec06e82611ae722e43b367a168113d10fa194a04e0001505a7', (('comparison', 95), ('helper-argument', 3), ('iteration', 2), ('membership', 11))),
     'ordering_clause.py': ('0641b9097d914f769e2f197d5474458ba09863a487c840a31f891e213510e578', (('comparison', 12),)),
     'output_format.py': ('26890c3121f27cf156e8c5b36af86c828f7833cbf94cdba5b713b6b19798bcf1', (('comparison', 2),)),
     'output_policy.py': ('ceefc24436e75a0d5444bf9746c6a9eadf468ee0a425534b220f33ffa92f3281', (('comparison', 31), ('regex', 1))),
@@ -429,7 +429,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'system/sudoer.py': ('5fe41121259fc6ba5b913434fe1c822c3c665fb53922b3d5e2e6a003f46e07b8', (('comparison', 5), ('iteration', 1))),
     'system_binaries.py': ('768e45233baf739ebf3287e14ed06015dadba2216aded7d3acc4c9c173cf1338', (('comparison', 2),)),
     'tabular_projection.py': ('eb96b0686598b14739a49d8c17aca67697cdcbffa5ece2e97437e7b2413dc0d1', (('comparison', 8),)),
-    'target_device.py': ('c1bfaaca3934422e7f8627cd9ab1de34d2ed51238b73441e26056ab6dd7e6e6f', (('comparison', 14),)),
+    'target_device.py': ('5fd3d85a81074e39e4ab11ff9ec2a1ca8888a9b0f2f7e60a13e11e924880e333', (('comparison', 14),)),
     'telos_introspect.py': ('dc3c2b090fe8a3fe1e81fe7d163344b43d63ed12b49bfd569c9d859d1d9650fb', (('comparison', 2),)),
     'telos_lenses/__init__.py': ('231e6a853e027e04c93351b633f40a69cf9fdbf6ee2e4e449dc3b360b01a8136', (('comparison', 10),)),
     'telos_loader.py': ('bf3fb57f3a794d9bb222db59cb242e039f8e4a5786733264785e91210f857c1c', (('comparison', 2),)),
@@ -924,6 +924,8 @@ VALUE_BOUND_LANGUAGE_COLLECTIONS: Mapping[
 # Every fingerprint hashes relative path, lexical owner, symbol, container kind
 # and recursively tagged payload.  A name alone never authorizes changed bytes.
 VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
+    # S-059 D5: exact 27 kernel filesystem types in collect_disks.skip.
+    "f0d944b4467a0d3bcf158d6c925b13f814d9644ed12c34bd939931e60c90721d",
     "00633b553875fe43307e5e52208a7a338799a84578db5bf2467ea977e8a99cac", "00689c8956c5bb7a8721445388cf3cc2ad8449d3799b727ce5162a490bf32dc5", "007243b2af7969fd8d94fdebdc9eaac18d701e8d1ec3285391318c9f41740b4b", "0076ae91fe1b184524f41b21bbcc04c11eb67ca6f20eb72247fb3ebce648cdfa",
     "0147761646e8899a248f18a30b2acf7c83631794878ae82d01762cde87e36325", "01ce9176afb9fce5e743e549e23c9a4ed4b7bab55d1f82486f7015958878f9e0", "021275e3583682cf578087f126fb89f32d2b2f5c564bd602bf1d72988c55ff01", "027b8d4e688a7e2f9e70f0a595d463f5bbb7e1262b44d5fb091b72a100fc8e99",
     "03e6356f34922b749b54555c1a743279470072e8dcff9ffdfdac03e1403226b5", "03ed552691338b61006d7729a823ae62bcf641e28fa3a597a72d15dd3028926e", "03ed62778a8794bcd3bb581b0b3b4cfbcbb39f8789cfc6a52f05f3b6536c9059", "0598ac65a25af71b76addb53b755ef6fb1bdc32de3422e7a03edc3651abd815a",

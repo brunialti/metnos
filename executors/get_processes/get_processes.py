@@ -42,7 +42,7 @@ _RUNTIME = os.environ.get("METNOS_RUNTIME") or next(
 if _RUNTIME not in sys.path:
     sys.path.insert(0, _RUNTIME)
 from messages import get as _msg  # noqa: E402
-from executor_helpers import managed_provider_result, run_stdio  # noqa: E402
+from executor_helpers import collect_disks, managed_provider_result, run_stdio  # noqa: E402
 
 
 _VALID_ATTRS = {
@@ -483,12 +483,12 @@ def _win_memory() -> dict:
                          if swap_total_mb else 0.0)}
 
 
-def _win_disks() -> list[dict]:
+def _win_disks() -> dict:
     """Drive FISSI via GetLogicalDriveStringsW + shutil.disk_usage (shape
     identica al ramo /proc/mounts)."""
     import ctypes
     import shutil
-    out: list[dict] = []
+    out, seen, status = [], set(), "complete"
     buf = ctypes.create_unicode_buffer(256)
     n = ctypes.windll.kernel32.GetLogicalDriveStringsW(255, buf)
     drives = [d for d in buf[:n].split("\x00") if d]
@@ -496,21 +496,27 @@ def _win_disks() -> list[dict]:
         if ctypes.windll.kernel32.GetDriveTypeW(drive) != 3:  # DRIVE_FIXED
             continue
         try:
+            identity = os.stat(drive).st_dev
+            if identity in seen:
+                continue
             u = shutil.disk_usage(drive)
         except OSError:
+            status = "partial"
             continue
         if not u.total:
             continue
         fsname = ctypes.create_unicode_buffer(64)
         ok = ctypes.windll.kernel32.GetVolumeInformationW(
             drive, None, 0, None, None, None, fsname, 64)
+        seen.add(identity)
         out.append({"mount": drive, "device": drive,
+                    "total_bytes": u.total, "free_bytes": u.free,
                     "fstype": (fsname.value.lower() if ok else ""),
                     "total_gb": round(u.total / (1024 ** 3), 1),
                     "used_gb": round(u.used / (1024 ** 3), 1),
                     "free_gb": round(u.free / (1024 ** 3), 1),
                     "pct": round(100.0 * u.used / u.total, 1)})
-    return out
+    return {"entries": out, "status": status if out else "unavailable"}
 
 
 def _win_cpu_percent(sample_s: float = 0.1) -> float | None:
@@ -580,62 +586,14 @@ def _read_memory() -> dict:
     return out
 
 
-# Filesystem da NON segnalare nella sezione disk (overlay, virtuali,
-# bind-mount kernel, ecc.). Lasciare solo i mount user-rilevanti.
-_DISK_SKIP_FSTYPES = {
-    "tmpfs", "devtmpfs", "proc", "sysfs", "cgroup", "cgroup2",
-    "pstore", "bpf", "tracefs", "debugfs", "configfs", "fusectl",
-    "mqueue", "hugetlbfs", "ramfs", "securityfs", "autofs",
-    "binfmt_misc", "rpc_pipefs", "nfsd", "fuse.gvfsd-fuse",
-    "fuse.portal", "overlay", "squashfs",
-}
-
-
-def _read_disk() -> list[dict]:
-    """Per ogni mount user-rilevante in /proc/mounts: total/used/free/pct.
-    Su Windows: drive fissi via Win32 nativo."""
-    out: list[dict] = []
-    if os.name == "nt":
-        try:
-            return _win_disks()
-        except Exception:  # noqa: BLE001 — best-effort
-            return out
+def _read_disk() -> dict:
+    """Device-local collection; the server supplies its host view separately."""
+    if os.name != "nt":
+        return collect_disks()
     try:
-        with open("/proc/mounts", "r") as f:
-            mounts = f.read().splitlines()
-    except OSError:
-        return out
-    seen = set()
-    for line in mounts:
-        parts = line.split()
-        if len(parts) < 3:
-            continue
-        device, mount, fstype = parts[0], parts[1], parts[2]
-        if fstype in _DISK_SKIP_FSTYPES:
-            continue
-        if mount in seen:
-            continue
-        seen.add(mount)
-        try:
-            st = os.statvfs(mount)
-        except (OSError, FileNotFoundError):
-            continue
-        total = st.f_blocks * st.f_frsize
-        free = st.f_bavail * st.f_frsize
-        used = total - (st.f_bfree * st.f_frsize)
-        if total == 0:
-            continue
-        out.append({
-            "mount": mount,
-            "device": device,
-            "fstype": fstype,
-            "total_gb": round(total / (1024 ** 3), 1),
-            "used_gb": round(used / (1024 ** 3), 1),
-            "free_gb": round(free / (1024 ** 3), 1),
-            "pct": round(100.0 * used / total, 1),
-        })
-    out.sort(key=lambda d: d["mount"])
-    return out
+        return _win_disks()
+    except Exception:
+        return {"entries": [], "status": "unavailable"}
 
 
 # Il catalogo base dei servizi vive in runtime/services_registry.py. Questo
@@ -1470,6 +1428,7 @@ def _read_peripherals() -> dict:
 def _collect_health(
         services_extra: tuple[str, ...] | None = None, *,
         scheduler_health: object = None,
+        host_disks: dict | None = None,
         sensor_domains: tuple[str, ...] = (),
         sensor_types: tuple[str, ...] = ()) -> dict:
     """Aggrega le sezioni descrittive+dinamiche. Nessuna chiamata LLM (§7.9).
@@ -1486,6 +1445,7 @@ def _collect_health(
             sensor_domains,
             sensor_types,
         )
+    disks = host_disks if host_disks is not None else _read_disk()
     health = {
         "system": _read_system(),
         "cpu": _read_cpu(),
@@ -1494,7 +1454,8 @@ def _collect_health(
         "memory": _read_memory(),
         "thermal": _read_thermal(hardware_sensors),
         "power": _read_power(),
-        "disk": _read_disk(),
+        "disk": disks["entries"],
+        "disk_status": disks["status"],
         "network": _read_network(),
         "peripherals": _read_peripherals(),
         "services": services,
@@ -1647,6 +1608,7 @@ def invoke(args: dict, ctx: dict | None = None) -> dict:
         result["health"] = _collect_health(
             tuple(s for s in services_extra_in if isinstance(s, str)),
             scheduler_health=args.get("scheduler_health"),
+            host_disks=args.get("host_disks"),
             sensor_domains=sensor_domains,
             sensor_types=sensor_types,
         )

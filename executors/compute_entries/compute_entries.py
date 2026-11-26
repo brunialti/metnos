@@ -112,6 +112,11 @@ def invoke(args):
                 "count_input": count_input, "ignored_non_numeric": 0,
                 **extra}
 
+    if entries and not any(isinstance(e, dict) and key in e for e in entries):
+        available = sorted({str(k) for e in entries if isinstance(e, dict) for k in e})
+        return {"ok": False, "error_class": "invalid_input", "error_code": "field_missing",
+                "error": _msg("ERR_UNKNOWN_FIELDS", unknown=key, supported=", ".join(available))}
+
     if op == "count_distinct":
         seen = set()
         for e in entries:

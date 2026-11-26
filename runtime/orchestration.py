@@ -2897,17 +2897,19 @@ def _fmt_health_block(h: dict, host: str = "", sections: set | None = None) -> s
             tot_gb=tot_gb, swap=swap_str,
         ))
     disks = h.get("disk") or []
-    if (_keep is None or "disk" in _keep) and disks:
-        disk_strs = []
+    if (_keep is None or "disk" in _keep) and (disks or h.get("disk_status")):
+        status = h.get("disk_status", "partial" if disks else "unavailable")
+        if status == "complete":
+            out.append(_msg("MSG_HEALTH_DISKS_TOTAL",
+                            free_gb=round(sum(d["free_bytes"] for d in disks) / 1024**3, 1),
+                            total_gb=round(sum(d["total_bytes"] for d in disks) / 1024**3, 1)))
+        else:
+            out.append(_msg("MSG_HEALTH_DISKS_PARTIAL" if status == "partial"
+                            else "MSG_HEALTH_DISKS_UNAVAILABLE"))
         for d in disks[:5]:
-            mount = d.get("mount", "?")
-            pct = d.get("pct", "?")
-            free_gb = d.get("free_gb")
-            if free_gb is not None:
-                disk_strs.append(f"{mount} {pct}% (free {free_gb} GB)")
-            else:
-                disk_strs.append(f"{mount} {pct}%")
-        out.append(_msg("MSG_HEALTH_DISKS", body=" · ".join(disk_strs)))
+            out.append(_msg("MSG_HEALTH_DISK_ENTRY", mount=d.get("mount", "?"),
+                            pct=d.get("pct", "?"), free_gb=d.get("free_gb", "?"),
+                            total_gb=d.get("total_gb", "?")))
     thermal = h.get("thermal") or {}
     if (_keep is None or "thermal" in _keep) and thermal.get("available"):
         therm_strs = []

@@ -13,6 +13,18 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'MSG_HEALTH_DISKS_TOTAL': (
+        'Dischi: totale libero {free_gb} GiB su {total_gb} GiB.',
+        'Disks: total free {free_gb} GiB of {total_gb} GiB.'),
+    'MSG_HEALTH_DISK_ENTRY': (
+        '{mount}: {free_gb} GiB liberi su {total_gb} GiB ({pct}% usato).',
+        '{mount}: {free_gb} GiB free of {total_gb} GiB ({pct}% used).'),
+    'MSG_HEALTH_DISKS_PARTIAL': (
+        'Dischi: dati parziali; totale non disponibile.',
+        'Disks: partial data; total unavailable.'),
+    'MSG_HEALTH_DISKS_UNAVAILABLE': (
+        'Dischi: dati non disponibili; totale non disponibile.',
+        'Disks: data unavailable; total unavailable.'),
     'ERR_UNKNOWN_FIELDS': (
         'Nei risultati non c\'è il dato «{unknown}». Ci sono: {supported}.',
         'The results carry no «{unknown}». They carry: {supported}.'),

@@ -36,6 +36,60 @@ from worker_policy import bounded_worker_count
 from observed_dates import ASSUMED_YEAR_MARK
 
 
+def collect_disks() -> dict:
+    """Local Linux filesystems, once per device; never query network mounts."""
+    import os
+    skip = {
+        "tmpfs", "devtmpfs", "proc", "sysfs", "cgroup", "cgroup2",
+        "pstore", "bpf", "tracefs", "debugfs", "configfs", "fusectl",
+        "mqueue", "hugetlbfs", "ramfs", "securityfs", "autofs",
+        "binfmt_misc", "rpc_pipefs", "nfsd", "fuse.gvfsd-fuse",
+        "fuse.portal", "overlay", "squashfs", "efivarfs", "nsfs", "devpts",
+    }
+    out, seen, status = [], set(), "complete"
+    try:
+        with open("/proc/mounts", "r") as f:
+            mounts = f.read().splitlines()
+        for line in mounts:
+            parts = line.split()
+            if len(parts) < 3:
+                status = "partial"
+                continue
+            device, mount, fstype = parts[:3]
+            if fstype in skip or fstype.startswith((
+                    "nfs", "cifs", "smb", "sshfs", "fuse.sshfs", "fuse.rclone",
+                    "fuse.s3fs", "fuse.davfs", "davfs", "ceph", "glusterfs", "9p",
+                    "fuse.ceph", "fuse.glusterfs")):
+                continue
+            for escaped, decoded in (("\\040", " "), ("\\011", "\t"),
+                                     ("\\012", "\n"), ("\\134", "\\")):
+                mount, device = mount.replace(escaped, decoded), device.replace(escaped, decoded)
+            try:
+                identity = os.stat(mount).st_dev
+                if identity in seen:
+                    continue
+                st = os.statvfs(mount)
+            except OSError:
+                status = "partial"
+                continue
+            total = st.f_blocks * st.f_frsize
+            free = st.f_bavail * st.f_frsize
+            used = total - st.f_bfree * st.f_frsize
+            if total == 0:
+                continue
+            seen.add(identity)
+            out.append({"mount": mount, "device": device, "fstype": fstype,
+                        "total_bytes": total, "free_bytes": free,
+                        "total_gb": round(total / (1024 ** 3), 1),
+                        "used_gb": round(used / (1024 ** 3), 1),
+                        "free_gb": round(free / (1024 ** 3), 1),
+                        "pct": round(100.0 * used / total, 1)})
+    except Exception:
+        status = "partial"
+    out.sort(key=lambda d: d["mount"])
+    return {"entries": out, "status": status if out else "unavailable"}
+
+
 def approval_digest(arguments: dict) -> str:
     """Bind a reviewed choice to exact arguments; not proof of user consent.
 

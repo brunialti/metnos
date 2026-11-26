@@ -440,7 +440,7 @@ def resolve_target(query: str,
     if machine_focus:
         server_mentions.extend(_surface_mentions(
             qn,
-            ((alias, False) for alias in _server_aliases(server_aliases)),
+            ((alias, False) for alias in (*_server_aliases(server_aliases), SERVER)),
             identity=SERVER,
             source="alias",
             strong=False,
@@ -606,7 +606,8 @@ def references_device(query: str, devices: list, *, server_aliases=None) -> bool
         return True
     if devices and _find_named_device(qn, devices):
         return True
-    if _has_machine_focus(qn) and _find_server_alias(qn, server_aliases):
+    if _has_machine_focus(qn) and (
+            _find_server_alias(qn, server_aliases) or _find_marker(qn, [SERVER])):
         return True
     return False
 

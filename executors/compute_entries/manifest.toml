@@ -5,7 +5,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "compute_entries"
-version     = "0.1.0"
+version     = "0.1.1"
 author      = "Roberto Brunialti"
 affinity        = ["compute", "calcola", "computa", "max", "min", "avg", "media", "average", "sum", "somma", "total", "totale", "count", "conta", "numero", "distinct", "distinti", "unique", "unici", "stats", "statistiche", "reduce"]
 revertible      = false
@@ -17,7 +17,7 @@ en = "SCOPO: compute an aggregated value (max/min/avg/sum/count) on entries. PAT
 
 [code]
 files  = ["compute_entries.py"]
-digest = "sha256:6e3509c011917d86d155169f5dbe32f965df4e806f7753a99f7f4377f2181019"
+digest = "sha256:b6f9603fab1445a4d4faa28de2cf87d4801870ccc8591cddc80d6ba6015dfe87"
 
 [args]
 type     = "object"
@@ -34,8 +34,8 @@ en = "List of homogeneous dicts. Typically passed via from_step=N (the runtime e
 type        = "string"
 
 [args.properties.key.description]
-it = "Nome della chiave del dict su cui calcolare. Obbligatorio per max/min/avg/sum/count_distinct. Per op='count' senza key conta tutte le entries; con key conta solo quelle con valore non-null."
-en = "The name of the dict key on which to calculate. Mandatory for max/min/avg/sum/count_distinct. For op='count' without a key, it counts all entries; with a key, it counts only those with a non-null value."
+it = "Nome della chiave del dict su cui calcolare. Obbligatorio per max/min/avg/sum/count_distinct. Per op='count' senza key conta tutte le entries; con key conta solo quelle con valore non-null. Per le altre operazioni, se nessuna riga ha il campo, errore con i campi presenti."
+en = "The name of the dict key on which to calculate. Mandatory for max/min/avg/sum/count_distinct. For op='count' without a key, it counts all entries; with a key, it counts only those with a non-null value. For the other operations, if no row has the field, an error lists the available fields."
 
 [args.properties.op]
 type        = "string"

@@ -6,7 +6,7 @@ manifest_format = "1.0"
 executor_standard = "metnos.executor/1.0"
 
 name        = "get_processes"
-version     = "0.3.2"
+version     = "0.3.3"
 platforms   = ["linux", "windows"]
 author      = "Roberto Brunialti"
 affinity    = ["processi", "ps", "stato server", "server status",
@@ -19,12 +19,12 @@ revertible  = false
 lifecycle   = "active"
 
 [description]
-it = "SCOPO: processi e salute del sistema. PATTERN: temperatura CPU: sensor_domains=[\"cpu\"] con sensor_types=[\"temperature\"]; stato: include_health=true. NON: task -> list_tasks; file -> get_files; ora/posizione -> get_now/get_location. OUT: entries e health attestato."
-en = "SCOPO: processes and system health. PATTERN: CPU temperature: sensor_domains=[\"cpu\"] with sensor_types=[\"temperature\"]; status: include_health=true. NON: tasks -> list_tasks; files -> get_files; time/location -> get_now/get_location. OUT: attested entries and health."
+it = "SCOPO: processi e salute. PATTERN: include_health=true; CPU: sensor_domains=[\"cpu\"], sensor_types=[\"temperature\"]. NON: task -> list_tasks; file -> get_files; ora/posizione -> get_now/get_location. OUT: entries; health: dischi con spazio libero e capacità totali, memoria, carico, rete, temperatura. La risposta mostra già health: nessun calcolo aggiuntivo."
+en = "SCOPO: processes and health. PATTERN: include_health=true; CPU: sensor_domains=[\"cpu\"], sensor_types=[\"temperature\"]. NON: tasks -> list_tasks; files -> get_files; time/location -> get_now/get_location. OUT: entries; health: disks with total free space and capacity, memory, load, network, temperature. The answer already displays health: no extra calculation."
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:e24233c8a21b01d31d91f31b36c0b89c61ce2e4a9ca70ea00edc460d4c8f3d9f"
+digest = "sha256:541167841bda81b5689c88417048870c3deabb96228cd244fdbf55452497be15"
 
 [args]
 type     = "object"
@@ -50,8 +50,8 @@ type        = "boolean"
 default     = false
 
 [args.properties.include_health.description]
-it = "bool. Se true aggiunge dict health.{load,memory,thermal,disk,network,services}.\nUSO: stato/salute/uptime/carico/IP/rete/temperatura del server.\nSu Windows sensor_domains+sensor_types abilitano selettivamente il provider registrato; WMI e zone ACPI restano ripieghi locali per la temperatura. Una zona ACPI non viene presentata come temperatura CPU.\nNON DEVI usare health/with_health/system/status."
-en = "bool. If true adds dict health.{load,memory,thermal,disk,network,services}.\nUSE: status/health/uptime/load/IP/network/temperature of server.\nOn Windows, sensor_domains+sensor_types selectively enable the registered provider; WMI and ACPI zones remain local temperature fallbacks. An ACPI zone is never presented as an attested CPU temperature.\nMUST NOT use health/with_health/system/status."
+it = "bool. Se true aggiunge dict health.{load,memory,thermal,disk,network,services}.\nUSO: stato/salute/uptime/carico/IP/rete/temperatura, dischi (libero e capacità totali) e memoria del server o del dispositivo.\nSu Windows sensor_domains+sensor_types abilitano selettivamente il provider registrato; WMI e zone ACPI restano ripieghi locali per la temperatura. Una zona ACPI non viene presentata come temperatura CPU.\nNON DEVI usare health/with_health/system/status."
+en = "bool. If true adds dict health.{load,memory,thermal,disk,network,services}.\nUSE: status/health/uptime/load/IP/network/temperature, disks (total free space and capacity) and memory of server or device.\nOn Windows, sensor_domains+sensor_types selectively enable the registered provider; WMI and ACPI zones remain local temperature fallbacks. An ACPI zone is never presented as an attested CPU temperature.\nMUST NOT use health/with_health/system/status."
 
 [args.properties.sensor_domains]
 type        = "array"
@@ -92,6 +92,15 @@ runtime_source   = "scheduler_health"
 it = "Solo runtime: stato attestato del loop scheduler co-ospitato dal server HTTP. Il planner non può valorizzarlo e non viene inviato ai dispositivi remoti."
 en = "Runtime only: attested state of the scheduler loop co-hosted by the HTTP server. The planner cannot set it, and it is not sent to remote devices."
 
+[args.properties.host_disks]
+type = "object"
+runtime_resolved = true
+runtime_source = "host_disks"
+
+[args.properties.host_disks.description]
+it = "Solo runtime: filesystem locali distinti del server, byte disponibili e capacità, stato complete/partial/unavailable. Assente sul dispositivo: raccoglie i propri dischi."
+en = "Runtime only: distinct local server filesystems, available bytes and capacity, complete/partial/unavailable status. Absent on a device: it collects its own disks."
+
 [output]
 # Shape del dict ritornato da invoke(). Sintassi TS-like: tipi base
 # {bool,int,float,str}, container Array<...>, opzionali con `?`,
@@ -111,7 +120,8 @@ schema_inline = """
     memory: {available:bool, total_mb:int, used_mb:int, free_mb:int, pct:float, swap_total_mb:int, swap_used_mb:int, swap_pct:float, reason?:str},
     thermal: {available:bool, source?:str, quality?:str, reason_code?:str, cpu_c?:float, gpu_c?:float, nvme_c?:float, sensors?:Array<{kind:str, name:str, identifier:str, value_c:float}>},
     hardware_sensors?: {available:bool, source:str, reason_code?:str, sensors:Array<{domain:str, kind:str, name:str, identifier:str, value:float, unit:str}>},
-    disk: Array<{mount:str, device:str, fstype:str, total_gb:float, used_gb:float, free_gb:float, pct:float}>,
+    disk: Array<{mount:str, device:str, fstype:str, total_bytes:int, free_bytes:int, total_gb:float, used_gb:float, free_gb:float, pct:float}>,
+    disk_status: str,
     network: Array<{iface:str, ipv4:Array<str>, ipv6:Array<str>, up:bool}>,
     services: Array<{name:str, status:str, key?:str, scope?:str, installed?:bool, healthy?:bool, reason_code?:str, cohost?:str, heartbeat_at?:str, heartbeat_age_s?:float|null, jobs_total?:int, jobs_enabled?:int, jobs_running?:int, last_run_at?:str, last_run_status?:str, error_class?:str, error_summary?:str, active_since_s_mono?:int}>,
     collected_at: int

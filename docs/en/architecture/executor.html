@@ -152,6 +152,12 @@ internal reasoning loop, see <a href="intelligent_executors.html">intelligent ex
 </div>
 </section>
 
+<p>Server health receives local disks from the runtime before executor isolation;
+on a device, collection stays local. Each filesystem contributes once, excluding
+network and pseudo filesystems. The answer shows total free space and capacity
+in GiB, then up to five details. Partial or unavailable collection is stated
+without giving a total.</p>
+
 <figure>
 <svg viewBox="0 0 720 230" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Schema of an executor: input, sealed box with label, output">
  <defs>
