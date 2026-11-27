@@ -3,10 +3,10 @@ role: extract_entries
 tier: fast
 lang: en
 style: prescriptive
-version: 6
+version: 7
 owner: roberto
-updated: 2026-10-17
-sha_prev: 4d5cce9a
+updated: 2026-11-27
+sha_prev: da98e01f
 --- #}
 
 
@@ -23,7 +23,10 @@ ERROR: treating a shared customer code as every document's own ID, or the year w
 The record keys are the requested fields plus `_identity_facts`; the annotation is not a public column.
 You extract structured data. Given TEXT, extract the requested records and return ONLY a JSON array, without prose, markdown, or <think>.
 Every record must be an object with these public fields: {{ fields_json }}.
-If a field cannot be inferred from the text, use the empty string "".
+MUST: verify that the source documents the meaning of each requested field; otherwise return "" for that field in every row.
+MUST NOT: invent an absent column or fill it with a compatible value found in another field of the same record.
+OK: abstract example, do not copy literally: the text shows a value for one field but none for another → retain the first and leave "" in the second.
+ERROR: fill both with the only value shown.
 Extract ALL relevant records in the text, up to {{ max_per_text }}. Return [] when none are relevant.
 {% if instruction %}WHAT to extract: {{ instruction }}
 MUST: evaluate each record separately; include it only when its own evidence satisfies ALL constraints in WHAT to extract, regardless of their order.
@@ -32,9 +35,9 @@ OK: abstract example, do not copy literally: both the requested category and per
 ERROR: include an overview instead of a record, or a record whose required category or period is different or undocumented.
 {% endif %}{% if datetime_fields %}Normalize DATE/TIME fields ({{ datetime_fields }}) to ISO 8601 ONLY when year, date, time, and timezone are explicit in the text. NEVER invent missing components: when incomplete, preserve the exact observed literal value.
 {% endif %}{% if date_only_fields %}DATE fields ({{ date_only_fields }}), with no time, retain the precision of the date written in the individual record: explicit day, month, and year → "YYYY-MM-DD"; only explicit month and year, numeric or spelled out → "YYYY-MM". For example "02/2024" and "February 2024" → "2024-02", with no invented day and NO asterisk.
-The asterisk states ONLY an assumed year: when the record lacks a year, use the current year ({{ current_year }}) and prefix "*", retaining the day only when written: "*{{ current_year }}-MM-DD" or "*{{ current_year }}-MM". Never take the year from the request, an overview, or another record. An explicit year in the record never receives "*". Leave "" ONLY when no date at all can be derived from the text: a visible date never becomes empty.
-MUST: date each record with the day shown for that row or item, completing the year as stated above.
+The asterisk states ONLY an assumed year: when the record lacks a year, use the current year ({{ current_year }}) and prefix "*", retaining the day only when written: "*{{ current_year }}-MM-DD" or "*{{ current_year }}-MM". Never take the year from the request, an overview, or another record. An explicit year in the record never receives "*". Leave "" when the text shows no date attributed to the field.
+MUST: date each field with the day that the source attributes to that field of the record, completing the year as stated above.
 MUST NOT: use as the date a month, year or period named inside the description or another field of the record.
-OK: abstract example, do not copy literally: item «12 March» with description «February fee» → dated 12 March.
-ERROR: the same item dated "YYYY-02" because the description names February.
+OK: abstract example, do not copy literally: the source shows only the date of an event → that field retains the date, the other requested date fields stay "".
+ERROR: copy the only date shown into all requested date fields, or date the event using a month mentioned in the description.
 {% endif %}Output ONLY the JSON array. Minimal shape: [{"{{ example_field }}":"..."}].
