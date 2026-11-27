@@ -24,14 +24,12 @@ from __future__ import annotations
 import calendar
 import contextlib
 import json
-import sqlite3
 import threading
 import time
 from typing import Callable
 
 import config as C
 from change_intents import (
-    KIND_CACHE_PATTERN,
     KIND_CREATE_EXECUTOR,
     KIND_DEDUPE_EXECUTORS,
     KIND_EXTEND_EXECUTOR,
@@ -963,38 +961,6 @@ def apply_materialize_pipeline(ci: ChangeIntent) -> dict:
     return effect
 
 
-# --- Handler: cache_pattern ----------------------------------------------
-
-def apply_cache_pattern(ci: ChangeIntent) -> dict:
-    """Marca canonical_query_log row come 'active' (promote da
-    candidate/shadow). Idempotente."""
-    body = ci.intent_body or {}
-    canonical = body.get("canonical_query")
-    tool_name = body.get("tool_name") or ci.intent_target
-    if not canonical or not tool_name:
-        raise ValueError("cache_pattern needs canonical_query + tool_name in body")
-    db = C.DB_MNESTOMA
-    if not db.exists():
-        raise RuntimeError(f"mnest.sqlite missing: {db}")
-    cn = sqlite3.connect(str(db), timeout=10.0)
-    try:
-        cur = cn.execute(
-            """UPDATE canonical_query_log SET state='active'
-                WHERE canonical_query=? AND tool_name=?""",
-            (canonical, tool_name),
-        )
-        n_updated = cur.rowcount
-        cn.commit()
-    finally:
-        cn.close()
-    if n_updated == 0:
-        raise RuntimeError(
-            f"no canonical_query_log row matching ({canonical}, {tool_name})"
-        )
-    return {"canonical_query": canonical, "tool_name": tool_name,
-            "state_set_to": "active", "rows_updated": n_updated}
-
-
 # --- Handler: reject_pattern ---------------------------------------------
 
 def apply_reject_pattern(ci: ChangeIntent) -> dict:
@@ -1046,7 +1012,6 @@ _HANDLERS: dict[str, Callable[[ChangeIntent], dict]] = {
     KIND_EXTEND_EXECUTOR:      apply_extend_executor,
     KIND_DEDUPE_EXECUTORS:     apply_dedupe_executors,
     KIND_MATERIALIZE_PIPELINE: apply_materialize_pipeline,
-    KIND_CACHE_PATTERN:        apply_cache_pattern,
     KIND_REJECT_PATTERN:       apply_reject_pattern,
 }
 

@@ -10,9 +10,8 @@ zero-arg attorno ai moduli che contengono la logica reale — intatti.
 Contratto: ogni `task_*()` e' zero-arg e ritorna un dict-report; lo scheduler le
 adatta alla firma `cb(payload)` via `_wrap_zero_arg`.
 
-5 task ricostruite ESATTE (la logica vive nei moduli avvolti):
-  apply_executor_ager, apply_ager, introvertiva_propose, proposals_cleanup,
-  lifecycle_summary.
+4 task ricostruite ESATTE (la logica vive nei moduli avvolti):
+  apply_executor_ager, apply_ager, introvertiva_propose, proposals_cleanup.
 2 task NON recuperabili verbatim (nessuna `def` mai esistita in git) → stub
 onesto loggato, in attesa di decisione/ricostruzione da parte di Roberto:
   synt_suggest, introvertiva_apply.
@@ -24,7 +23,7 @@ import logging
 log = logging.getLogger(__name__)
 
 
-# --- 5 task ricostruite esatte ------------------------------------------------
+# --- 4 task ricostruite esatte ------------------------------------------------
 
 def task_apply_executor_ager() -> dict:
     """Deprecate/archive executor inattivi (ADR executor_lifecycle).
@@ -77,12 +76,6 @@ def task_proposals_cleanup() -> dict:
     return out
 
 
-def task_lifecycle_summary() -> dict:
-    """Aggregatore READ-ONLY audit ultime 24h (ADR 0097)."""
-    from lifecycle_summary import run_summary
-    return run_summary(window_hours=24)
-
-
 # --- Nightly aging consolidato (L2 consolidamento timer, 30/5/2026) -----------
 # I 2 stub task_synt_suggest + task_introvertiva_apply sono stati RITIRATI
 # (erano no-op, logica persa con _v1_tasks.pyc, superati da introvertiva_propose
@@ -101,7 +94,7 @@ def task_nightly_aging() -> dict:
     }
 
 
-# --- Catalog completo per i job fastpath (reaper + promotion) -----------------
+# --- Catalog completo per le pulizie fastpath --------------------------------
 
 def _full_catalog_names():
     """Set COMPLETO dei tool invocabili (executor caricati + builtin
@@ -122,19 +115,6 @@ def _full_catalog_names():
     except Exception as ex:
         log.warning("catalog completo non ricostruibile (%r)", ex)
         return None
-
-
-# --- Promozione fastpath L0 → executor synt (mandato 11/6/2026) ----------------
-
-def task_fastpath_promotion() -> dict:
-    """Detection notturna dei cluster di fastpath ricorrenti candidati a
-    executor di prima classe (engine/fastpath_promote). Tier 1: proposta
-    human-gated nel backlog introvertiva. Tier 2: auto-synt dietro flag
-    METNOS_FASTPATH_AUTOPROMOTE (OFF default), cap 1/notte. Gating
-    conservativo cluster-based; catalog incompleto → nessuna emissione.
-    """
-    from engine import fastpath_promote
-    return fastpath_promote.run_nightly(catalog_names=_full_catalog_names())
 
 
 # --- Reaper unificato dello stato persistente (29/5/2026) ---------------------

@@ -118,6 +118,10 @@ def _resolve_cap(args) -> tuple[int, bool]:
     _mr = args.get("max_results")
     explicit = (isinstance(_mr, (int, float)) and not isinstance(_mr, bool)
                 and int(_mr) > 0)
+    file_limit = args.get("file_results_limit")
+    if not explicit and type(file_limit) is int and file_limit > 0:
+        # Only the runtime supplies this limit when delivering a results file.
+        return min(file_limit, 256_000), False
     tk = int(args.get("top_k", _TOP_K_DEFAULT))
     if explicit:
         tk = min(int(_mr), _TOP_K_MAX)
@@ -1742,6 +1746,7 @@ def invoke(args):
         out["used"] = n_returned
         out["available_total"] = int(res["n_above_threshold"])
         out["cap_field"] = "max_results" if explicit_cap else "top_k"
+        out["file_cap_field"] = "file_results_limit"
         out["cap_value"] = int(top_k)
         if explicit_cap:
             out["truncated_intentional"] = True  # §2.11: l'utente ha chiesto N
@@ -1840,8 +1845,6 @@ def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
 
     all_entries.sort(key=lambda e: e.get("score", 0.0), reverse=True)
     top_k, explicit_cap = _resolve_cap(args)
-    if top_k > _TOP_K_MAX:
-        top_k = _TOP_K_MAX
     truncated_entries = all_entries[:top_k]
 
     out: dict = {
@@ -1899,6 +1902,7 @@ def _invoke_multi_dirs(dirs: list[_IndexedCorpus], args: dict,
         out["used"] = len(truncated_entries)
         out["available_total"] = int(n_above)
         out["cap_field"] = "max_results" if explicit_cap else "top_k"
+        out["file_cap_field"] = "file_results_limit"
         out["cap_value"] = int(top_k)
         if explicit_cap:
             out["truncated_intentional"] = True  # §2.11: l'utente ha chiesto N

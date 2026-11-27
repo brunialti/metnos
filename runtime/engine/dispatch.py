@@ -758,14 +758,9 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
             return ""
 
         def _apply_bulk_limits(extract_args: dict, producer: str) -> None:
-            """Collection readers are N texts, not one 500-record document.
+            """Keep document limits and bounded per-source collection extraction.
 
-            The old bulk rule assigned ``max_per_text=500`` to every email.
-            Besides wasting prompt/output budget, that left the independent
-            source loop in its slowest mode.  Keep the historical document
-            limit, but use bounded per-source extraction and structured
-            batching for mail/calendar collections.  Link traversal remains
-            opt-in because it has different semantics and cannot be batched.
+            Link traversal remains opt-in because it has different semantics.
             """
             if not _bulk_sink:
                 return
@@ -781,7 +776,6 @@ def _ensure_extract_clause(framework: Framework, intent, query: str,
                 query or "", re.IGNORECASE))
             if not requests_links:
                 extract_args.setdefault("drill_down", False)
-                extract_args.setdefault("batch_size", 8)
 
         existing = next((s for s in steps
                          if (getattr(s, "tool", "") or "") == "extract_entries"),
@@ -5657,7 +5651,6 @@ def _normalize_multisource_entity_report_pipeline(
             "max_per_text": 12,
             "max_total": 5000,
             "max_sources": 1000,
-            "batch_size": 16,
             "drill_down": False,
         }
 
@@ -6264,7 +6257,6 @@ def _normalize_message_event_report_pipeline(framework: Framework, intent,
             "max_per_text": 8,
             "max_total": 2000,
             "max_sources": 500,
-            "batch_size": 16,
             "drill_down": False,
         }
         if focus_terms:

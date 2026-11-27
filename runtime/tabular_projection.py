@@ -294,6 +294,11 @@ def _legacy_projection(entries: list[dict], columns: list[str],
     declared_roles = _declared_field_roles(field_roles)
     strengths = {field: _field_concept_strength(
         entries, field, declared_roles) for field in fields}
+    try:
+        from detection_lexicon_seed_reconciliation import load
+        aliases = load() if not all(populated.values()) else None
+    except Exception:  # An unavailable alias vocabulary preserves empty identities.
+        aliases = None
     projections: list[ColumnProjection] = []
     unresolved: list[str] = []
     used: set[str] = set()
@@ -315,13 +320,19 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                 unresolved.append(header)
                 continue
             exact = matches[0] if matches else None
-        # Planner-created placeholder aliases can coexist with the populated
-        # canonical field.  An empty exact key must not mask real data under a
-        # semantic sibling (for example ``domini=""`` and ``dominio="files"``).
         if exact is not None and populated.get(exact):
             projections.append(ColumnProjection(header, exact))
             used.add(exact)
             continue
+
+        candidates_by_name = strengths
+        if exact is not None:
+            canonical = aliases.canonical_field(header) if aliases else None
+            words = set(_tokens(header))
+            candidates_by_name = {
+                field: evidence for field, evidence in strengths.items()
+                if words <= set(_tokens(field)) or (
+                    canonical is not None and aliases.canonical_field(field) == canonical)}
 
         concepts = _concepts(header)
         wants_directory = "directory" in concepts
@@ -330,9 +341,7 @@ def _legacy_projection(entries: list[dict], columns: list[str],
         ordinal = _ordinal(header)
         chosen: str | None = None
         transform = "identity"
-        # Any populated field offered as a semantic candidate, even one that
-        # cannot be chosen, competes with an empty identity: ambiguity is not
-        # absence.
+        # Without an identity, populated semantic ambiguity stays an error.
         populated_candidates = False
 
         # A requested filename can be materialized from the corresponding
@@ -341,7 +350,7 @@ def _legacy_projection(entries: list[dict], columns: list[str],
         if "name" in concepts:
             name_candidates = [
                 (field, evidence.get("name", 0))
-                for field, evidence in strengths.items()
+                for field, evidence in candidates_by_name.items()
                 if evidence.get("name") and populated.get(field)
             ]
             populated_candidates = bool(name_candidates)
@@ -363,7 +372,7 @@ def _legacy_projection(entries: list[dict], columns: list[str],
             for concept in sorted(concepts - {"name"}):
                 candidates = [
                     (field, evidence.get(concept, 0))
-                    for field, evidence in strengths.items()
+                    for field, evidence in candidates_by_name.items()
                     if evidence.get(concept) and populated.get(field)
                 ]
                 populated_candidates = populated_candidates or bool(candidates)
@@ -380,12 +389,9 @@ def _legacy_projection(entries: list[dict], columns: list[str],
                 if len(top) == 1:
                     chosen = next(iter(top))
 
-        if chosen is None and not populated_candidates:
-            # No populated field competes: the header's own field, or a field
-            # its concept names, is empty in every record, and the column is
-            # written empty (Telepass 21/10/2026: no invoice had a status and
-            # the whole sheet was refused). Several such fields stay refused:
-            # key order never decides.
+        if chosen is None and (exact is not None or not populated_candidates):
+            # Preserve an empty identity; without one, only a unique empty
+            # concept with no populated competitor can supply the column.
             empty = [(field, max(strengths[field].get(concept, 0) for concept in concepts))
                      for field in fields if not populated.get(field)
                      and any(strengths[field].get(concept) for concept in concepts)]

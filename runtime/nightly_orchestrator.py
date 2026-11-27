@@ -46,7 +46,6 @@ NIGHTLY_SEQUENCE: tuple[str, ...] = (
     "proposals_eta_aggregate",
     "introvertiva_propose",
     "proposals_cleanup",
-    "lifecycle_summary",
     "skill_sandbox_watchdog",
 )
 

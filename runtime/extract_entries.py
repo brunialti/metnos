@@ -49,7 +49,7 @@ _MAX_INPUTS = 50          # cap sorgenti processate (cap superiore esplicito §2
 _MAX_SOURCES_LIMIT = 1000
 _MAX_TEXT_CHARS = 12000   # tronca ogni testo sorgente (budget prompt)
 _DEFAULT_MAX_PER_TEXT = 20
-_MAX_BATCH_SIZE = 16
+_MAX_BATCH_SIZE = 1
 _BATCH_QUERY_CHARS = 48000
 _MAX_INFERRED_FIELDS = 8
 _FIELD_INFERENCE_TEXT_CHARS = 8000
@@ -2642,10 +2642,9 @@ EXTRACT_ENTRIES_TOOL = {
                 "batch_size": {
                     "type": "integer",
                     "description": "Numero di sorgenti indipendenti per "
-                                   "richiesta LLM (default 1, massimo 16). "
-                                   "Usare solo con drill_down=false; ordine e "
-                                   "provenienza sono preservati con fallback "
-                                   "seriale per sorgente.",
+                                   "richiesta LLM (default 1, massimo 1). "
+                                   "Valori maggiori sono limitati a 1; "
+                                   "ordine e provenienza sono preservati.",
                 },
                 "drill_down": {
                     "type": "boolean",

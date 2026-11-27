@@ -119,7 +119,6 @@ WORKLOADS: dict[str, WorkloadContract] = {
 
     # Divergent proposal and editorial generation.
     "telos.lens": WorkloadContract("creative", None, "divergent", "grammar_optional"),
-    "promotion.commentary": WorkloadContract("creative", None, "divergent", "text"),
     "manifest.refactor": WorkloadContract("creative", None, "divergent", "json"),
     "synt.description": WorkloadContract("creative", None, "divergent", "json"),
 

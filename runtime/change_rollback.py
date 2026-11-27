@@ -23,7 +23,6 @@ from typing import Callable
 import config as C
 from logging_setup import get_logger
 from change_intents import (
-    KIND_CACHE_PATTERN,
     KIND_CREATE_EXECUTOR,
     KIND_DEDUPE_EXECUTORS,
     KIND_EXTEND_EXECUTOR,
@@ -187,27 +186,6 @@ def _rollback_materialize_pipeline(ci: ChangeIntent) -> dict:
             "rows_updated": cur.rowcount}
 
 
-def _rollback_cache_pattern(ci: ChangeIntent) -> dict:
-    body = ci.intent_body or {}
-    canonical = body.get("canonical_query")
-    tool_name = body.get("tool_name") or ci.intent_target
-    db = C.DB_MNESTOMA
-    if not db.exists():
-        return {"note": "mnest.sqlite missing"}
-    cn = sqlite3.connect(str(db), timeout=10.0)
-    try:
-        cur = cn.execute(
-            "UPDATE canonical_query_log SET state='demoted' "
-            "WHERE canonical_query=? AND tool_name=?",
-            (canonical, tool_name),
-        )
-        cn.commit()
-    finally:
-        cn.close()
-    return {"canonical_query": canonical, "tool_name": tool_name,
-            "state_set_to": "demoted", "rows_updated": cur.rowcount}
-
-
 def _rollback_reject_pattern(ci: ChangeIntent) -> dict:
     body = ci.intent_body or {}
     canonical = body.get("canonical_query") or ci.intent_target
@@ -246,7 +224,6 @@ _ROLLBACKERS: dict[str, Callable[[ChangeIntent], dict]] = {
     KIND_EXTEND_EXECUTOR:      _rollback_extend_executor,
     KIND_DEDUPE_EXECUTORS:     _rollback_dedupe_executors,
     KIND_MATERIALIZE_PIPELINE: _rollback_materialize_pipeline,
-    KIND_CACHE_PATTERN:        _rollback_cache_pattern,
     KIND_REJECT_PATTERN:       _rollback_reject_pattern,
 }
 

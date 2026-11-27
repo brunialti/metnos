@@ -26,10 +26,6 @@ Logica per kind:
       finalize: the turn answered, past the grace period
       rollback: false success, error, loop, or failures without any effect
 
-  - cache_pattern:
-      finalize: state ancora 'active' in storage downstream
-      rollback: state demoted (segnala che L1/L2 lo ha auto-degradato)
-
   - reject_pattern:
       finalize: no new ✗ on that request after applied_at
       rollback: new ✗ on that request after applied_at (the ban does not work)
@@ -41,13 +37,11 @@ from __future__ import annotations
 import calendar
 import json
 import os
-import sqlite3
 import time
 from typing import Callable
 
 import config as C
 from change_intents import (
-    KIND_CACHE_PATTERN,
     KIND_CREATE_EXECUTOR,
     KIND_DEDUPE_EXECUTORS,
     KIND_EXTEND_EXECUTOR,
@@ -214,104 +208,40 @@ def _verify_dedupe(ci: ChangeIntent) -> Verdict:
     return ("observing", metrics, None)
 
 
-# --- Verifier: materialize_pipeline / cache_pattern ----------------------
+# --- Verifier: materialize_pipeline --------------------------------------
 
 def _verify_pipeline(ci: ChangeIntent) -> Verdict:
     effect = ci.applied_effect or {}
-    # Dal 2/7 materializzare una pipeline significa eseguirla come turno reale;
-    # non esiste piu' una riga multi_tool_paths da osservare. Gli intent gia'
-    # presenti conservano il verifier legacy sotto per retrocompatibilita'.
-    if "final_kind" in effect or "turn_id" in effect:
-        age = _age_days(ci.applied_at)
-        final_kind = str(effect.get("final_kind") or "")
-        metrics = {
-            "turn_id": effect.get("turn_id"),
-            "final_kind": final_kind or "unknown",
-            "step_count": len(effect.get("steps") or []),
-            "age_days": round(age, 1),
-            "effect_counts": dict(effect.get("effect_counts") or {}),
-            "false_success_detected": bool(
-                effect.get("false_success_detected")),
-        }
-        counts = metrics["effect_counts"]
-        failures = int(counts.get("failures") or 0)
-        produced = int(counts.get("items") or 0) + int(
-            counts.get("mutations") or 0)
-        if metrics["false_success_detected"]:
-            return ("rollback", metrics, "materialized turn reported false success")
-        if final_kind in {"error", "loop_break"}:
-            return ("rollback", metrics,
-                    f"materialized turn ended as {final_kind}")
-        if failures > 0:
-            if produced > 0:
-                metrics["status"] = "partial"
-                return ("observing", metrics, None)
-            return ("rollback", metrics,
-                    "materialized turn failed without observable effects")
-        if final_kind == "answer" and age >= _grace_days():
-            return ("finalize", metrics, None)
-        # ask/needs_inputs restano osservabili: una capability JIT puo' essere
-        # completata in seguito e non giustifica un rollback distruttivo.
-        return ("observing", metrics, None)
-
-    body = ci.intent_body or {}
-    shape_hash = body.get("path_shape_hash")
     age = _age_days(ci.applied_at)
-    if not shape_hash:
-        return ("rollback", {"reason": "no path_shape_hash"}, "intent malformed")
-    db = C.DB_MULTI_TOOL_PATHS
-    if not db.exists():
-        return ("rollback", {"reason": "multi_tool_paths.sqlite missing"},
-                "storage deleted")
-    cn = sqlite3.connect(str(db))
-    try:
-        row = cn.execute(
-            "SELECT state, uses, ok_count, fail_count FROM multi_tool_paths "
-            "WHERE path_shape_hash=?",
-            (shape_hash,),
-        ).fetchone()
-    finally:
-        cn.close()
-    if row is None:
-        return ("rollback", {"reason": "row not found"}, "pipeline pruned")
-    state, uses, ok, fail = row
-    metrics = {"state": state, "uses": uses, "ok_count": ok,
-               "fail_count": fail, "age_days": round(age, 1)}
-    if state == "demoted":
-        return ("rollback", metrics, "L2 auto-demoted")
-    if age >= _grace_days() and state == "active":
+    final_kind = str(effect.get("final_kind") or "")
+    metrics = {
+        "turn_id": effect.get("turn_id"),
+        "final_kind": final_kind or "unknown",
+        "step_count": len(effect.get("steps") or []),
+        "age_days": round(age, 1),
+        "effect_counts": dict(effect.get("effect_counts") or {}),
+        "false_success_detected": bool(
+            effect.get("false_success_detected")),
+    }
+    counts = metrics["effect_counts"]
+    failures = int(counts.get("failures") or 0)
+    produced = int(counts.get("items") or 0) + int(
+        counts.get("mutations") or 0)
+    if metrics["false_success_detected"]:
+        return ("rollback", metrics, "materialized turn reported false success")
+    if final_kind in {"error", "loop_break"}:
+        return ("rollback", metrics,
+                f"materialized turn ended as {final_kind}")
+    if failures > 0:
+        if produced > 0:
+            metrics["status"] = "partial"
+            return ("observing", metrics, None)
+        return ("rollback", metrics,
+                "materialized turn failed without observable effects")
+    if final_kind == "answer" and age >= _grace_days():
         return ("finalize", metrics, None)
-    return ("observing", metrics, None)
-
-
-def _verify_cache_pattern(ci: ChangeIntent) -> Verdict:
-    body = ci.intent_body or {}
-    canonical = body.get("canonical_query")
-    tool_name = body.get("tool_name") or ci.intent_target
-    age = _age_days(ci.applied_at)
-    if not canonical or not tool_name:
-        return ("rollback", {"reason": "missing key fields"}, "intent malformed")
-    db = C.DB_MNESTOMA
-    if not db.exists():
-        return ("rollback", {"reason": "mnest.sqlite missing"}, "storage deleted")
-    cn = sqlite3.connect(str(db))
-    try:
-        row = cn.execute(
-            "SELECT state, uses, ok_count, fail_count FROM canonical_query_log "
-            "WHERE canonical_query=? AND tool_name=?",
-            (canonical, tool_name),
-        ).fetchone()
-    finally:
-        cn.close()
-    if row is None:
-        return ("rollback", {"reason": "row not found"}, "cache pattern pruned")
-    state, uses, ok, fail = row
-    metrics = {"state": state, "uses": uses, "ok_count": ok,
-               "fail_count": fail, "age_days": round(age, 1)}
-    if state == "demoted":
-        return ("rollback", metrics, "L1 auto-demoted")
-    if age >= _grace_days() and state == "active":
-        return ("finalize", metrics, None)
+    # ask/needs_inputs restano osservabili: una capability JIT puo' essere
+    # completata in seguito e non giustifica un rollback distruttivo.
     return ("observing", metrics, None)
 
 
@@ -363,7 +293,6 @@ _VERIFIERS: dict[str, Callable[[ChangeIntent], Verdict]] = {
     KIND_EXTEND_EXECUTOR:      _verify_executor_health,
     KIND_DEDUPE_EXECUTORS:     _verify_dedupe,
     KIND_MATERIALIZE_PIPELINE: _verify_pipeline,
-    KIND_CACHE_PATTERN:        _verify_cache_pattern,
     KIND_REJECT_PATTERN:       _verify_reject_pattern,
 }
 

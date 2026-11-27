@@ -493,6 +493,7 @@ const CHAT_I18N = {
   readOnlySubmit: {{ msg("MSG_CHAT_READ_ONLY_SUBMIT")|tojson }},
   imagesOnly: {{ msg("MSG_CHAT_IMAGES_ONLY")|tojson }},
   defaultImageQuery: {{ msg("MSG_CHAT_DEFAULT_IMAGE_QUERY")|tojson }},
+  signIn: {{ msg("UI_ADMIN_LOGIN_SUBMIT")|tojson }},
   submitHttpError: {{ msg("MSG_CHAT_SUBMIT_HTTP_ERROR")|tojson }},
   submitError: {{ msg("MSG_CHAT_SUBMIT_ERROR")|tojson }},
   durationSeconds: {{ msg("MSG_CHAT_DURATION_SECONDS")|tojson }},
@@ -2500,15 +2501,23 @@ form.addEventListener('submit', async (e) => {
       if(!submitResp.ok){
         const text = await submitResp.text();
         if(pending){ pending.remove(); }
-        let detail = text.slice(0, 200);
+        let detail = text.slice(0, 200), parsed = {};
         try {
-          const parsed = JSON.parse(text);
+          parsed = JSON.parse(text) || {};
           detail = parsed.message || parsed.error || detail;
         } catch(_){}
-        add('err', chatText('submitHttpError', {
-          status: submitResp.status,
-          message: detail,
-        }));
+        if(submitResp.status === 401 && parsed.login_url){
+          const bubble = add('err', detail), link = document.createElement('a');
+          link.href = parsed.login_url;
+          link.textContent = CHAT_I18N.signIn;
+          bubble.append(document.createTextNode(' '), link);
+          document.querySelector('.app-header .role')?.remove();
+        } else {
+          add('err', chatText('submitHttpError', {
+            status: submitResp.status,
+            message: detail,
+          }));
+        }
         if(submitResp.status === 409){
           enterReadOnly(CHAT_I18N.movedReload);
           sessionBanner.classList.add('revoked');

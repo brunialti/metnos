@@ -364,8 +364,8 @@ def run_cleanup(*, dry_run: bool = False, write_audit: bool = True) -> dict:
     le chiamate dirette con effetti fisici sono rifiutate.
 
     Quando `write_audit=True` (e non dry_run), persiste il report in
-    `~/.local/share/metnos/lifecycle/proposals_cleanup_<ts>.jsonl` per
-    consumo da `lifecycle_summary` (ADR 0096 §lifecycle).
+    `~/.local/share/metnos/lifecycle/proposals_cleanup_<ts>.jsonl`
+    (ADR 0096 §lifecycle).
     """
     report: dict = {
         "synth_proposals": {"archived": 0, "deferred_to_f6": True},

@@ -13,6 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'MSG_CHAT_ACCESS_REQUIRED': (
+        'L’accesso manca o è scaduto. Accedi per continuare.',
+        'You are not signed in or your session has expired. Sign in to continue.'),
     'MSG_CHAT_CLEARED': (
         '✓ Chat pulita su questo dispositivo. I comandi già scritti restano richiamabili '
         'con ↑ e ↓: /clearbuf li cancella.',

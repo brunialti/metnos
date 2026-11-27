@@ -10,9 +10,7 @@ Two responsibilities:
    `cb(payload: dict) -> Any`.
 
 2. `install_default_jobs(scheduler)`: idempotent INSERT-OR-IGNORE for the
-   7 builtin entries (apply_executor_ager / apply_ager / synt_suggest /
-   introvertiva_propose / proposals_cleanup /
-   lifecycle_summary). Returns the number of rows actually inserted; on a
+   builtin entries. Returns the number of rows actually inserted; on a
    second run with all rows already present, returns 0 and does not touch
    `last_run_at` / `total_runs` etc.
 """
@@ -64,15 +62,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         ),
     },
     {
-        "name": "lifecycle_summary",
-        "trigger": "daily@06:30",
-        "callback_key": "lifecycle_summary",
-        "description": (
-            "Aggregatore vista unificata (ADR 0097): legge ultimi audit "
-            "di executor_ager / introvertiva / proposals_cleanup."
-        ),
-    },
-    {
         "name": "images_index_refresh",
         "trigger": "daily@03:00",
         "callback_key": "images_index_refresh",
@@ -105,18 +94,6 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
             "compressi e limiti "
             "(METNOS_TURN_LOG_RETENTION_DAYS). "
             "Wire dei reaper esistenti mai schedulati. Idempotente."
-        ),
-    },
-    {
-        "name": "fastpath_promotion",
-        "trigger": "daily@03:50",
-        "callback_key": "fastpath_promotion",
-        "description": (
-            "Detection cluster di fastpath L0 ricorrenti → candidati executor "
-            "di prima classe (mandato 11/6). Tier 1: proposta human-gated nel "
-            "backlog introvertiva. Tier 2: auto-synt SOLO con flag "
-            "METNOS_FASTPATH_AUTOPROMOTE (OFF default), cap 1/notte. Gira "
-            "DOPO state_reaper (03:40): detection sullo store già potato."
         ),
     },
     {
@@ -593,9 +570,7 @@ def install_default_callbacks(scheduler) -> None:
         task_nightly_aging,
         task_introvertiva_propose,
         task_proposals_cleanup,
-        task_lifecycle_summary,
         task_state_reaper,
-        task_fastpath_promotion,
         task_learning_loop_review,
     )
 
@@ -637,12 +612,6 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
     cb.register(
-        "lifecycle_summary",
-        _wrap_zero_arg(task_lifecycle_summary),
-        "Aggregatore audit ultimi 24h (ADR 0097)",
-        replace=True,
-    )
-    cb.register(
         "images_index_refresh",
         _wrap_zero_arg(task_images_index_refresh),
         "Refresh incrementale indice immagini unificato (ADR 0117)",
@@ -670,12 +639,6 @@ def install_default_callbacks(scheduler) -> None:
         "state_reaper",
         _wrap_zero_arg(task_state_reaper),
         "Reaper unico stato persistente (undo/_history/http_cache/turns/...)",
-        replace=True,
-    )
-    cb.register(
-        "fastpath_promotion",
-        _wrap_zero_arg(task_fastpath_promotion),
-        "Promozione fastpath L0 → executor synt (tier 1 proposta; tier 2 flag)",
         replace=True,
     )
 
@@ -755,8 +718,7 @@ def install_default_callbacks(scheduler) -> None:
     )
 
     # Bonifica 2026-06-11: rimossi default schedule + callback
-    # multi_tool_maintenance (ADR 0150 ritirato — playback L2 disabilitato e
-    # promozione duplicata dal nuovo engine/fastpath_promote). Il job era
+    # multi_tool_maintenance (ADR 0150 ritirato, playback L2 disabilitato). Il job era
     # consolidato nel nightly orchestrator (mai installato come task DB
     # standalone post-consolidamento); run_nightly degrada graceful su
     # callback assenti ("missing").
@@ -867,7 +829,7 @@ def install_default_jobs(scheduler) -> int:
     # firerebbero un callback inesistente (§2.8 no silent failure).
     _retired_keys = frozenset({
         "multi_tool_maintenance", "promoter", "promoter_digest",
-        "birth_failure_reviews",
+        "birth_failure_reviews", "lifecycle_summary", "fastpath_promotion",
     })
     removed = 0
     for ent in storage.list_all():

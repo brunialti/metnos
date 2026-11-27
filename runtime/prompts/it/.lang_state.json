@@ -160,9 +160,9 @@
     "version_hash": "sha256:3ab2faadf4da063bdd924369eb4af77e79740bfa0f271c447123baa315b6b9d8"
   },
   "planner/_footer": {
-    "source_hash": "sha256:8b0b5a9288c9d7c627728ddf3046545258f5f3c127119058f7f9f0b4c8b3f22a",
+    "source_hash": "sha256:93edcf2b8f0943bd393b80e3494a932cd6fbaf6a860844a0d1c3a729f093eb9d",
     "source_lang": "en",
-    "version_hash": "sha256:dc9e617096145446550729a4c25b321627cb5e316f226e52826af30003fde8bb"
+    "version_hash": "sha256:ba347e56b8555db3ec4c1e17a33f740829a1d7da846ca7b0457d38c8e72ee6cf"
   },
   "planner/sections/admin_shell": {
     "source_hash": "sha256:99bd8abb0f265610988ba685c93b2339c52a9a6877a2a628bcf0194f64ef36df",
@@ -253,11 +253,6 @@
     "source_hash": null,
     "source_lang": null,
     "version_hash": "sha256:d0bd32934cba141c21e14c6986492143b5a553896651ff228d476a46a29b7250"
-  },
-  "rejected_pipelines": {
-    "source_hash": "sha256:526e56e7787ce30782c48d586dd4a5320dafbe7d5730ead4efc3357b3fd8eaf3",
-    "source_lang": "en",
-    "version_hash": "sha256:62e3cac2aa20986a2cbece09f6ecf1e54642cc360fb107fb484efbfea3a84670"
   },
   "route_object_relation": {
     "source_hash": "sha256:26f8f80694d215986292d298466bcd2164ee86a691d77459df1887ee61445153",

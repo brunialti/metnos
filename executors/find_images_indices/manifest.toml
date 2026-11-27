@@ -45,7 +45,7 @@ en = "SCOPO: search indexed photos by content, person or face. PATTERN: find_ima
 
 [code]
 files  = ["find_images_indices.py"]
-digest = "sha256:a77d04d077da1bcfd0a5bc033314e755b0c3f7229ec8f73ef84879769af10d96"
+digest = "sha256:8e81a07aab3d35de530cacca83c2eff734593a762596e8ce363d97b1b089bf9b"
 
 [args]
 type     = "object"
@@ -181,6 +181,16 @@ default     = 100
 it = "Budget INTERNO risultati (default 100, max 200). NON impostare di tua iniziativa. Per un conteggio richiesto dall'utente usa `max_results` (che prevale sul ranking)."
 en = "INTERNAL result budget (default 100, max 200). Do NOT set on your own. For a user-requested count use `max_results` (which prevails over ranking)."
 
+[args.properties.file_results_limit]
+type             = "integer"
+minimum          = 1
+maximum          = 256000
+runtime_resolved = true
+
+[args.properties.file_results_limit.description]
+it = "Limite riservato al runtime quando consegna tutti i risultati come file. Supera il budget interno della chat, senza cambiare un conteggio esplicito."
+en = "Runtime-only limit when delivering all results as a file. Exceeds the internal chat budget without changing an explicit count."
+
 [args.properties.max_results]
 type        = "integer"
 minimum     = 1
@@ -234,7 +244,7 @@ schema_inline = """
   names_unenrolled?: Array<str>,
   name_unenrolled?: bool,
   truncated?: bool, truncated_what?: str, used?: int,
-  available_total?: int, cap_field?: str, cap_value?: int,
+  available_total?: int, cap_field?: str, cap_value?: int, file_cap_field?: str,
   error?: str, error_class?: str, error_code?: str,
   recommended_action?: {executor: str, args: object}
 }

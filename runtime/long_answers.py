@@ -243,7 +243,7 @@ def _beyond_the_cap(turn, step, tool: str, have: int):
 
     run = getattr(turn, "_rerun_step", None)
     result = getattr(step, "result", None)
-    field = result.get("cap_field") if isinstance(result, dict) else None
+    field = (result.get("file_cap_field") or result.get("cap_field")) if isinstance(result, dict) else None
     verb = tool.partition("_")[0]
     if (not callable(run) or not isinstance(field, str) or not field
             or result.get("truncated") is not True or result.get("truncated_intentional")

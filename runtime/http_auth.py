@@ -470,8 +470,10 @@ async def auth_middleware(request: web.Request, handler):
 
     if role == "anonymous":
         return web.json_response(
-            {"error": "unauthorized", "message": "auth required"},
+            {"error": "unauthorized", "message": _msg("MSG_CHAT_ACCESS_REQUIRED"),
+             "login_url": "/admin/login"},
             status=401,
+            headers={"Cache-Control": "no-store", "Referrer-Policy": "no-referrer"},
         )
 
     if authenticated_user_id:

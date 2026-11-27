@@ -868,7 +868,6 @@ def _site_credential_target(query: str) -> str:
     return next(iter(hosts)) if len(hosts) == 1 else ""
 
 
-
 # --- Prompt + tools rendering ---------------------------------------------
 # PLANNER prompt è in runtime/prompts/<METNOS_LANG>/planner.j2 (ADR 0092).
 # Caricato via prompt_loader.get("planner", **vars) in run_turn().
@@ -899,44 +898,6 @@ def _render_telos_block(lang: str) -> str:
     except Exception as ex:
         log.warning("telos_loader.render_planner_block failed: %s", ex)
         return ""
-
-
-def _render_rejected_pipelines_block(user_query: str, lang: str) -> str:
-    """Negative examples per il planner (E.2/E.3, 22/5/2026).
-
-    Strato 1 (1 ✗): wording soft "evita queste pipeline".
-    Strato 2 (>=2 ✗ consecutive): HARD CONSTRAINT con escalation —
-    "rifiuto definitivo, considera request_new_executor o consult_frontier
-    o final_answer onesto 'non ho strumenti adatti'".
-
-    Strato 3 (UI escalation post-3 ✗, task #30, 24/5/2026): handled
-    upstream da `_orchestrate_strato3_escalation` in `run_turn` (early
-    exit prima del PLANNER loop). Dialog 4-choice (synth/frontier/
-    reformulate/abandon) via `orchestrate_needs_inputs`.
-    """
-    if not user_query:
-        return ""
-    try:
-        from turn_feedback import (
-            rejected_pipelines_for_query, count_consecutive_errors_for_query,
-        )
-        rejected = rejected_pipelines_for_query(user_query)
-        consec_errors = count_consecutive_errors_for_query(user_query)
-    except Exception as ex:
-        log.warning("rejected_pipelines_for_query failed: %s", ex)
-        return ""
-    if not rejected:
-        return ""
-    return prompt_loader.get(
-        "rejected_pipelines", lang,
-        hard=consec_errors >= 2,
-        consec_errors=consec_errors,
-        pipelines="\n".join(
-            f"- {' → '.join(p)}" for p in rejected[:5]
-        ),
-    ).strip()
-
-
 
 
 _FROM_STEP_DESC = (
@@ -1427,7 +1388,7 @@ def _compose_final_message_from_obs(lp_tool, lp_obs):
     ok_count, n_above_threshold = _extract_auto_final_count(lp_obs)
     # 15/5/2026: detail_md autoritativo → usalo come final PURO senza wrap
     # "{tool}: completato (...)". Per executor che producono markdown
-    # ricco (read_tasks_history, lifecycle_summary, ecc.) il wrap aggiunge
+    # ricco (read_tasks_history, ecc.) il wrap aggiunge
     # rumore inutile ("read_tasks_history: completato (? elementi). ...")
     if isinstance(lp_obs, dict):
         md = lp_obs.get("detail_md")

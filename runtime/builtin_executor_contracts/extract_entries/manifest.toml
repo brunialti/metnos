@@ -16,7 +16,7 @@ en = "SCOPO: Extracts structured records from already observed entries. PATTERN:
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:bbbf62be04431f35e4514a37500820842ecd2022f49e64f6e94ad0fa92566328"
+digest = "sha256:640b5363bd708f410a52deca86bf79f547c46a5239016f45c7aa0feabeba5055"
 
 [args]
 type = "object"
@@ -149,8 +149,8 @@ en = "Maximum number of independent sources to process."
 type = "integer"
 
 [args.properties.batch_size.description]
-it = "Numero di sorgenti indipendenti per richiesta LLM (default 1, massimo 16). Usare solo con drill_down=false; ordine e provenienza sono preservati con fallback seriale per sorgente."
-en = "Maximum entries or independent sources per model batch."
+it = "Numero di sorgenti indipendenti per richiesta LLM (default 1, massimo 1). Valori maggiori sono limitati a 1; ordine e provenienza sono preservati."
+en = "Number of independent sources per LLM request (default 1, maximum 1). Larger values are clamped to 1; order and provenance are preserved."
 
 [args.properties.drill_down]
 type = "boolean"
