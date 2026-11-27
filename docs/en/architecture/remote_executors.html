@@ -277,6 +277,12 @@ ordinary controls.</p>
 
 <h2 id="folders">Comparing and grouping by folder</h2>
 
+<p>When a search names a single folder, its rows carry that folder as
+<code>partition</code>. Destinations built from this field stay inside the
+searched folder; moves preserve subfolders to distinguish files with the same
+name. The search keeps its own counts, errors, and limits without becoming a
+set of independent searches.</p>
+
 <p>When a request names a parent folder, “for each folder” determines how to
 present the results and where to act. The search includes the parent, files
 directly inside it, and its subfolders. This applies both on the server and on a

@@ -972,13 +972,34 @@ def _project_first_level(policy: Mapping[str, Any], args: Mapping[str, Any],
     }
 
 
+def _single_directory(policy: Mapping[str, Any], args: Mapping[str, Any],
+                      observation: dict) -> dict:
+    """Label rows with their declared root without aggregating one answer."""
+    if not isinstance(observation, Mapping):
+        return observation
+    worked = observation.get("ok") is True or (
+        observation.get("ok") is False and bool(observation.get("failed"))
+        and not any(observation.get(key) not in (None, "") for key in _ERROR_KEYS))
+    metadata = observation.get("metadata")
+    resolved = metadata.get(policy["arg"]) if isinstance(metadata, Mapping) else None
+    root = resolved or args.get(policy["arg"])
+    if (not worked or not isinstance(root, str) or not root.strip()
+            or "${" in root or _WILDCARDS.intersection(root) or "\0" in root):
+        return observation
+    root = _flavour(root).normpath(root)
+    return {**observation, **{
+        key: [{**row, PARTITION_FIELD: root} if isinstance(row, Mapping) else row
+              for row in observation[key]]
+        for key in (*_ROW_KEYS, "failed") if isinstance(observation.get(key), list)}}
+
+
 def run(executor: object, args: object, invoke: Callable[[dict], dict], *,
         list_children: Callable[[str], Sequence[str]] | None = None) -> dict:
     """Serve one call of a tool, partition by partition when it asks for it.
 
     ``invoke(arguments)`` is the ordinary call of the tool, with its own
     sandbox, guard and time limit; here it is made once per partition, one
-    after the other. An ordinary call passes through untouched. A single
+    after the other. A single directory labels its rows with that root. A single
     directory call with ``group_by="first_level"`` consumes that argument
     here and groups one global answer, without partitioning the invocation.
     """
@@ -998,7 +1019,7 @@ def run(executor: object, args: object, invoke: Callable[[dict], dict], *,
                              if key != "group_by"}
             return with_partial_reason(_project_first_level(
                 policy, ordinary_args, invoke(ordinary_args)))
-        return invoke(args)
+        return _single_directory(policy, args, invoke(args))
     return with_partial_reason(assemble(policy, [
         (partition, invoke(unit_args(policy, resolution.base_args, partition)))
         for partition in resolution.partitions]))

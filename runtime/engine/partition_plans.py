@@ -400,6 +400,9 @@ def normalize_partition_plan(framework: Framework,
             partitioned[index] = next(
                 (listing for listing, listed in sorted(listings.items())
                  if parent is not None and listing < index and listed == parent), None)
+        elif (policy["kind"] == "directory" and isinstance(args.get(arg), str)
+              and "${" not in args[arg] and _a_parent(args[arg].strip())):
+            partitioned[index] = None
     if not partitioned:
         return framework
     fed = {source for source in partitioned.values() if source is not None}
