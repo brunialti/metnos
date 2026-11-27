@@ -3,10 +3,10 @@ role: extract_entries
 tier: fast
 lang: en
 style: prescriptive
-version: 7
+version: 8
 owner: roberto
 updated: 2026-11-27
-sha_prev: da98e01f
+sha_prev: 6bd7d642
 --- #}
 
 
@@ -24,7 +24,7 @@ The record keys are the requested fields plus `_identity_facts`; the annotation 
 You extract structured data. Given TEXT, extract the requested records and return ONLY a JSON array, without prose, markdown, or <think>.
 Every record must be an object with these public fields: {{ fields_json }}.
 MUST: verify that the source documents the meaning of each requested field; otherwise return "" for that field in every row.
-MUST NOT: invent an absent column or fill it with a compatible value found in another field of the same record.
+MUST NOT: invent an absent column or fill it with a compatible value found in another field of the same record; unless WHAT to extract explicitly requests it.
 OK: abstract example, do not copy literally: the text shows a value for one field but none for another → retain the first and leave "" in the second.
 ERROR: fill both with the only value shown.
 Extract ALL relevant records in the text, up to {{ max_per_text }}. Return [] when none are relevant.

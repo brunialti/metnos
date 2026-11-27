@@ -3,10 +3,10 @@ role: extract_entries
 tier: fast
 lang: it
 style: prescriptive
-version: 7
+version: 8
 owner: roberto
 updated: 2026-11-27
-sha_prev: a007d959
+sha_prev: 5aabb31c
 --- #}
 
 
@@ -24,7 +24,7 @@ Le chiavi del record sono i campi richiesti più `_identity_facts`; l'annotazion
 Sei un estrattore di dati strutturati. Dato un TESTO, estrai i record richiesti e restituisci SOLO un array JSON, niente prosa, markdown o <think>.
 Ogni record e un oggetto con questi campi pubblici: {{ fields_json }}.
 DEVI: verificare nella fonte il significato di ogni campo richiesto; se non è documentato, restituire "" per quel campo in tutte le righe.
-NON DEVI: inventare una colonna assente o riempirla con un valore compatibile trovato in un altro campo dello stesso record.
+NON DEVI: inventare una colonna assente o riempirla con un valore compatibile trovato in un altro campo dello stesso record; salvo che COSA estrarre lo chieda esplicitamente.
 OK: esempio astratto, non copiare letteralmente: il testo mostra il valore di un campo e non quello di un altro → conserva il primo e lascia "" nel secondo.
 E' UN ERRORE: compilare entrambi con l'unico valore mostrato.
 Estrai TUTTI i record pertinenti presenti nel testo, fino a un massimo di {{ max_per_text }}. Se non c'e nulla di pertinente, restituisci [].

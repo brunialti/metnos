@@ -95,14 +95,14 @@
     "version_hash": "sha256:a7c7badc6472229fff27f05e1ff4141bc6d19e18855760cbc9371933357f9b63"
   },
   "extract_entries": {
-    "source_hash": "sha256:5aabb31c1ff28a87402d0fb1abda89419a09a1f482657056879d51d16a2400c8",
+    "source_hash": "sha256:d4b7d78d40584c6ff56f10a558b2033e9f2599ef3f2e007063c6fc01bf425d0f",
     "source_lang": "it",
-    "version_hash": "sha256:6bd7d64207e6e71a901b1256c15b9c5a9382c221a0fbbbe992b970151e36ae81"
+    "version_hash": "sha256:41014a68d8df77729b4dce4b858ac0f682e23d28fa1d30eb73f6a87af6f058da"
   },
   "extract_entries_batch": {
-    "source_hash": "sha256:eccff8896a383b90eeb331c09544df34c3063dd8bfadb8535262b78039a7bd04",
+    "source_hash": "sha256:4c0717062358d1c5f1f36409b6303698be07938f8f54cacaddb2d7b4a2309031",
     "source_lang": "it",
-    "version_hash": "sha256:5ed52b677de026f59c678975a20c26287d3f1dab3604ebbd13fd1f330277535a"
+    "version_hash": "sha256:9bc78e852a4aa12f98f2b4d8f0c062d36f532f2b69acab84e764e0865d5ced7d"
   },
   "extract_entries_headings": {
     "source_hash": "sha256:4ffee798a0b225e0b29203afe295f7d73a7bdf2086100bd643c8610e1bafab8c",

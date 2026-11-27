@@ -35,7 +35,8 @@ Both are read here from the sentence, with registered words and no model:
   every «copy» in it follows a definite determiner («the copy», «each copy»).
 
 A manifest marks the arguments this applies to with `semantic_type`
-(`kept_by_age`, `copy_mode`, `set_operator`, `requested_output_path`): no tool is named here. Where the sentence says
+(`kept_by_age`, `copy_mode`, `set_operator`, `requested_output_path`,
+`requested_extraction_instruction`): no tool is named here. Where the sentence says
 something this reader cannot settle (two ages, an age in a form it does not
 know), the planner's value is left as it is.
 
@@ -55,6 +56,8 @@ the same tool, the newest kept in 3 of 4; with a shorter description, in 4 of
 A local output folder must be a destination named in the request.
 Otherwise only the filename remains under the declared default folder;
 references to earlier steps remain.
+An explicit extraction clause supplies its instruction, together with other
+clauses naming one of that step's fields. Quoted payloads are never clauses.
 """
 from __future__ import annotations
 
@@ -591,9 +594,53 @@ def kept_note(steps, position: int, catalog) -> str:
         position = source - 1
     return ""
 
+def requested_extraction_instruction(query: str, fields, requested_verb: str) -> str:
+    """Literal extraction clause and other clauses naming a requested field."""
+    from compound_decomposer import _connector_pattern, _SENTENCE_BOUNDARY
+    from detection_lexicon import current_lang
+    from prefilter import _action_text, _ACTION_VALUES_RE, canonical_verb_spans
+
+    masked = _action_text(query)
+    names = [re.findall(r"[^\W_]+", str(field).casefold()) for field in fields or ()]
+    field = re.compile("|".join(r"(?<!\w)" + r"[\s_-]+".join(map(re.escape, name)) +
+                                r"(?!\w)" for name in names if name) or r"(?!)", re.I)
+    for value in _ACTION_VALUES_RE.finditer(query):
+        if field.fullmatch(value.group()):
+            masked = masked[:value.start()] + value.group() + masked[value.end():]
+    separator = re.compile("(?P<sentence>" + _SENTENCE_BOUNDARY.pattern + ")|(?:" +
+                           _connector_pattern(current_lang()).pattern + ")", re.I)
+    clauses, start, first = [], 0, True
+    for boundary in [*separator.finditer(masked), None]:
+        end = boundary.start() if boundary else len(masked)
+        chunk = masked[start:end]
+        action = field.sub(lambda match: " " * len(match.group()), chunk)
+        verbs = canonical_verb_spans(action)
+        extracts = [offset for verb, offset in verbs if verb == requested_verb]
+        if len(extracts) > 1:
+            return ""
+        if extracts:
+            start += extracts[0]
+            verbs = [(requested_verb, 0)]
+        if query[start:end].strip():
+            if first or verbs or not clauses:
+                clauses.append([start, end, verbs[0][0] if verbs else None])
+            else:
+                clauses[-1][1] = end
+        first = bool(boundary and boundary.lastgroup == "sentence")
+        start = boundary.end() if boundary else end
+    extracts = [clause for clause in clauses if clause[2] == requested_verb]
+    if len(extracts) != 1:
+        return ""
+    chosen = [clause for clause in clauses if clause is extracts[0] or
+              field.search(masked[clause[0]:clause[1]])]
+    parts = [query[start:end].strip() for start, end, _verb in chosen]
+    return ". ".join(part.rstrip(".") for part in parts[:-1]) + (
+        ". " if len(parts) > 1 else "") + parts[-1]
 
 def apply_to_framework(framework, query: str, catalog):
     """Give the marked arguments of a plan what the request says."""
+    from naming_grammar import parse_name
+
     steps = list(getattr(framework, "steps", None) or [])
     if not steps or not query:
         return framework
@@ -604,6 +651,12 @@ def apply_to_framework(framework, query: str, catalog):
         if schema is None:
             continue
         args = dict(step.args or {})
+        for name in _marked(schema, "requested_extraction_instruction"):
+            parsed = parse_name(step.tool)
+            if parsed:
+                instruction = requested_extraction_instruction(query, args.get("fields"), parsed.verb)
+                if instruction:
+                    args[name] = instruction
         for name in local_output_paths(schema, args):
             value = args.get(name)
             source = re.search(r"\$\{step(\d+)\.", value) if isinstance(value, str) else None
@@ -650,12 +703,14 @@ def guards(guard_type) -> tuple:
             framework, query, catalog),
         scope="per-clause",
         writes=frozenset({"args.@kept_by_age", "args.@copy_mode", "args.@set_operator",
-                          "args.@requested_output_path"}),
+                          "args.@requested_output_path", "args.@requested_extraction_instruction"}),
         reads=frozenset({"catalog", "step.tool", "args.@kept_by_age",
-                         "args.@copy_mode", "args.@set_operator", "args.@requested_output_path"}),
+                         "args.@copy_mode", "args.@set_operator", "args.@requested_output_path",
+                         "args.@requested_extraction_instruction", "args.fields"}),
         rationale="an argument marked by its semantic_type takes what the "
                   "sentence says: which record of a group stays by its age; "
                   "a copy that is only named is not a request to copy; "
                   "a union requires a disjunction in the request; "
-                  "a local output path requires a destination or file named in the request",
+                  "a local output path requires a destination or file named in the request; "
+                  "extraction instructions use the explicit request clause",
         adr="0138"),)

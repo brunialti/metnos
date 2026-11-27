@@ -2622,6 +2622,7 @@ EXTRACT_ENTRIES_TOOL = {
                 },
                 "instruction": {
                     "type": "string",
+                    "semantic_type": "requested_extraction_instruction",
                     "description": "Cosa estrarre, in linguaggio naturale. Es. "
                                    "\"le prossime conferenze con la loro data\".",
                 },

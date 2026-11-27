@@ -16,7 +16,7 @@ en = "SCOPO: Extracts structured records from already observed entries. PATTERN:
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:44b8584aad09a89286c93ac4bc0da7b9f094eb3d9ee4916d15bb3ce6e45c9dae"
+digest = "sha256:bbbf62be04431f35e4514a37500820842ecd2022f49e64f6e94ad0fa92566328"
 
 [args]
 type = "object"
@@ -118,6 +118,7 @@ en = "Optional normalized-state to observed source phrases mapping."
 
 [args.properties.instruction]
 type = "string"
+semantic_type = "requested_extraction_instruction"
 
 [args.properties.instruction.description]
 it = "Cosa estrarre, in linguaggio naturale. Es. \"le prossime conferenze con la loro data\"."

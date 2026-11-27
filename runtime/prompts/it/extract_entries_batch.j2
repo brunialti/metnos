@@ -3,10 +3,10 @@ role: extract_entries_batch
 tier: fast
 lang: it
 style: prescriptive
-version: 7
+version: 8
 owner: roberto
 updated: 2026-11-27
-sha_prev: 5875ecaf
+sha_prev: eccff889
 --- #}
 
 
@@ -27,7 +27,7 @@ I campi, nel loro ordine fisso, sono: {{ fields_json }}.
 Restituisci SOLO un oggetto JSON {"seen_source_indexes":[...],"records":[...]}. Copia in seen_source_indexes TUTTI gli indici di input esaminati, anche quelli senza record. Ogni elemento di records è una lista [source_index, valore_campo_1, valore_campo_2, ...] con esattamente {{ field_count }} elementi e nello stesso ordine dichiarato. Forma di esempio: {"seen_source_indexes":[0],"records":[{{ example_row }}]}.
 In ogni riga copia come primo valore l'intero source_index esatto della sorgente.
 DEVI: verificare nella fonte il significato di ogni campo richiesto; se non è documentato, restituire "" per quel campo in tutte le righe.
-NON DEVI: inventare una colonna assente o riempirla con un valore compatibile trovato in un altro campo dello stesso record.
+NON DEVI: inventare una colonna assente o riempirla con un valore compatibile trovato in un altro campo dello stesso record; salvo che COSA estrarre lo chieda esplicitamente.
 OK: esempio astratto, non copiare letteralmente: il testo mostra il valore di un campo e non quello di un altro → conserva il primo e lascia "" nel secondo.
 E' UN ERRORE: compilare entrambi con l'unico valore mostrato.
 Estrai tutti i record pertinenti, fino a {{ max_per_text }} per ciascuna sorgente. Se nessuna sorgente contiene record, records deve essere [] ma seen_source_indexes deve comunque contenere tutti gli indici esaminati.

@@ -3,10 +3,10 @@ role: extract_entries_batch
 tier: fast
 lang: en
 style: prescriptive
-version: 7
+version: 8
 owner: roberto
 updated: 2026-11-27
-sha_prev: 25a2a786
+sha_prev: 5ed52b67
 --- #}
 
 
@@ -27,7 +27,7 @@ The fields, in fixed order, are: {{ fields_json }}.
 Return ONLY one JSON object {"seen_source_indexes":[...],"records":[...]}. Copy ALL examined input indexes into seen_source_indexes, including sources with no records. Every item in records is a list [source_index, field_1_value, field_2_value, ...] with exactly {{ field_count }} items in the declared order. Shape example: {"seen_source_indexes":[0],"records":[{{ example_row }}]}.
 In every row copy the exact integer source_index as the first value.
 MUST: verify that the source documents the meaning of each requested field; otherwise return "" for that field in every row.
-MUST NOT: invent an absent column or fill it with a compatible value found in another field of the same record.
+MUST NOT: invent an absent column or fill it with a compatible value found in another field of the same record; unless WHAT to extract explicitly requests it.
 OK: abstract example, do not copy literally: the text shows a value for one field but none for another → retain the first and leave "" in the second.
 ERROR: fill both with the only value shown.
 Extract all relevant records, up to {{ max_per_text }} per source. When no source contains a record, records must be [] but seen_source_indexes must still contain all examined indexes.
