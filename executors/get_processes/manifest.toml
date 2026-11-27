@@ -24,7 +24,7 @@ en = "SCOPO: processes and health. PATTERN: include_health=true; CPU: sensor_dom
 
 [code]
 files  = ["get_processes.py"]
-digest = "sha256:541167841bda81b5689c88417048870c3deabb96228cd244fdbf55452497be15"
+digest = "sha256:657391cf4340e07dd7a29d6f0528b112d0a00ab3311b71a76062c2606693cb37"
 
 [args]
 type     = "object"

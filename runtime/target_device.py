@@ -43,7 +43,7 @@ SERVER = "server"
 
 _TARGET_LEXICON_KEYS = frozenset({
     "locative_anchor", "nominal_anchor", "local_marker",
-    "server_adjunct", "server_nominal",
+    "server_adjunct", "server_nominal", "local_nominal",
 })
 
 
@@ -449,6 +449,10 @@ def resolve_target(query: str,
         qn, ((marker, True) for marker in target_lexicon["local_marker"]),
         identity="__local__", source="local", strong=True,
     )
+    if machine_focus:
+        local_mentions.extend(_surface_mentions(
+            qn, ((marker, False) for marker in target_lexicon["local_nominal"]),
+            identity="__local__", source="local", strong=True))
     mentions = list(server_mentions)
     mentions.extend(_named_device_mentions(qn, devices, target_lexicon))
     if devices:
@@ -607,7 +611,8 @@ def references_device(query: str, devices: list, *, server_aliases=None) -> bool
     if devices and _find_named_device(qn, devices):
         return True
     if _has_machine_focus(qn) and (
-            _find_server_alias(qn, server_aliases) or _find_marker(qn, [SERVER])):
+            _find_server_alias(qn, server_aliases) or _find_marker(qn, [SERVER])
+            or _find_marker(qn, target_lexicon["local_nominal"])):
         return True
     return False
 

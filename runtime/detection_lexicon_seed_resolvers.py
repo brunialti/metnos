@@ -238,6 +238,7 @@ def register_detection() -> None:
             "sul mio fisso", "localmente", "in locale", "qui sul pc",
             "sul pc locale",
         ],
+        "local_nominal": ["il mio pc", "il mio computer"],
         "server_adjunct": [
             "sul server", "su server", "qui sul server", "sul .33", "sul metnos",
             "lato server",
@@ -253,6 +254,7 @@ def register_detection() -> None:
             "on this pc", "on this computer", "on this machine", "on my pc", "of my pc",
             "on my computer", "on my laptop", "on my machine", "locally",
         ],
+        "local_nominal": ["my pc", "my computer"],
         "server_adjunct": ["on the server", "on server", "server side"],
         "server_nominal": ["of the server", "this server", "the server"],
     }, review_policy="manual")

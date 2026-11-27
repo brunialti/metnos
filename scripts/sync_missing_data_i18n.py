@@ -13,6 +13,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'ERR_ARG_PAIRED': (
+        'Le due liste devono essere fornite insieme.',
+        'Both lists must be provided together.'),
     'MSG_HEALTH_DISKS_TOTAL': (
         'Dischi: totale libero {free_gb} GiB su {total_gb} GiB.',
         'Disks: total free {free_gb} GiB of {total_gb} GiB.'),

@@ -15,6 +15,7 @@ guard legittimi scrivano), quindi tocca SOLO l'output grezzo del proposer:
      al valore canonico (§2.4); altrimenti DROP della chiave (a valle
      `fill_clause_args` la ri-deriva dal chunk, o vince il default onesto
      dell'executor). MAI snap "al più vicino": indovinare è peggio del default.
+     La stessa regola vale per gli elementi di una lista: uno non valido toglie la chiave.
 
 Whitelist SEMPRE conservata: `from_step`/`entries` (piping §4.1, dominio del
 runtime anche dove marcati). Le chiavi `_*` sono invece rimosse a questo
@@ -56,6 +57,7 @@ def coerce_step_args(args: dict, schema,
     l'idempotenza della catena (coerce droppa → guard riscrive → oscillazione
     alla ri-applicazione). Il costo onesto: un leak LLM su un arg guard-owned
     passa il coerce — lo arbitra il proprietario a valle (guard/resolver).
+    Le liste dichiarate con enum si conformano anche se esenti: la guardia scrive valori ammessi.
 
     L'esenzione e' una tolleranza DENTRO la pipeline, non un lasciapassare fino
     all'executor (6/8). Serve perche' un arg fuori-schema puo' essere la PROVA
@@ -82,27 +84,38 @@ def coerce_step_args(args: dict, schema,
         return out, changed
     coerced = {}
     for key, val in out.items():
-        if key in UNIVERSAL_ARGS or key in guard_owned:
+        decl = props.get(key)
+        items = (decl.get("items") if isinstance(decl, dict)
+                 and decl.get("type") == "array" else None)
+        array = isinstance(val, list) and isinstance(items, dict)
+        enum = (items.get("enum") if array else
+                decl.get("enum") if isinstance(decl, dict) else None)
+        closed = (isinstance(enum, list) and bool(enum)
+                  and all(isinstance(v, str) for v in enum))
+        if key in UNIVERSAL_ARGS or (key in guard_owned and not (
+                array and closed and not decl.get("runtime_resolved"))):
             coerced[key] = val
             continue
-        decl = props.get(key)
         if decl is None:                      # 1. fuori-schema → drop
             changed = True
             continue
         if isinstance(decl, dict) and decl.get("runtime_resolved"):
             changed = True                    # 2. leak runtime → drop
             continue
-        enum = decl.get("enum") if isinstance(decl, dict) else None
-        if (isinstance(enum, list) and enum
-                and all(isinstance(v, str) for v in enum)
-                and isinstance(val, str)):
-            if val in enum:                   # 3. enum: valido → intatto
-                coerced[key] = val
-                continue
-            folded = [v for v in enum if v.lower() == val.lower()]
-            if len(folded) == 1:              # case-insensitive unico → canonico
-                coerced[key] = folded[0]
-                changed = True
+        if closed and (array or isinstance(val, str)):
+            normalized = []
+            for item in val if array else [val]:
+                if item in enum:
+                    normalized.append(item)
+                    continue
+                folded = [v for v in enum
+                          if isinstance(item, str) and v.lower() == item.lower()]
+                if len(folded) != 1:
+                    break
+                normalized.append(folded[0])
+            else:
+                coerced[key] = normalized if array else normalized[0]
+                changed |= coerced[key] != val
                 continue
             changed = True                    # fuori dominio → drop
             continue

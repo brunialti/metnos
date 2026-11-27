@@ -1479,15 +1479,14 @@ def _sensor_selection(args: dict) -> tuple[tuple[str, ...], tuple[str, ...]]:
                        for item in raw)
                 or len(raw) != len(set(raw))):
             raise ValueError(_msg(
-                "ERR_ARG_INVALID", arg=name,
-                reason="expected a unique list from the declared enum",
+                "ERR_ARG_ENUM", arg=name, allowed=", ".join(sorted(allowed)),
             ))
         values.append(tuple(sorted(raw)))
     domains, sensor_types = values
     if bool(domains) != bool(sensor_types):
         raise ValueError(_msg(
             "ERR_ARG_INVALID", arg="sensor_domains/sensor_types",
-            reason="both lists must be provided together",
+            reason=_msg("ERR_ARG_PAIRED"),
         ))
     return domains, sensor_types
 
