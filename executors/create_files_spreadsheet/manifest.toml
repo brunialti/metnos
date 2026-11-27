@@ -122,6 +122,7 @@ en = "Name of the first tab (e.g. 'Data'). If empty: 'Sheet1'."
 [args.properties.path]
 type    = "string"
 default = ""
+semantic_type = "requested_output_path"
 
 [args.properties.path.description]
 it = "Path esplicito del file (override del default ~/.local/share/metnos/spreadsheets/<title>.xlsx). Estensione .csv = formato CSV."

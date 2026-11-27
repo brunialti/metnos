@@ -80,6 +80,7 @@ en = "Typed metadata for fields produced by the source step. Injected automatica
 [args.properties.spreadsheet_id]
 type    = "string"
 default = ""
+semantic_type = "requested_output_path"
 # FIX D'ISTANZA (2/6, da generalizzare nel verb-contract write=upsert): il
 # planner LLM, vedendo `spreadsheet_id`, lo CHIEDE sempre (get_inputs) anche
 # quando il foglio e' da creare → blocca "metti/salva in uno spreadsheet". Lo
@@ -137,6 +138,7 @@ en = "Backend: 'local' (default, .xlsx/.csv file) or 'google_workspace' (online 
 
 [args.properties.path]
 type = "string"
+semantic_type = "requested_output_path"
 
 [args.properties.path.description]
 it = "Nome o percorso del foglio di destinazione. Su 'google_workspace' un valore senza '/' e' il NOME del foglio su Drive; con '/' e' un percorso locale. Esempio: \"spese-2026\". In alternativa a 'spreadsheet_id'."

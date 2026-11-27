@@ -117,6 +117,10 @@ GROUNDING_CONCEPTS = (
     "parser.grounding.copy_verb",
     "parser.grounding.definite_determiner",
     "parser.grounding.disjunction",
+    "parser.grounding.output_word",
+    "parser.grounding.output_verb",
+    "parser.grounding.output_name_link",
+    "parser.grounding.folder_word",
 )
 
 # A request may ask for independent comparisons inside each partition.
@@ -165,6 +169,10 @@ _KINDS = {
     "parser.grounding.copy_verb": "phrases",
     "parser.grounding.definite_determiner": "phrases",
     "parser.grounding.disjunction": "phrases",
+    "parser.grounding.output_word": "phrases",
+    "parser.grounding.output_verb": "phrases",
+    "parser.grounding.output_name_link": "phrases",
+    "parser.grounding.folder_word": "phrases",
     "parser.ordering.mode_verb": "mapping",
     "parser.ordering.group_connector": "phrases",
     "parser.ordering.sort_connector": "phrases",
@@ -729,6 +737,18 @@ def register_all() -> None:
           "their"])
     R("parser.grounding.disjunction", "phrases", match_mode="word",
       it=["o", "oppure"], en=["or", "either"])
+    R("parser.grounding.output_word", "phrases", match_mode="word",
+      it=["foglio", "fogli", "spreadsheet", "tabella", "tabelle"],
+      en=["sheet", "sheets", "spreadsheet", "spreadsheets", "table", "tables"])
+    R("parser.grounding.output_verb", "phrases", match_mode="word",
+      it=["scrivi", "salva", "metti", "crea", "esporta"],
+      en=["write", "save", "put", "create", "export"])
+    R("parser.grounding.output_name_link", "phrases", match_mode="word",
+      it=["esistente", "chiamato", "denominato"],
+      en=["existing", "called", "named"])
+    R("parser.grounding.folder_word", "phrases", match_mode="word",
+      it=["cartella", "cartelle", "sottocartella", "directory", "percorso"],
+      en=["folder", "folders", "subfolder", "directory", "path"])
 
 
 def _all_seed_rows_ready() -> bool:

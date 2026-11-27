@@ -6508,11 +6508,16 @@ def _enforce_create_only_artifact_policy(
                 return new + value[len(old):]
         return value
 
+    from request_grounding import _schemas, local_output_paths, output_path_is_grounded
+    schemas = _schemas(catalog)
     for step in steps:
         tool = step.tool or ""
         if tool not in _ARTIFACT_SINK_TOOLS:
             continue
         args = dict(step.args or {})
+        if any(args.get(key) and output_path_is_grounded(args[key], query, named_only=True)
+               for key in local_output_paths(schemas.get(tool, {}), args)):
+            continue
         for key in _PATH_ARG_KEYS:
             if key in args:
                 if isinstance(args[key], list):

@@ -35,7 +35,7 @@ Both are read here from the sentence, with registered words and no model:
   every «copy» in it follows a definite determiner («the copy», «each copy»).
 
 A manifest marks the arguments this applies to with `semantic_type`
-(`kept_by_age`, `copy_mode`, `set_operator`): no tool is named here. Where the sentence says
+(`kept_by_age`, `copy_mode`, `set_operator`, `requested_output_path`): no tool is named here. Where the sentence says
 something this reader cannot settle (two ages, an age in a form it does not
 know), the planner's value is left as it is.
 
@@ -51,6 +51,10 @@ in X and delete the copies», four neutral copies of the catalog: the oldest
 kept or nothing written in 4 plans of 4; with one more argument declared by
 the same tool, the newest kept in 3 of 4; with a shorter description, in 4 of
 4 (`misura_pianificatore_4`, 16/11/2026).
+
+A local output folder must be a destination named in the request.
+Otherwise only the filename remains under the declared default folder;
+references to earlier steps remain.
 """
 from __future__ import annotations
 
@@ -492,6 +496,77 @@ def _schemas(catalog) -> dict:
     return schemas
 
 
+def output_path_is_grounded(value, query: str, *, named_only: bool = False) -> bool:
+    """A named file, or a destination belonging to an output clause. No I/O."""
+    from pathlib import PurePosixPath
+    from args_extractor import _extract_paths
+    from tool_grammar import _RE_FS_PATH_TOKEN
+
+    lexicon = _lexicons.load_family("grounding")
+    if not isinstance(value, str) or not value or lexicon is None:
+        return True
+    if not named_only and not _RE_FS_PATH_TOKEN.search(value):
+        return True
+    path = value.replace("\\", "/").casefold().rstrip("/")
+    paths = [p.replace("\\", "/").casefold().rstrip("/") for p in _extract_paths(query)]
+    if path in paths:
+        return True
+    file = PurePosixPath(path)
+    name = _words(file.stem)
+    noun = _phrases(lexicon, "parser.grounding.output_word")
+    links = _single(lexicon, "output_name_link")
+    words = _words(_RE_FS_PATH_TOKEN.sub(" ", query))
+    for _start, end in _occurrences(words, noun):
+        while end < len(words) and words[end] in links:
+            end += 1
+        if name and words[end:end + len(name)] == name:
+            return True
+    if named_only:
+        return False
+    marks = {}
+    def mask(found):
+        mark = chr(0xE001 + len(marks))
+        original = found.group(0)
+        marks[mark] = original.rstrip(_PAUSES + ".;:!?")
+        return mark + original[len(marks[mark]):]
+    masked = _RE_FS_PATH_TOKEN.sub(mask, query)
+    breaks = "|".join(re.escape(word) for word in _single(lexicon, "clause_break"))
+    output_seen = False
+    for clause in re.split(r"\b(?:" + breaks + r")\b|[,.;:!?\n]+", masked, flags=re.I):
+        for mark, original in marks.items():
+            clause = clause.replace(mark, original)
+        tokens = _words(_RE_FS_PATH_TOKEN.sub(" ", clause))
+        if _single(lexicon, "find_verb").intersection(tokens):
+            verbs = "|".join(re.escape(word) for word in _single(lexicon, "output_verb"))
+            action_start = re.search(r"\b(?:" + verbs + r")\b", clause, flags=re.I)
+            if action_start:
+                clause = clause[action_start.start():]
+                tokens = _words(_RE_FS_PATH_TOKEN.sub(" ", clause))
+        output = bool(_occurrences(tokens, noun))
+        action = bool(_single(lexicon, "output_verb").intersection(tokens))
+        if not (output or (output_seen and action)):
+            continue
+        output_seen = True
+        there = bool(_single(lexicon, "place_adverb").intersection(tokens))
+        place = query if there else clause
+        roots = paths if there else [p.replace("\\", "/").casefold().rstrip("/")
+                                     for p in _extract_paths(clause)]
+        if any(path.startswith(root + "/") for root in roots):
+            return True
+        places = _words(_RE_FS_PATH_TOKEN.sub(" ", place))
+        parent = _words(file.parent.name)
+        for _start, end in _occurrences(places, _phrases(lexicon, "parser.grounding.folder_word")):
+            if parent and places[end:end + len(parent)] == parent:
+                return True
+    return False
+
+
+def local_output_paths(schema, args) -> list[str]:
+    """Contract-marked output values, including names without a folder."""
+    return [name for name in _marked(schema, "requested_output_path")
+            if isinstance(args.get(name), str)]
+
+
 def kept_note(steps, position: int, catalog) -> str:
     """One sentence for the question before a removal: which record of each
     group stays, when the rows about to be removed come from a step that
@@ -524,11 +599,22 @@ def apply_to_framework(framework, query: str, catalog):
         return framework
     schemas = _schemas(catalog)
     stays = named_only = said = disjunction = None
-    for step in steps:
+    for position, step in enumerate(steps, 1):
         schema = schemas.get(getattr(step, "tool", None) or "")
         if schema is None:
             continue
         args = dict(step.args or {})
+        for name in local_output_paths(schema, args):
+            value = args.get(name)
+            source = re.search(r"\$\{step(\d+)\.", value) if isinstance(value, str) else None
+            if source and 0 < int(source[1]) < position:
+                continue
+            if value and not output_path_is_grounded(value, query):
+                filename = value.replace("\\", "/").rsplit("/", 1)[-1]
+                if filename:
+                    args[name] = filename
+                else:
+                    del args[name]
         for name in _marked(schema, "kept_by_age"):
             stays = kept_by_age(query) if stays is None else stays
             if stays:
@@ -563,11 +649,13 @@ def guards(guard_type) -> tuple:
         lambda framework, _intent, query, catalog: apply_to_framework(
             framework, query, catalog),
         scope="per-clause",
-        writes=frozenset({"args.@kept_by_age", "args.@copy_mode", "args.@set_operator"}),
+        writes=frozenset({"args.@kept_by_age", "args.@copy_mode", "args.@set_operator",
+                          "args.@requested_output_path"}),
         reads=frozenset({"catalog", "step.tool", "args.@kept_by_age",
-                         "args.@copy_mode", "args.@set_operator"}),
-        rationale="an argument marked kept_by_age, copy_mode or set_operator takes what the "
+                         "args.@copy_mode", "args.@set_operator", "args.@requested_output_path"}),
+        rationale="an argument marked by its semantic_type takes what the "
                   "sentence says: which record of a group stays by its age; "
                   "a copy that is only named is not a request to copy; "
-                  "a union requires a disjunction in the request",
+                  "a union requires a disjunction in the request; "
+                  "a local output path requires a destination or file named in the request",
         adr="0138"),)
