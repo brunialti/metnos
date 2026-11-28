@@ -98,6 +98,10 @@ fisicamente quando il tipo di modifica lo consente. La macchina a stati impedisc
 passaggi arbitrari: una proposta non pu&ograve; diventare <code>applied</code> senza essere
 prima <code>accepted</code>.</p>
 
+<p>Ogni transizione viene registrata soltanto se lo stato &egrave; ancora quello
+letto. Se un altro processo lo cambia nel frattempo, la richiesta concorrente
+fallisce senza sovrascrivere la decisione o i dati gi&agrave; salvati.</p>
+
 <h1 id="cap3">3. Sorgenti attive</h1>
 
 <p>Il materializzatore interroga quattro adapter senza effetti collaterali:</p>
@@ -130,6 +134,9 @@ modifica e non trasformano una deduzione automatica in consenso umano.</p>
 configurabile con <code>METNOS_CHANGE_GRACE_DAYS</code>. I criteri dipendono dal tipo:
 salute dell'executor, integrit&agrave; di un alias, risultato del turno usato per provare una
 sequenza o un nuovo riscontro sullo schema rifiutato.</p>
+
+<p>I motivi delle verifiche e del ripristino provengono dal catalogo dei testi
+e seguono la lingua dell'istanza, in italiano o in inglese.</p>
 
 <h1 id="cap5">5. Cosa viene applicato</h1>
 

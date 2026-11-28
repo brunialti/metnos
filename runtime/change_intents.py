@@ -657,10 +657,12 @@ def _transition(
                 else:
                     cols[k] = v
         set_clause = ", ".join(f"{k}=?" for k in cols)
-        cn.execute(
-            f"UPDATE change_intents SET {set_clause} WHERE id=?",
-            list(cols.values()) + [id_],
+        updated = cn.execute(
+            f"UPDATE change_intents SET {set_clause} WHERE id=? AND state=?",
+            list(cols.values()) + [id_, from_state],
         )
+        if updated.rowcount != 1:
+            raise TransitionError(f"intent {id_} changed from {from_state} during transition")
     out = get_intent(id_)
     if out is None:
         raise TransitionError(f"intent {id_} disappeared after transition")

@@ -41,6 +41,7 @@ import time
 from typing import Callable
 
 import config as C
+from messages import get as _msg
 from change_intents import (
     KIND_CREATE_EXECUTOR,
     KIND_DEDUPE_EXECUTORS,
@@ -128,7 +129,6 @@ def _verify_created_executor(ci: ChangeIntent) -> Verdict:
     verdict, metrics, reason = _verify_executor_health(ci, failure_rolls_back=False)
     if verdict == "rollback":
         from executor_aging import DEPRECATED_DAYS, last_restriction
-        from messages import get as _msg
 
         # «Nobody used it» only when that is what took it out: a duplicate or
         # another decision is said as such (15/11/2026).
@@ -154,7 +154,7 @@ def _verify_executor_health(ci: ChangeIntent, *, failure_rolls_back: bool = True
         # Executor non in stats — non ancora chiamato, ok finche' giovane
         if age >= _grace_days():
             return ("finalize", {"calls": 0, "age_days": round(age, 1),
-                                  "note": "no calls in grace period"}, None)
+                                  "note": _msg("MSG_CHANGE_OBSERVER_NO_CALLS")}, None)
         return ("observing", {"calls": 0, "age_days": round(age, 1)}, None)
 
     metrics = {
@@ -167,19 +167,19 @@ def _verify_executor_health(ci: ChangeIntent, *, failure_rolls_back: bool = True
     # Rollback hard: deprecated dal sistema (fallisce ager check)
     if stat.deprecated_at:
         return ("rollback", metrics,
-                f"executor auto-deprecated at {stat.deprecated_at}")
+                _msg("MSG_CHANGE_OBSERVER_DEPRECATED", date=stat.deprecated_at))
     # Rollback soft: last_call_ok=False con calls >= 3. The reason says what
     # is measured: the last call, not the last three.
     if failure_rolls_back and stat.last_call_ok is False and stat.total_calls >= 3:
         return ("rollback", metrics,
-                f"last call failed after {stat.total_calls} calls")
+                _msg("MSG_CHANGE_OBSERVER_LAST_CALL_FAILED", calls=stat.total_calls))
     # Finalize: oltre grace e calls >= 1 success
     if age >= _grace_days():
         if stat.total_calls >= 1 and (stat.last_call_ok is not False or not failure_rolls_back):
             return ("finalize", metrics, None)
         if stat.total_calls == 0:
             # Non chiamato, ma siamo a grace — finalize "dormiente"
-            return ("finalize", {**metrics, "note": "no calls but past grace"}, None)
+            return ("finalize", {**metrics, "note": _msg("MSG_CHANGE_OBSERVER_NO_CALLS")}, None)
     return ("observing", metrics, None)
 
 
@@ -192,16 +192,16 @@ def _verify_dedupe(ci: ChangeIntent) -> Verdict:
     age = _age_days(ci.applied_at)
     aliases_path = C.PATH_USER_DATA / "executor_aliases.json"
     if not aliases_path.exists():
-        return ("rollback", {"reason": "aliases.json missing"},
-                "aliases store deleted")
+        reason = _msg("MSG_CHANGE_OBSERVER_ALIASES_MISSING")
+        return ("rollback", {"reason": reason}, reason)
     try:
         aliases = json.loads(aliases_path.read_text())
     except (json.JSONDecodeError, OSError):
-        return ("rollback", {"reason": "aliases.json unreadable"},
-                "aliases store corrupt")
+        reason = _msg("MSG_CHANGE_OBSERVER_ALIASES_UNREADABLE")
+        return ("rollback", {"reason": reason}, reason)
     if aliases.get(b) != a:
         return ("rollback", {"alias_now": aliases.get(b), "expected": a},
-                "alias mapping removed/changed")
+                _msg("MSG_CHANGE_OBSERVER_ALIAS_CHANGED"))
     metrics = {"alias_intact": True, "age_days": round(age, 1)}
     if age >= _grace_days():
         return ("finalize", metrics, None)
@@ -228,16 +228,17 @@ def _verify_pipeline(ci: ChangeIntent) -> Verdict:
     produced = int(counts.get("items") or 0) + int(
         counts.get("mutations") or 0)
     if metrics["false_success_detected"]:
-        return ("rollback", metrics, "materialized turn reported false success")
+        return ("rollback", metrics, _msg("MSG_CHANGE_OBSERVER_FALSE_SUCCESS"))
     if final_kind in {"error", "loop_break"}:
         return ("rollback", metrics,
-                f"materialized turn ended as {final_kind}")
+                _msg("MSG_CHANGE_OBSERVER_TURN_ERROR" if final_kind == "error"
+                     else "MSG_CHANGE_OBSERVER_TURN_LOOP"))
     if failures > 0:
         if produced > 0:
             metrics["status"] = "partial"
             return ("observing", metrics, None)
         return ("rollback", metrics,
-                "materialized turn failed without observable effects")
+                _msg("MSG_CHANGE_OBSERVER_NO_EFFECTS"))
     if final_kind == "answer" and age >= _grace_days():
         return ("finalize", metrics, None)
     # ask/needs_inputs restano osservabili: una capability JIT puo' essere
@@ -280,7 +281,7 @@ def _verify_reject_pattern(ci: ChangeIntent) -> Verdict:
                "age_days": round(age, 1)}
     if new_rejects >= 2:
         return ("rollback", metrics,
-                f"ban inefficace: {new_rejects} nuovi feedback ✗ dopo accept")
+                _msg("MSG_CHANGE_OBSERVER_NEW_REJECTIONS", count=new_rejects))
     if age >= _grace_days():
         return ("finalize", metrics, None)
     return ("observing", metrics, None)
@@ -341,7 +342,7 @@ def task_change_observer(payload: dict | None = None) -> dict:
                         "kind": ci.intent_kind, "metrics": metrics})
             elif verdict == "rollback":
                 # Trigger rollback fisico via change_rollback module
-                rolled = _physical_rollback(ci, reason or "observer trigger")
+                rolled = _physical_rollback(ci, reason or _msg("MSG_CHANGE_OBSERVER_TRIGGER"))
                 counts["rolled_back"] += 1
                 details.append({"id": ci.id, "kind": ci.intent_kind,
                                 "result": "rolled_back", "reason": reason,
@@ -358,7 +359,7 @@ def task_change_observer(payload: dict | None = None) -> dict:
         except Exception as exc:
             counts["errors"] += 1
             details.append({"id": ci.id, "kind": ci.intent_kind,
-                            "error": f"transition error: {exc}"})
+                            "error": _msg("LOG_CHANGE_OBSERVER_TRANSITION_ERROR", detail=exc)})
 
     return {
         "ok": True,
@@ -385,8 +386,7 @@ def _physical_rollback(ci: ChangeIntent, reason: str) -> dict:
     except ImportError as exc:
         # Modulo non disponibile: fail-loud, NON falso rolled_back.
         raise RuntimeError(
-            f"change_rollback non importabile, rollback fisico impossibile "
-            f"per intent {ci.id}: {exc}") from exc
+            _msg("LOG_CHANGE_OBSERVER_ROLLBACK_UNAVAILABLE", id=ci.id, detail=exc)) from exc
     effect = rollback_for_kind(ci)
     # Every handler reports a failure under `error` (or `re_sign_error` when
     # the old manifest could not be published again): looking for another key
@@ -397,7 +397,7 @@ def _physical_rollback(ci: ChangeIntent, reason: str) -> dict:
                    or ("error" if effect.get("physical_rollback") == "error" else None))
     if failure:
         raise RuntimeError(
-            f"rollback fisico fallito per intent {ci.id}: {failure}")
+            _msg("LOG_CHANGE_OBSERVER_ROLLBACK_FAILED", id=ci.id, detail=failure))
     mark_rolled_back(ci.id, reason=reason)
     return effect
 

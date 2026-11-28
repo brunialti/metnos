@@ -19,6 +19,51 @@ TRANSLATIONS = {
     'ERR_ENGINE_INTERNAL': (
         'Non sono riuscito a rispondere per un mio errore interno, che è stato registrato. Puoi riprovare.',
         'I could not answer because of an internal error of mine, which has been recorded. You can try again.'),
+    'MSG_CHANGE_OBSERVER_NO_CALLS': (
+        'Il periodo di osservazione è trascorso senza chiamate.',
+        'The observation period has elapsed without any calls.'),
+    'MSG_CHANGE_OBSERVER_DEPRECATED': (
+        'Il sistema ha messo da parte lo strumento il {date}.',
+        'The system set the tool aside on {date}.'),
+    'MSG_CHANGE_OBSERVER_LAST_CALL_FAILED': (
+        'L’ultima chiamata è fallita, dopo {calls} chiamate complessive.',
+        'The last call failed, after {calls} calls in all.'),
+    'MSG_CHANGE_OBSERVER_ALIASES_MISSING': (
+        'L’archivio dei collegamenti fra strumenti non è più presente.',
+        'The store of links between tools is no longer present.'),
+    'MSG_CHANGE_OBSERVER_ALIASES_UNREADABLE': (
+        'L’archivio dei collegamenti fra strumenti non è leggibile.',
+        'The store of links between tools cannot be read.'),
+    'MSG_CHANGE_OBSERVER_ALIAS_CHANGED': (
+        'Il collegamento fra i due strumenti è stato rimosso o modificato.',
+        'The link between the two tools was removed or changed.'),
+    'MSG_CHANGE_OBSERVER_FALSE_SUCCESS': (
+        'La sequenza ha dichiarato un successo che non trova riscontro nei risultati.',
+        'The sequence reported a success that its results do not support.'),
+    'MSG_CHANGE_OBSERVER_TURN_ERROR': (
+        'La sequenza si è conclusa con un errore.',
+        'The sequence ended with an error.'),
+    'MSG_CHANGE_OBSERVER_TURN_LOOP': (
+        'La sequenza è stata interrotta perché ripeteva gli stessi passi.',
+        'The sequence was stopped because it kept repeating the same steps.'),
+    'MSG_CHANGE_OBSERVER_NO_EFFECTS': (
+        'La sequenza è fallita senza produrre effetti osservabili.',
+        'The sequence failed without producing observable effects.'),
+    'MSG_CHANGE_OBSERVER_NEW_REJECTIONS': (
+        'Dopo l’accettazione, la richiesta ha ricevuto {count} nuovi giudizi negativi: la regola non è efficace.',
+        'After acceptance, the request received {count} new negative ratings: the rule is ineffective.'),
+    'MSG_CHANGE_OBSERVER_TRIGGER': (
+        'La modifica è stata ritirata in seguito alla verifica dei suoi risultati.',
+        'The change was taken back following a check of its results.'),
+    'LOG_CHANGE_OBSERVER_TRANSITION_ERROR': (
+        'Errore nella transizione della proposta: {detail}',
+        'Proposal transition error: {detail}'),
+    'LOG_CHANGE_OBSERVER_ROLLBACK_UNAVAILABLE': (
+        'change_rollback non importabile per la proposta {id}: {detail}',
+        'change_rollback cannot be imported for proposal {id}: {detail}'),
+    'LOG_CHANGE_OBSERVER_ROLLBACK_FAILED': (
+        'Ripristino fisico fallito per la proposta {id}: {detail}',
+        'Physical rollback failed for proposal {id}: {detail}'),
 }
 
 

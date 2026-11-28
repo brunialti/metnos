@@ -96,6 +96,10 @@ rejected. Rollback is terminal in the registry and performs a physical reversal 
 the change kind supports one. The state machine blocks arbitrary jumps: a proposal
 cannot become <code>applied</code> before it is <code>accepted</code>.</p>
 
+<p>Each transition is recorded only while the state still matches the one
+read. If another process changes it in the meantime, the concurrent request
+fails without overwriting the decision or data already saved.</p>
+
 <h1 id="cap3">3. Active sources</h1>
 
 <p>The materializer reads four side-effect-free adapters:</p>
@@ -128,6 +132,9 @@ apply the change nor turn an automatic inference into human consent.</p>
 <code>METNOS_CHANGE_GRACE_DAYS</code>. Criteria vary by kind: executor health, alias
 integrity, the result of the turn used to try a pipeline, or new feedback about a
 rejected pattern.</p>
+
+<p>Reasons for verification and rollback come from the message catalog and
+follow the instance language, in Italian or English.</p>
 
 <h1 id="cap5">5. What gets applied</h1>
 
