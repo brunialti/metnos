@@ -199,6 +199,10 @@ remote device.</p>
  </tbody>
 </table>
 
+<p>Each new direct executor request reads external data again, including
+requests that do not modify it. Resuming the same job preserves committed units; photo
+analysis reuse remains tied to the content that was read.</p>
+
 <p>None of these memories grants capabilities. Remembering that two executors
 worked well together does not authorise the second to read data that the first
 could not lawfully pass to it.</p>

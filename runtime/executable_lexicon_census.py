@@ -194,7 +194,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'durable_workloads/schema.py': ('0bd2ca215119165780b180a84238782f72144ab06abb68a8479b9b95635510bf', (('comparison', 27), ('helper-argument', 14))),
     'durable_workloads/service.py': ('7524dc14f9c37ab711cacc939ff55f809fdb828235d1a52d0cad33a142b8f8ed', (('comparison', 8), ('helper-argument', 1))),
     'durable_workloads/source_authority.py': ('d9129d1a67e6df1a75fea7ec226e03acf3411b250e58ba9e12e3c0207913862e', (('comparison', 2), ('regex', 1))),
-    'durable_workloads/storage.py': ('a1d977735ddd617fc3b95a98c525b1487af6fcfa2ff836c23fbaaff513c79625', (('comparison', 74), ('helper-argument', 7), ('iteration', 2), ('membership', 4))),
+    'durable_workloads/storage.py': ('2d0d753c07ce1e2fd79a99f59812ca007187cb0f0032f2ba06222d885ea47c28', (('comparison', 74), ('helper-argument', 7), ('iteration', 2), ('membership', 4))),
     'engine/__init__.py': ('fa4fbb1ff233bc4ea49e407983c0fb2ab97ad5032ff605da1979dc564ece5165', (('comparison', 1),)),
     'engine/autopath.py': ('c81ef3355bd374e67a4567d08916bea0bd39c94fe1699edf968cd21269d22650', (('comparison', 9),)),
     'engine/cache_validity.py': ('327054d7405ded3d940765c513df0ad2e33ffd2b24a03d83b3a09e1ac3dcf8a3', (('comparison', 1), ('helper-argument', 1))),

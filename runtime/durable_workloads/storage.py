@@ -5712,7 +5712,8 @@ class DurableWorkloadStore:
 
         Reuse is owner-scoped, contract-exact and bounded. A semantic key with
         multiple historical digests moves to attention: latest-wins would hide
-        nondeterminism or corruption.
+        nondeterminism or corruption. Direct plan families read external state
+        and always execute in each revision instead of adopting prior results.
         """
 
         _require_limit(limit, maximum=1000)
@@ -5730,12 +5731,17 @@ class DurableWorkloadStore:
                 JOIN workloads workload
                   ON workload.owner_user_id=current_unit.owner_user_id
                  AND workload.active_revision_id=current_unit.revision_id
+                JOIN revisions current_revision
+                  ON current_revision.owner_user_id=current_unit.owner_user_id
+                 AND current_revision.id=current_unit.revision_id
                 JOIN units prior_unit
                   ON prior_unit.owner_user_id=current_unit.owner_user_id
                  AND prior_unit.unit_key=current_unit.unit_key
                  AND prior_unit.revision_id<>current_unit.revision_id
                  AND prior_unit.state='committed'
                 WHERE workload.state IN ('queued', 'running')
+                  AND json_extract(current_revision.plan_json, '$.plan_id')
+                      NOT IN ('metnos.direct.v1', 'metnos.partitioned.v1')
                   AND current_unit.state='pending'
                   AND current_unit.attempt_count=0
                   AND current_unit.active_attempt_id IS NULL
@@ -5811,6 +5817,8 @@ class DurableWorkloadStore:
                      AND prior_result.id=prior_unit.committed_result_id
                      AND prior_result.payload_json IS NOT NULL
                     WHERE workload.state IN ('queued', 'running')
+                      AND json_extract(current_revision.plan_json, '$.plan_id')
+                          NOT IN ('metnos.direct.v1', 'metnos.partitioned.v1')
                       AND current_unit.state='pending'
                       AND current_unit.attempt_count=0
                       AND current_unit.active_attempt_id IS NULL
