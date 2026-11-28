@@ -48,8 +48,9 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "trigger": "daily@05:00",
         "callback_key": "introvertiva_propose",
         "description": (
-            "Cascata introvertiva: produce proposte DEDUPE/GENERALIZE/"
-            "SPECIALIZE sul corpus accumulato (no auto-apply, audit JSONL)."
+            "Propone dedupliche delle voci del vecchio archivio MNEST "
+            "nella sequenza notturna delle 03:00; non analizza doppioni "
+            "fra executor e non applica modifiche."
         ),
     },
     {
@@ -156,12 +157,10 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "trigger": "daily@01:00",
         "callback_key": "change_intent_materialize",
         "description": (
-            "Materializer unificato (ADR 0158): proietta 6 storage legacy "
-            "(telos jsonl, introvertiva sqlite, synt jsonl, multi_tool, "
-            "canonical_query_log, turn_feedback) in change_intents.sqlite. "
-            "Idempotente via fingerprint (dedup cross-source + bump "
-            "convergence). Eseguito daily@01:00 prima delle altre task "
-            "notturne, cosi' le UI vedono dati freschi al risveglio."
+            "Materializzatore: legge i quattro adattatori Telos, Introvertiva, "
+            "Synt e riscontri, deduplica per impronta e conta le sorgenti "
+            "distinte. Ricalcola i punteggi delle lacune e chiude quelle "
+            "non piu' richieste; precede l'osservatore nella sequenza delle 03:00."
         ),
     },
     {
@@ -169,12 +168,10 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "trigger": "every_10m",
         "callback_key": "change_applier",
         "description": (
-            "Applier daemon (ADR 0158): legge change_intents in stato "
-            "ACCEPTED, applica fisicamente per kind (create_executor → "
-            "synth, extend_executor → manifest patch, dedupe → alias, "
-            "materialize_pipeline → un turno reale di prova, cache_pattern → "
-            "canonical_query_log active, reject_pattern → blocklist "
-            "jsonl). Cap 20 intent per fire."
+            "Applicatore: avvia la costruzione locale delle lacune ammesse, "
+            "senza attivare il candidato. Applica fino a 20 proposte accettate "
+            "per giro: creazione, estensione, alias, prova di una sequenza "
+            "o rifiuto di uno schema."
         ),
     },
     {
@@ -207,11 +204,10 @@ _BUILTIN_JOBS: list[dict[str, Any]] = [
         "trigger": "daily@03:15",
         "callback_key": "change_observer",
         "description": (
-            "Observer daemon (ADR 0158): verifica APPLIED + OBSERVED. "
-            "Per kind, calcola metrics (executor_stats / cache state / "
-            "feedback storico) e transiziona a FINALIZED (oltre grace 7gg "
-            "OK) o ROLLED_BACK (fail_rate alto / cache demoted / nuovi "
-            "feedback negativi). Cap 200 intent per fire."
+            "Osservatore: verifica fino a 200 modifiche applicate o in "
+            "osservazione, dopo il materializzatore nella sequenza delle "
+            "03:00. Misura l'esito per tipo; consolida dopo il periodo "
+            "di osservazione o ripristina quando il tipo lo consente."
         ),
     },
     {
@@ -255,8 +251,8 @@ _BUILTIN_JOBS = [
         "callback_key": "nightly_maintenance",
         "description": (
             "Orchestratore manutenzione notturna: esegue in sequenza ordinata "
-            "i task housekeeping NIGHTLY_SEQUENCE (ex-entry separate "
-            "01:00–07:00) via nightly_orchestrator. GPU-safe (sequenziale), "
+            "i task housekeeping NIGHTLY_SEQUENCE alle 03:00 "
+            "via nightly_orchestrator. GPU-safe (sequenziale), "
             "error-isolation §2.8. I singoli callback restano invocabili "
             "per chiave."
         ),
@@ -661,13 +657,12 @@ def install_default_callbacks(scheduler) -> None:
         replace=True,
     )
 
-    # Change intent materializer (ADR 0158): proietta 6 storage legacy in
-    # change_intents.sqlite. Idempotente via fingerprint cross-source dedup.
+    # Four adapters feed the materializer before the nightly observer.
     from jobs.change_intent_materialize import task_change_intent_materialize
     cb.register(
         "change_intent_materialize",
         task_change_intent_materialize,
-        "Materializer unificato change_intents (ADR 0158, daily@01:00)",
+        "Materializzatore change_intents (sequenza notturna delle 03:00)",
         replace=True,
     )
 
@@ -701,7 +696,7 @@ def install_default_callbacks(scheduler) -> None:
     cb.register(
         "change_observer",
         task_change_observer,
-        "Observer change_intents applied → finalized|rolled_back (ADR 0158, daily@03:15)",
+        "Osservatore change_intents (dopo il materializzatore, sequenza delle 03:00)",
         replace=True,
     )
 

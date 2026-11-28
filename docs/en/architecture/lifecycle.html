@@ -46,7 +46,7 @@ presents these records and keeps their progress visible.</p>
 <ol>
  <li><a href="#cap1">The shared object</a></li>
  <li><a href="#cap2">States and transitions</a></li>
- <li><a href="#cap3">Active sources</a></li>
+ <li><a href="#cap3">Sources read and active production</a></li>
  <li><a href="#cap4">Materialization, application, and observation</a></li>
  <li><a href="#cap5">What gets applied</a></li>
  <li><a href="#cap6">The cycle of a generated tool</a></li>
@@ -92,23 +92,26 @@ days and falls when they stop; the same sentence counts once a day.</p>
                                                    +--problem--&gt; rolled_back</code></pre>
 
 <p>A staged proposal may return for review. A failed change may be retried or
-rejected. Rollback is terminal in the registry and performs a physical reversal when
-the change kind supports one. The state machine blocks arbitrary jumps: a proposal
+rejected. Rollback performs a physical reversal when the change kind supports one.
+A generated tool that was set aside can return through <strong>Reactivate</strong>:
+it is enabled again and the proposal returns to <code>applied</code>.
+A contract retired with a signature remains ineligible for reactivation.
+The state machine blocks arbitrary jumps: a proposal
 cannot become <code>applied</code> before it is <code>accepted</code>.</p>
 
 <p>Each transition is recorded only while the state still matches the one
 read. If another process changes it in the meantime, the concurrent request
 fails without overwriting the decision or data already saved.</p>
 
-<h1 id="cap3">3. Active sources</h1>
+<h1 id="cap3">3. Sources read and active production</h1>
 
 <p>The materializer reads four side-effect-free adapters:</p>
 
 <table>
 <thead><tr><th>Source</th><th>What it can produce</th></tr></thead>
 <tbody>
-<tr><td>Telos</td><td>Executor creation or extension and a controlled pipeline trial, from actionable cluster heads.</td></tr>
-<tr><td>Introvertiva</td><td>Executor deduplication; it also preserves already-recorded states that must remain inspectable.</td></tr>
+<tr><td>Telos</td><td>Reads actionable cluster heads to propose creations, extensions, or pipeline trials. The laboratory producing them is disabled by default and requires explicit activation.</td></tr>
+<tr><td>Introvertiva</td><td>Reads stored candidates and states. The active producer concerns only entries in the legacy MNEST store; executor duplicate analysis is stopped.</td></tr>
 <tr><td>Synt</td><td>Executor-creation requests and their terminal or in-progress states.</td></tr>
 <tr><td>User feedback</td><td>A proposal to reject a pattern after at least two consistent negative reports.</td></tr>
 </tbody>
@@ -122,9 +125,9 @@ apply the change nor turn an automatic inference into human consent.</p>
 <table>
 <thead><tr><th>Task</th><th>Default frequency</th><th>Responsibility</th></tr></thead>
 <tbody>
-<tr><td><code>change_intent_materialize</code></td><td>Daily at 01:00</td><td>Reads adapters, deduplicates by fingerprint, and updates the store.</td></tr>
+<tr><td><code>change_intent_materialize</code></td><td>Within the nightly sequence started at 03:00</td><td>Reads adapters, deduplicates by fingerprint, refreshes gap scores, and closes gaps no longer requested.</td></tr>
 <tr><td><code>change_applier</code></td><td>Every 10 minutes</td><td>Processes up to 20 accepted records and records either their effect or error.</td></tr>
-<tr><td><code>change_observer</code></td><td>Daily at 03:15</td><td>Measures up to 200 applied or observed changes and decides whether to finalize or roll them back.</td></tr>
+<tr><td><code>change_observer</code></td><td>Within the same sequence, after the materializer</td><td>Measures up to 200 applied or observed changes and decides whether to finalize or roll them back.</td></tr>
 </tbody>
 </table>
 
@@ -141,12 +144,11 @@ follow the instance language, in Italian or English.</p>
 <table>
 <thead><tr><th>Kind</th><th>Current effect</th><th>Rollback</th></tr></thead>
 <tbody>
-<tr><td><code>create_executor</code></td><td>Starts executor synthesis; an existing executor is not duplicated. The proposal stays accepted while the candidate awaits review and consent; it becomes applied only when the planner can use the tool. There are at most three attempts (<a href="#cap6">chapter 6</a>).</td><td>Archives the synthesized executor.</td></tr>
+<tr><td><code>create_executor</code></td><td>Starts executor synthesis; an existing executor is not duplicated. The proposal stays accepted while the candidate awaits review and consent; it becomes applied only when the planner can use the tool. There are at most three attempts (<a href="#cap6">chapter 6</a>).</td><td>Sets the generated tool aside: it leaves use, keeps its contract and code, and can return through <strong>Reactivate</strong>.</td></tr>
 <tr><td><code>extend_executor</code></td><td>Extends the manifest, stores a copy, and signs the executor again.</td><td>Restores the stored manifest and re-signs it.</td></tr>
 <tr><td><code>dedupe_executors</code></td><td>Creates an alias and retires the duplicate only when provenance permits it.</td><td>Removes the alias and reactivates the duplicate.</td></tr>
 <tr><td><code>materialize_pipeline</code></td><td>Runs the proposed request once as a real turn, under normal policy and controls.</td><td>Records rollback; the turn installs no persistent pipeline artifact to remove.</td></tr>
 <tr><td><code>reject_pattern</code></td><td>Adds the approved pattern to the registry of paths to avoid. For that same request the planner looks for another plan; if it finds none, it does not run and says so.</td><td>Removes the matching registration.</td></tr>
-<tr><td><code>cache_pattern</code></td><td>Remains supported for compatible records already present in the store.</td><td>Demotes the associated registration.</td></tr>
 </tbody>
 </table>
 
@@ -194,8 +196,6 @@ only and removes what does not work. The figure shows the whole path.</p>
 <text x="221" y="168" text-anchor="middle" fill="#475569" font-size="9.5">Activate</text>
 <path d="M600,176 V150 H760 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="680" y="142" text-anchor="middle" fill="#475569" font-size="9.5">refused: the reason goes back to the builder</text>
-<rect x="150" y="98" width="370" height="28" rx="6" fill="#FFFFFF" stroke="#B7791F" stroke-dasharray="6 4"/>
-<text x="335" y="116" text-anchor="middle" fill="#475569" font-size="9.5">planned: no question at all for safe tools</text>
 <path d="M795,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="785" y="286" text-anchor="end" fill="#475569" font-size="9.5">after 3 failed attempts</text>
 <rect x="700" y="300" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
@@ -229,12 +229,10 @@ only and removes what does not work. The figure shows the whole path.</p>
 <text x="105" y="452" text-anchor="middle" fill="#475569" font-size="9.5">after 60 days unused</text>
 <rect x="10" y="500" width="26" height="16" rx="4" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">in operation</text>
-<rect x="250" y="500" width="26" height="16" rx="4" fill="#FFFFFF" stroke="#1A477A" stroke-dasharray="6 4"/>
-<text x="282" y="512" text-anchor="start" fill="#475569" font-size="9.5">planned</text>
 <rect x="470" y="500" width="26" height="16" rx="4" fill="#FEF3C7" stroke="#B7791F"/>
 <text x="502" y="512" text-anchor="start" fill="#475569" font-size="9.5">the person decides</text>
 </svg>
-<figcaption>The path of a generated tool. Dashed boxes are planned; yellow ones are decisions of the person.</figcaption>
+<figcaption>The path of a generated tool. Yellow boxes are decisions of the person.</figcaption>
 </figure>
 
 <ol>
@@ -323,12 +321,6 @@ says in plain words what the tool touches. It has no free access to the Internet
 new vocabulary words and the choice about the external model. Handwritten tools are
 never touched by this cycle.</p>
 
-<p>It is planned that &ldquo;safe&rdquo; tools need not even the final question.
-&ldquo;Safe&rdquo; has a precise meaning: the tool only reads or computes, also when it
-reads from a connected external service, or does things that can be undone. Activation
-without a question will come with a notice and with the <strong>Withdraw</strong>
-button.</p>
-
 <p>The underlying idea: safety does not come from asking the person everything, but
 from asking one thing only, about something finished and tested, and from being able to
 remove at once what does not work.</p>
@@ -338,8 +330,7 @@ remove at once what does not work.</p>
 <p><strong>Ask Metnos with a request like this example:</strong> “Show me the system
 changes waiting for my decision and explain the first one in plain language.”</p>
 
-<p>Decisions are made in the web chat. If you are talking to Metnos through Telegram,
-open the web chat, enter the administration area, and choose
+<p>Open the decisions page from the web chat: enter the administration area and choose
 <strong>Changes</strong>; the technical route is <code>/admin/changes</code>. The page
 can filter by state, source, and kind and offers only the transitions allowed for
 each record.</p>
@@ -347,8 +338,10 @@ each record.</p>
 <h1 id="cap8">8. Guarantees and limits</h1>
 
 <ul>
- <li>Acceptance is an explicit decision attributed to the administrator; a high
- score does not replace it. Accepting a proposal that asks for a new vocabulary
+ <li>Gaps observed in real requests, with closed-vocabulary names, are accepted
+ by Metnos for local construction alone: one per run and at most three waiting.
+ Activating the finished candidate requires the person's decision.
+ Other proposals wait for explicit acceptance. Accepting one that asks for a new vocabulary
  word requires the reason; an error is shown in the row it came from.</li>
  <li>The applier is idempotent per kind and writes a local audit. An error leads to
  <code>failed</code>, not apparent success.</li>

@@ -1,18 +1,11 @@
-"""change_intent_materialize — job daily che proietta i 6 storage legacy
-in change_intents.sqlite via gli adapter (ADR 0158).
+"""Project four proposal adapters into change_intents.sqlite (ADR 0158).
 
-Idempotente:
-  - upsert by fingerprint → re-run non duplica
-  - convergence bumpa cross-source
-  - score = ultima valutazione; le proposte nate dalle lacune seguono le
-    richieste degli ultimi 30 giorni (scendono quando smettono di arrivare)
-  - le lacune non viste da 90 giorni si cancellano
-  - non sovrascrive decision/applied/observed se gia' progrediti
+Fingerprint upserts deduplicate proposals, count distinct converging sources,
+and preserve decisions and effects already recorded. Gap scores follow the
+last 30 days of requests; gaps not requested for 90 days are closed.
 
-Trigger default: `daily@01:00` (prima delle altre task notturne, cosi'
-le UI mattutine vedono dati freschi).
-
-Audit JSONL append-only in ~/.local/share/metnos/audit/change_intent_materialize.jsonl
+The nightly sequence started at 03:00 runs this callback before the observer.
+It has no separate 01:00 timer. Audit records are appended as JSONL.
 """
 from __future__ import annotations
 

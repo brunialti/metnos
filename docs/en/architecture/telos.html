@@ -33,12 +33,12 @@
 <div class="title-page">
  <h1>Metnos</h1>
  <div class="subtitle">Telos and improvement proposals</div>
- <div class="meta">User-declared ends guide Metnos without granting it new powers.</div>
+ <div class="meta">User-declared ends inform proposal assessment without granting new powers.</div>
 </div>
 
 <p class="lead">A <em>telos</em> is a broad direction chosen by the user: save
-time, protect privacy, avoid missing a deadline. It helps Metnos prefer one
-solution over another and propose worthwhile improvements. It is not a command,
+time, protect privacy, avoid missing a deadline. Metnos uses it to assess
+proposals in its optional improvement laboratory. It is not a command,
 a permission, or a target to pursue at any cost.</p>
 
 <div class="toc">
@@ -46,7 +46,7 @@ a permission, or a target to pursue at any cost.</p>
 <ol>
  <li><a href="#cap1">What a telos is</a></li>
  <li><a href="#cap2">The TELOS.md file</a></li>
- <li><a href="#cap3">How it guides a request</a></li>
+ <li><a href="#cap3">The boundary with the planner</a></li>
  <li><a href="#cap4">The nightly laboratory</a></li>
  <li><a href="#cap5">From suggestion to decision</a></li>
  <li><a href="#cap6">Current limits</a></li>
@@ -55,11 +55,10 @@ a permission, or a target to pursue at any cost.</p>
 
 <h1 id="cap1">1. What a telos is</h1>
 
-<p>Metnos uses telos entries as <strong>soft preferences</strong>. When two
-strategies lead to comparable results, it may choose the one that better serves
-the declared ends. For example, if two ways of summarizing mail are equally
-reliable, it may favor the faster one when the user has placed greater weight on
-saving time.</p>
+<p>Each telos associates an end with a weight and a threshold. The proposal
+evaluator estimates how an improvement helps or harms each end and calculates
+its contribution to the score. This signal orders proposals; it does not choose
+the strategy for answering the person's request.</p>
 
 <p>The boundary is simple: a telos does not authorize an executor, override
 Vaglio, or turn a proposal into an action. Nor should it be used to arbitrarily
@@ -94,16 +93,17 @@ note: focus on repetitive activities whose result can be checked.</code></pre>
 language model invents or edits the declared ends. If the file is missing or
 contains no valid sections, the system continues without this signal.</p>
 
-<h1 id="cap3">3. How it guides a request</h1>
+<h1 id="cap3">3. The boundary with the planner</h1>
 
-<p>The runtime places the current telos entries in the planner's context,
-ordered by weight. The accompanying rules repeat their limited role: use them
-to choose between alternatives with similar outcomes, not to alter the meaning
-of the request.</p>
+<p>The request planner does not receive the contents of <code>TELOS.md</code>.
+Its context is built from the request and the other declared turn data,
+without a block of ends. A weight assigned to a telos therefore does not guide
+the choice of a plan.</p>
 
-<p>This use is immediate but deliberately narrow. The planner sees each
-original phrase and its weight; it does not infer new ends from the user's
-behavior or turn silence into consent.</p>
+<p>Proposal assessment is a separate path: its judge receives the telos
+phrases, weights, and notes. The laboratory producing and assessing these ideas
+is optional and disabled by default. Having the file does not start it or
+authorize any action.</p>
 
 <h1 id="cap4">4. The nightly laboratory</h1>
 
@@ -135,6 +135,9 @@ idea is good.</p>
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>. Proposals aimed at the
 same result are grouped so that convergence across different lenses remains
 visible without pretending that repetition is new evidence.</p>
+
+<p>Executor duplicate analysis is stopped even when the laboratory is enabled:
+the job invokes the lenses with <code>evaluate_duplicates=False</code>.</p>
 
 <h1 id="cap5">5. From suggestion to decision</h1>
 

@@ -1,20 +1,14 @@
-"""learning_loop — W1: crescere dall'esito dei turni REALI (ADR 0185).
+"""Learn missing capabilities from real turn outcomes (ADRs 0185 and 0240).
 
-Due trigger deterministici, ancorati a FATTI del turno — nessun ML, nessuna
-estensione autonoma del vocab §2.2 ([[feedback-no-training-amplify-reality]]):
+Dispatch seeds repeated costly successful plans through engine.autopath.
+Here, terminator gaps reaching PROPOSE_SEEN become proposed create_executor
+intents only for closed-vocabulary names absent from the catalog. No build
+runs inline: change_applier accepts eligible gaps for local construction,
+then asks the person about the finished candidate before activation.
 
-  (a) turno engine OK e COSTOSO (n_step >= SEED_STEPS) ripetuto →
-      `engine.autopath.seed_from_run` (autopath SHADOW; vive in autopath.py,
-      qui solo richiamato dal dispatch);
-  (b) LACUNA del terminator vista n_seen >= PROPOSE_SEEN volte →
-      `propose_from_lacuna` (questo modulo): change_intent `create_executor`
-      in stato PROPOSED — il triage umano su /admin/changes resta il gate
-      (niente sintesi inline; l'admission 6-layer vale alla materializzazione).
-
-Anti-spam / anti-resurrezione (per costruzione, via change_intents):
-  - `upsert_intent` deduplica per fingerprint → ri-viste = convergence bump;
-  - uno stato già progredito (es. REJECTED) è PRESERVATO dall'upsert → una
-    proposta rifiutata NON risorge dallo stesso trigger.
+Fingerprint upserts preserve progressed states and count distinct sources.
+In the nightly sequence started at 03:00, the materializer refreshes scores
+from recent requests and expires gaps no longer requested for 90 days.
 """
 from __future__ import annotations
 

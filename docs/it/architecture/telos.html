@@ -33,12 +33,12 @@
 <div class="title-page">
  <h1>Metnos</h1>
  <div class="subtitle">Telos e proposte di miglioramento</div>
- <div class="meta">I fini dichiarati dall'utente orientano Metnos, ma non gli conferiscono nuovi poteri.</div>
+ <div class="meta">I fini dichiarati dall'utente sono un riferimento per valutare proposte, senza conferire nuovi poteri.</div>
 </div>
 
 <p class="lead">Un <em>telos</em> &egrave; una direzione generale scelta dall'utente:
-liberare tempo, proteggere la privacy, non perdere una scadenza. Aiuta Metnos a
-preferire una soluzione rispetto a un'altra e a proporre miglioramenti sensati.
+liberare tempo, proteggere la privacy, non perdere una scadenza. Metnos lo usa
+per valutare proposte nel laboratorio facoltativo dei miglioramenti.
 Non &egrave; un comando, un permesso o un obiettivo da inseguire a ogni costo.</p>
 
 <div class="toc">
@@ -46,7 +46,7 @@ Non &egrave; un comando, un permesso o un obiettivo da inseguire a ogni costo.</
 <ol>
  <li><a href="#cap1">Che cos'&egrave; un telos</a></li>
  <li><a href="#cap2">Il file TELOS.md</a></li>
- <li><a href="#cap3">Come orienta una richiesta</a></li>
+ <li><a href="#cap3">Il confine con il pianificatore</a></li>
  <li><a href="#cap4">Il laboratorio notturno</a></li>
  <li><a href="#cap5">Dal suggerimento alla decisione</a></li>
  <li><a href="#cap6">Limiti attuali</a></li>
@@ -55,11 +55,10 @@ Non &egrave; un comando, un permesso o un obiettivo da inseguire a ogni costo.</
 
 <h1 id="cap1">1. Che cos'&egrave; un telos</h1>
 
-<p>Metnos usa i telos come <strong>preferenze morbide</strong>. Se due strategie
-portano a un risultato paragonabile, pu&ograve; scegliere quella pi&ugrave; coerente con i
-fini dichiarati. Per esempio, davanti a due modi ugualmente affidabili di
-riassumere la posta, pu&ograve; preferire quello pi&ugrave; rapido se l'utente ha dato molto
-peso al proprio tempo.</p>
+<p>Ogni telos associa un fine a un peso e a una soglia. Il valutatore delle
+proposte stima quanto un miglioramento favorisca o ostacoli ciascun fine e ne
+calcola il contributo al punteggio. Questo segnale ordina le proposte; non
+sceglie la strategia con cui rispondere a una richiesta della persona.</p>
 
 <p>Il confine importante &egrave; semplice: un telos non autorizza un executor, non
 scavalca il Vaglio e non trasforma una proposta in un'azione. Inoltre non deve
@@ -93,16 +92,17 @@ note: considera soprattutto attivit&agrave; ripetitive e verificabili.</code></p
 modello linguistico inventa o modifica i fini. Se il file manca o non contiene
 sezioni valide, il sistema continua a funzionare senza questo segnale.</p>
 
-<h1 id="cap3">3. Come orienta una richiesta</h1>
+<h1 id="cap3">3. Il confine con il pianificatore</h1>
 
-<p>Il runtime inserisce i telos correnti nel contesto del pianificatore,
-ordinandoli per peso. Le istruzioni che li accompagnano ne ribadiscono il ruolo:
-servono a scegliere tra alternative con esito simile, non a cambiare il
-significato della richiesta.</p>
+<p>Il pianificatore delle richieste non riceve il contenuto di <code>TELOS.md</code>.
+Il suo contesto viene costruito dalla richiesta e dagli altri dati dichiarati
+del turno, senza un blocco dei fini. Un peso assegnato a un telos non orienta
+quindi la scelta del piano.</p>
 
-<p>Questo uso &egrave; immediato ma limitato. Il pianificatore vede la frase originale
-e il peso; non deduce nuovi fini dal comportamento dell'utente e non pu&ograve;
-trasformare il suo silenzio in un consenso.</p>
+<p>La valutazione delle proposte &egrave; un percorso distinto: il suo giudice riceve
+frasi, pesi e note dei telos. Il laboratorio che produce e valuta queste idee
+&egrave; facoltativo e spento per impostazione predefinita. La presenza del file
+non lo avvia e non autorizza alcuna azione.</p>
 
 <h1 id="cap4">4. Il laboratorio notturno</h1>
 
@@ -135,6 +135,10 @@ dimostra che un'idea sia buona.</p>
 <code>~/.local/share/metnos/telos_proposals.jsonl</code>. Quelle rivolte allo
 stesso obiettivo vengono raggruppate, così la convergenza tra lenti diverse &egrave;
 visibile senza fingere che una ripetizione sia una nuova prova.</p>
+
+<p>L'analisi dei doppioni tra executor &egrave; ferma anche quando il laboratorio
+&egrave; abilitato: il lavoro richiama le lenti con
+<code>evaluate_duplicates=False</code>.</p>
 
 <h1 id="cap5">5. Dal suggerimento alla decisione</h1>
 

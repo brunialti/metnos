@@ -46,7 +46,7 @@ un record tipizzato con origine, obiettivo, motivazione, punteggio e stato. La p
 <ol>
  <li><a href="#cap1">L'oggetto comune</a></li>
  <li><a href="#cap2">Stati e transizioni</a></li>
- <li><a href="#cap3">Sorgenti attive</a></li>
+ <li><a href="#cap3">Sorgenti lette e produzione attiva</a></li>
  <li><a href="#cap4">Materializzazione, applicazione e osservazione</a></li>
  <li><a href="#cap5">Cosa viene applicato</a></li>
  <li><a href="#cap6">Il ciclo di uno strumento generato</a></li>
@@ -93,8 +93,11 @@ giorni e scende quando cessano; la stessa frase conta una volta al giorno.</p>
                                                      +--problema--&gt; rolled_back</code></pre>
 
 <p>Una proposta rimandata pu&ograve; tornare in valutazione. Un errore pu&ograve; essere
-riprovato oppure rifiutato. Il ripristino &egrave; terminale nel registro e viene eseguito
-fisicamente quando il tipo di modifica lo consente. La macchina a stati impedisce
+riprovato oppure rifiutato. Il ripristino viene eseguito fisicamente quando il tipo di
+modifica lo consente. Uno strumento generato messo da parte pu&ograve; tornare in uso con
+<strong>Riattiva</strong>: viene riabilitato e la proposta torna <code>applied</code>.
+Un contratto ritirato con firma resta invece escluso dalla riattivazione.
+La macchina a stati impedisce
 passaggi arbitrari: una proposta non pu&ograve; diventare <code>applied</code> senza essere
 prima <code>accepted</code>.</p>
 
@@ -102,15 +105,15 @@ prima <code>accepted</code>.</p>
 letto. Se un altro processo lo cambia nel frattempo, la richiesta concorrente
 fallisce senza sovrascrivere la decisione o i dati gi&agrave; salvati.</p>
 
-<h1 id="cap3">3. Sorgenti attive</h1>
+<h1 id="cap3">3. Sorgenti lette e produzione attiva</h1>
 
 <p>Il materializzatore interroga quattro adapter senza effetti collaterali:</p>
 
 <table>
 <thead><tr><th>Sorgente</th><th>Che cosa pu&ograve; produrre</th></tr></thead>
 <tbody>
-<tr><td>Telos</td><td>Creazione o estensione di executor e prova controllata di una sequenza, a partire dalle teste di gruppi azionabili.</td></tr>
-<tr><td>Introvertiva</td><td>Deduplica di executor; conserva inoltre gli stati gi&agrave; registrati che devono restare consultabili.</td></tr>
+<tr><td>Telos</td><td>Legge le teste di gruppi azionabili per proporre creazioni, estensioni o prove di sequenze. Il laboratorio che le produce &egrave; spento per impostazione predefinita e richiede un'abilitazione esplicita.</td></tr>
+<tr><td>Introvertiva</td><td>Legge candidati e stati conservati. Il produttore attivo riguarda soltanto le voci del vecchio archivio MNEST; l'analisi dei doppioni tra executor &egrave; ferma.</td></tr>
 <tr><td>Synt</td><td>Richieste di creazione di executor e relativi stati terminali o ancora in corso.</td></tr>
 <tr><td>Riscontri dell'utente</td><td>Proposta di rifiutare uno schema ricorrente dopo almeno due riscontri negativi coerenti.</td></tr>
 </tbody>
@@ -124,9 +127,9 @@ modifica e non trasformano una deduzione automatica in consenso umano.</p>
 <table>
 <thead><tr><th>Attivit&agrave;</th><th>Frequenza predefinita</th><th>Responsabilit&agrave;</th></tr></thead>
 <tbody>
-<tr><td><code>change_intent_materialize</code></td><td>Ogni giorno alle 01:00</td><td>Legge gli adattatori, elimina i duplicati in base all'impronta e aggiorna l'archivio.</td></tr>
+<tr><td><code>change_intent_materialize</code></td><td>Nella sequenza notturna avviata alle 03:00</td><td>Legge gli adattatori, elimina i duplicati in base all'impronta, aggiorna i punteggi delle lacune e chiude quelle non pi&ugrave; richieste.</td></tr>
 <tr><td><code>change_applier</code></td><td>Ogni 10 minuti</td><td>Elabora fino a 20 record accettati e registra l'effetto o l'errore.</td></tr>
-<tr><td><code>change_observer</code></td><td>Ogni giorno alle 03:15</td><td>Misura fino a 200 modifiche applicate o in osservazione e decide se finalizzarle o ripristinarle.</td></tr>
+<tr><td><code>change_observer</code></td><td>Nella stessa sequenza, dopo il materializzatore</td><td>Misura fino a 200 modifiche applicate o in osservazione e decide se finalizzarle o ripristinarle.</td></tr>
 </tbody>
 </table>
 
@@ -143,12 +146,11 @@ e seguono la lingua dell'istanza, in italiano o in inglese.</p>
 <table>
 <thead><tr><th>Tipo</th><th>Effetto corrente</th><th>Ripristino</th></tr></thead>
 <tbody>
-<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica. La proposta resta accettata finch&eacute; il candidato attende revisione e consenso; diventa applicata solo quando il planner pu&ograve; usare lo strumento. I tentativi sono al massimo tre (<a href="#cap6">capitolo 6</a>).</td><td>Archivia l'executor sintetizzato.</td></tr>
+<tr><td><code>create_executor</code></td><td>Avvia la sintesi dell'executor; se esiste gi&agrave;, non lo duplica. La proposta resta accettata finch&eacute; il candidato attende revisione e consenso; diventa applicata solo quando il planner pu&ograve; usare lo strumento. I tentativi sono al massimo tre (<a href="#cap6">capitolo 6</a>).</td><td>Mette da parte lo strumento generato: esce dall'uso, conserva contratto e codice e pu&ograve; tornare con <strong>Riattiva</strong>.</td></tr>
 <tr><td><code>extend_executor</code></td><td>Estende il manifest, conserva una copia e firma di nuovo l'executor.</td><td>Ripristina il manifest conservato e lo firma di nuovo.</td></tr>
 <tr><td><code>dedupe_executors</code></td><td>Crea un alias e ritira il duplicato solo se la provenienza consente l'operazione.</td><td>Rimuove l'alias e riattiva il duplicato.</td></tr>
 <tr><td><code>materialize_pipeline</code></td><td>Esegue una volta la richiesta proposta come turno reale, con policy e controlli normali.</td><td>Registra il ripristino; il turno non installa un artefatto persistente da rimuovere.</td></tr>
 <tr><td><code>reject_pattern</code></td><td>Aggiunge lo schema approvato al registro dei percorsi da evitare. Per quella stessa richiesta il planner cerca un altro piano; se non lo trova, non esegue e lo dice.</td><td>Rimuove la registrazione corrispondente.</td></tr>
-<tr><td><code>cache_pattern</code></td><td>Resta supportato per record compatibili gi&agrave; presenti nell'archivio.</td><td>Retrocede la registrazione associata.</td></tr>
 </tbody>
 </table>
 
@@ -197,8 +199,6 @@ La figura mostra tutto il percorso.</p>
 <text x="221" y="168" text-anchor="middle" fill="#475569" font-size="9.5">Attiva</text>
 <path d="M600,176 V150 H760 V174" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="680" y="142" text-anchor="middle" fill="#475569" font-size="9.5">bocciato: il motivo torna al costruttore</text>
-<rect x="150" y="98" width="370" height="28" rx="6" fill="#FFFFFF" stroke="#B7791F" stroke-dasharray="6 4"/>
-<text x="335" y="116" text-anchor="middle" fill="#475569" font-size="9.5">previsto: per gli strumenti sicuri, nessuna domanda</text>
 <path d="M795,232 V298" fill="none" stroke="#1A477A" stroke-width="2" marker-end="url(#m-cycle)"/>
 <text x="785" y="286" text-anchor="end" fill="#475569" font-size="9.5">dopo 3 tentativi falliti</text>
 <rect x="700" y="300" width="190" height="56" rx="8" fill="#FEF3C7" stroke="#B7791F"/>
@@ -232,12 +232,10 @@ La figura mostra tutto il percorso.</p>
 <text x="105" y="452" text-anchor="middle" fill="#475569" font-size="9.5">dopo 60 giorni senza uso</text>
 <rect x="10" y="500" width="26" height="16" rx="4" fill="#D9E4F0" stroke="#1A477A"/>
 <text x="42" y="512" text-anchor="start" fill="#475569" font-size="9.5">in funzione</text>
-<rect x="250" y="500" width="26" height="16" rx="4" fill="#FFFFFF" stroke="#1A477A" stroke-dasharray="6 4"/>
-<text x="282" y="512" text-anchor="start" fill="#475569" font-size="9.5">previsto</text>
 <rect x="470" y="500" width="26" height="16" rx="4" fill="#FEF3C7" stroke="#B7791F"/>
 <text x="502" y="512" text-anchor="start" fill="#475569" font-size="9.5">decide la persona</text>
 </svg>
-<figcaption>Il percorso di uno strumento generato. I riquadri tratteggiati sono previsti; quelli gialli sono decisioni della persona.</figcaption>
+<figcaption>Il percorso di uno strumento generato. I riquadri gialli sono decisioni della persona.</figcaption>
 </figure>
 
 <ol>
@@ -330,12 +328,6 @@ accesso libero a Internet.</p>
 strumento, le parole nuove del vocabolario e la scelta sul modello esterno. Gli strumenti
 scritti a mano non sono mai toccati da questo ciclo.</p>
 
-<p>&Egrave; previsto che per gli strumenti &laquo;sicuri&raquo; non serva nemmeno la domanda
-finale. &laquo;Sicuro&raquo; ha un significato preciso: lo strumento legge o calcola
-soltanto, anche quando legge da un servizio esterno collegato, oppure fa cose che si
-possono annullare. L'attivazione senza domanda arriver&agrave; con un avviso e con il
-pulsante <strong>Ritira</strong>.</p>
-
 <p>L'idea di fondo: la sicurezza non viene dal chiedere tutto alla persona, ma dal
 chiederle una cosa sola, su una cosa finita e provata, e dal saper togliere subito
 ci&ograve; che non funziona.</p>
@@ -346,8 +338,7 @@ ci&ograve; che non funziona.</p>
 &laquo;Mostrami le modifiche al sistema che aspettano una mia decisione e spiegami la
 prima in parole semplici&raquo;.</p>
 
-<p>Le decisioni si prendono nella chat web. Se stai parlando con Metnos da Telegram,
-apri la chat web, entra nell'area di amministrazione e scegli
+<p>La pagina delle decisioni si apre dalla chat web: entra nell'area di amministrazione e scegli
 <strong>Modifiche</strong>; il percorso tecnico &egrave; <code>/admin/changes</code>. La pagina
 permette di filtrare per stato, sorgente e tipo e offre soltanto le transizioni ammesse
 per ciascun record.</p>
@@ -355,8 +346,10 @@ per ciascun record.</p>
 <h1 id="cap8">8. Garanzie e limiti</h1>
 
 <ul>
- <li>L'accettazione &egrave; una decisione esplicita attribuita all'utente amministratore;
- un punteggio alto non la sostituisce. Accettare una proposta che chiede una parola nuova
+ <li>Le lacune osservate nelle richieste reali, con nomi del vocabolario chiuso,
+ vengono accettate da Metnos per la sola costruzione locale: una per giro e non pi&ugrave;
+ di tre in attesa. L'attivazione del candidato finito richiede la decisione della persona.
+ Le altre proposte aspettano un'accettazione esplicita. Accettarne una che chiede una parola nuova
  del vocabolario richiede il motivo; un errore compare nella riga da cui &egrave; partito.</li>
  <li>L'applicatore &egrave; idempotente per tipo e conserva una traccia locale; un errore porta
  a <code>failed</code>, non a un successo apparente.</li>
