@@ -288,7 +288,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'http_cache.py': ('b8231d02ff7dc5f9f5aaeb551ebf861c93fcba5af6ce51010761c6713947c26e', (('comparison', 4),)),
     'http_render.py': ('8449bc91ca2bfe9d82a5e0cfc98c7392b3f92dac00697255f6efcbf87b5fad33', (('comparison', 2), ('helper-argument', 1))),
     'http_routes_admin.py': ('62805dd061c732af05da6a4cc90508ab118980710b7eeacc0d26c7f22e6c03e0', (('comparison', 60), ('helper-argument', 17), ('literal-lookup', 1), ('regex', 1))),
-    'http_routes_agent.py': ('d2c931d6f1141aa0eb7a6fb0c379710d65d74643df9e9b520968bf238f37cfd2', (('comparison', 80), ('helper-argument', 19), ('iteration', 1), ('membership', 5), ('prefix-suffix', 1))),
+    'http_routes_agent.py': ('4fe62e53b5ebb51bad885ca97b9ce6f12ef3c89babf34a795992dd4848670cca', (('comparison', 80), ('helper-argument', 19), ('iteration', 1), ('membership', 5), ('prefix-suffix', 1))),
     'http_routes_durable_workloads.py': ('1deeace6701f459dcb36ce21705f162c4d1c703c4749a195a908c41f88c58a8c', (('comparison', 2), ('helper-argument', 12), ('iteration', 3), ('literal-lookup', 1))),
     'http_routes_stack.py': ('8dced35285ba737e67128363e97dfc380f709c1bd6c9688dc4c0ca2e03377189', (('comparison', 1),)),
     'i18n.py': ('e5185e403717cc1031406c90ae376199cb44af1fe1fb1055ec5840e2e41da2ff', (('comparison', 7),)),

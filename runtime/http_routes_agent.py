@@ -1202,7 +1202,7 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
     di dict {kind, basename, score, caption, thumb_url, full_url}.
     Niente path crudo verso il client (ADR 0082-style separation).
 
-    Cap default = 20: la chat compatta mostra le prime 20 inline; le
+    Cap default = 20: la chat compatta mostra le prime 20 immagini; le
     eventuali extra restano accessibili dalla gallery (`gallery_url`).
     Cap=0 → nessun limite (placeholder convention §2.4).
 
@@ -1214,21 +1214,19 @@ def _enrich_attachments(log_obj, admin_key: str, *, cap: int = CHAT_INLINE_ATT_C
     quando ci sono input photos (`caption=='input'`), mostra TUTTI gli
     input + i primi `cap` risultati. Gli input sono significativi per
     l'utente (cosa ha caricato), non vanno troncati per stare nel cap.
+    I file sono sempre inclusi, con l'indice originale del turno firmato.
     """
     import photo_endpoint
     atts = getattr(log_obj, "attachments", []) or []
-    if cap and cap > 0:
-        inputs = [a for a in atts if isinstance(a, dict) and a.get("caption") == "input"]
-        others = [a for a in atts if isinstance(a, dict) and a.get("caption") != "input"]
-        if inputs and others:
-            # Tutti gli input + cap risultati. Ordine: input prima, results dopo.
-            atts = inputs + others[:cap]
-        else:
-            atts = atts[:cap]
     out = []
+    result_images = 0
     for idx, att in enumerate(atts):
         if not isinstance(att, dict):
             continue
+        if cap and cap > 0 and att.get("kind") != "file" and att.get("caption") != "input":
+            if result_images >= cap:
+                continue
+            result_images += 1
         # Attachment web-sourced (url): proxy via /agent/photos/web per
         # bypassare hotlinking-block dei CDN (TikTok, Instagram, FB).
         web_url = att.get("url")
