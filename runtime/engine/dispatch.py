@@ -7061,10 +7061,12 @@ def _copy_instead_of_invented_write(framework: Framework, query: str, catalog) -
     became write_files with invented content, reported as a copy. Language
     neutral: the request holds exactly one path besides the target, the content
     is absent from it, and its words match the signed affinity of move_files.
+    Declared vector inputs are already explicit writes, not scalar copies.
     The copy keeps its source and every check; nothing is invented.
     """
     from tool_grammar import _RE_FS_PATH_TOKEN, _looks_like_fs_path
-    mover = {_entry_name(entry): entry for entry in (catalog or [])}.get("move_files")
+    by_name = {_entry_name(entry): entry for entry in (catalog or [])}
+    mover = by_name.get("move_files")
     affinity = (mover.get("affinity", ()) if isinstance(mover, dict)
                 else getattr(mover, "affinity", ())) or ()
     text = query or ""
@@ -7082,6 +7084,10 @@ def _copy_instead_of_invented_write(framework: Framework, query: str, catalog) -
         args = step.args or {}
         target, content = args.get("path"), args.get("content")
         if step.tool != "write_files" or not isinstance(target, str) or "from_step" in args:
+            continue
+        properties = _entry_schema(by_name.get(step.tool, {})).get("properties") or {}
+        if any(isinstance(value, list) and value and properties.get(key, {}).get("type") == "array"
+               for key, value in args.items()):
             continue
         if content is not None and (not isinstance(content, str) or "${" in content
                                     or "{{" in content or content.casefold() in text.casefold()):

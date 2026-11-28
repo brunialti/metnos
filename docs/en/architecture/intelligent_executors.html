@@ -86,6 +86,11 @@
  by the lexicon; otherwise the <code>and</code> default applies. The guard
  does not add an <code>or</code> that the planner omitted.</p>
 
+ <p>A write with an explicit list of files preserves each path and content.
+ Corrections intended for a scalar copy do not replace nonempty vector
+ inputs declared by the contract, even when argument extraction adds a
+ scalar path to the plan.</p>
+
  <figure>
   <svg viewBox="0 0 900 290" role="img" aria-labelledby="flow-title flow-desc" xmlns="http://www.w3.org/2000/svg">
    <title id="flow-title">The intelligent executor loop</title>
