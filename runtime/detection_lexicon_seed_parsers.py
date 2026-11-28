@@ -117,6 +117,7 @@ GROUNDING_CONCEPTS = (
     "parser.grounding.copy_verb",
     "parser.grounding.definite_determiner",
     "parser.grounding.disjunction",
+    "parser.grounding.number_convention",
     "parser.grounding.output_word",
     "parser.grounding.output_verb",
     "parser.grounding.output_name_link",
@@ -169,6 +170,7 @@ _KINDS = {
     "parser.grounding.copy_verb": "phrases",
     "parser.grounding.definite_determiner": "phrases",
     "parser.grounding.disjunction": "phrases",
+    "parser.grounding.number_convention": "mapping",
     "parser.grounding.output_word": "phrases",
     "parser.grounding.output_verb": "phrases",
     "parser.grounding.output_name_link": "phrases",
@@ -735,6 +737,11 @@ def register_all() -> None:
           "ogni", "ciascuna", "sua", "sue", "loro"],
       en=["the", "this", "that", "these", "those", "each", "every", "its",
           "their"])
+    R("parser.grounding.number_convention", "mapping", match_mode="word",
+      it={"it": ["formato italiano", "numeri italiani", "virgola decimale", "alla italiana", "all'italiana"],
+          "en": ["formato americano", "formato inglese", "numeri americani", "punto decimale", "all'americana"]},
+      en={"it": ["Italian number format", "Italian format", "decimal comma"],
+          "en": ["US number format", "American number format", "English number format", "decimal point"]})
     R("parser.grounding.disjunction", "phrases", match_mode="word",
       it=["o", "oppure"], en=["or", "either"])
     R("parser.grounding.output_word", "phrases", match_mode="word",

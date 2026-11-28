@@ -39,6 +39,15 @@ requires_one_of = [["values", "entries", "from_step"]]
 [args.record_schema]
 label_arg = "sheet_name"
 
+[args.properties.locale]
+type = "string"
+semantic_type = "number_convention"
+runtime_resolved = true
+
+[args.properties.locale.description]
+it = "Convenzione dei numeri ('it': 1.234,56; 'en': 1,234.56), solo se richiesta esplicitamente; assente usa la lingua dell'istanza."
+en = "Number format ('it': 1.234,56; 'en': 1,234.56), only when explicitly requested; when omitted, use the instance language."
+
 [args.properties.entries]
 type    = "array"
 items   = { type = "object" }

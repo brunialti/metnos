@@ -16,7 +16,7 @@ en = "SCOPO: Extracts structured records from already observed entries. PATTERN:
 
 [code]
 files = ["implementation.py.src"]
-digest = "sha256:640b5363bd708f410a52deca86bf79f547c46a5239016f45c7aa0feabeba5055"
+digest = "sha256:2119215af0bb774e57bd89a297d8afcbc2f6882f13d6b3898aa8484a7bf485b2"
 
 [args]
 type = "object"
@@ -27,6 +27,15 @@ fields_arg = "fields"
 extra_fields_args = ["audit_fields"]
 mapping_args = ["structured_map", "structured_defaults"]
 additional_fields = ["_source_path", "_source_name", "_source_mtime", "_source_sha256", "_source_content_sha256", "_source_readable", "_source_file_type", "_source_domain", "_duplicate_paths", "_parse_diagnostic", "_source_scope_label", "_relevance_anchors", "_source_time_mentions", "_record_rejected"]
+
+[args.properties.locale]
+type = "string"
+runtime_resolved = true
+semantic_type = "number_convention"
+
+[args.properties.locale.description]
+it = "Convenzione dei numeri ('it': 1.234,56; 'en': 1,234.56), solo se richiesta esplicitamente; assente usa la lingua dell'istanza."
+en = "Number format ('it': 1.234,56; 'en': 1,234.56), only when explicitly requested; when omitted, use the instance language."
 
 [args.properties.source_metadata]
 type = "array"

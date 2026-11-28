@@ -168,6 +168,10 @@ def _text(value) -> str:
     return "" if value is None else str(value)
 
 
+_NUMBER_SEPARATORS = {"": (".", ""), "it": (",", "."), "en": (".", ",")}
+_CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}
+
+
 def _number(value, locale: str, currency: str, *, monetary: bool):
     if isinstance(value, bool):
         return None
@@ -180,22 +184,27 @@ def _number(value, locale: str, currency: str, *, monetary: bool):
             if currency:
                 raw = re.sub(rf"^(?:{currency})\s*|\s*(?:{currency})$", "", raw)
             raw = raw.strip()
-            symbol = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}.get(currency)
+            symbol = _CURRENCY_SYMBOLS.get(currency)
             if raw and symbol and raw[0] == symbol:
                 raw = raw[1:].strip()
             if raw and symbol and raw[-1] == symbol:
                 raw = raw[:-1].strip()
         language = locale.lower().replace("_", "-").split("-")[0]
-        if language == "it":
-            if not re.fullmatch(r"[+-]?(?:\d+|\d{1,3}(?:\.\d{3})+)(?:,\d+)?", raw):
-                return None
-            raw = raw.replace(".", "").replace(",", ".")
-        elif language == "en":
-            if not re.fullmatch(r"[+-]?(?:\d+|\d{1,3}(?:,\d{3})+)(?:\.\d+)?", raw):
-                return None
-            raw = raw.replace(",", "")
-        elif locale or not re.fullmatch(r"[+-]?\d+(?:\.\d+)?", raw):
-            return None
+        readings = {}
+        for code, (decimal, grouping) in _NUMBER_SEPARATORS.items():
+            parts = (raw[1:] if raw.startswith(("+", "-")) else raw).split(decimal)
+            groups = parts[0].split(grouping) if grouping else [parts[0]]
+            if (len(parts) > 2 or not all(part.isdecimal() for part in groups)
+                    or len(parts) == 2 and not parts[1].isdecimal()
+                    or len(groups) > 1 and (not 1 <= len(groups[0]) <= 3
+                                            or any(len(group) != 3 for group in groups[1:]))):
+                continue
+            normalized = (raw.replace(grouping, "") if grouping else raw).replace(decimal, ".")
+            if not re.match(r"[+-]?0\d", normalized):
+                readings[code] = normalized
+        raw = next(iter(readings.values()), "")
+        if len({Decimal(reading) for reading in readings.values()}) > 1:
+            raw = readings.get(language, "")
     else:
         return None
     try:
@@ -341,12 +350,19 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
             columns = []
             kinds = []
             for position, projection in enumerate(projections):
-                declaration = explicit[position] if explicit else {}
+                declaration = dict(explicit[position]) if explicit else {}
+                currency = next((row.get("_numeric_currency_fields", {}).get(projection.source)
+                                 for row in raw if row.get("_numeric_currency_fields", {}).get(projection.source)), "")
+                if currency:
+                    declaration.update(type="currency", currency=currency)
                 kinds.append(declaration.get("type"))
                 columns.append(Column(projection.header, projection.source, projection.transform,
                                       declaration.get("type", "text"), declaration.get("currency", "")))
             values = [[_cell(_transform(record.get(col.source), col.transform)) for col in columns]
                       for record in records]
+            text_cells = [[i for i, col in enumerate(columns)
+                           if col.source in (record.get("_numeric_text_fields") or [])]
+                          for record in raw]
         else:
             headers = [item.get("header", "") for item in explicit] if explicit else list(columns_arg)
             values = [_clean(list(row), sensitive) for row in raw]
@@ -363,6 +379,8 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
             # authority to discard a row; legacy callers adapt at their edge.
             if any(len(row) != len(columns) for row in values):
                 raise TableError("invalid_row_width")
+            text_cells = [(table.get("_numeric_text_cells") or {}).get(
+                json.dumps(row, sort_keys=True, default=str), []) for row in values]
         if values and not columns:
             raise TableError("empty_rows_without_schema")
         max_cols = _positive_limit(table_spec, "max_columns", capabilities.max_columns)
@@ -383,11 +401,17 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
                                 "cap_value": max_rows if row_cap == max_rows else capabilities.max_cells})
         rows = []
         failures: Counter = Counter()
+        numeric_text = 0
         long_cells = 0
-        for row in values[:row_cap]:
+        for row, forced_text in zip(values[:row_cap], text_cells):
             cells = []
             for position, col in enumerate(columns):
-                cell, failed = _convert(row[position], kinds[position], locale, col.currency, month_names or {})
+                if position in forced_text:
+                    cell, failed = Cell("text", str(row[position])), False
+                else:
+                    cell, failed = _convert(row[position], kinds[position], locale, col.currency, month_names or {})
+                if position in forced_text or (failed and kinds[position] in ("number", "currency")):
+                    numeric_text += 1
                 if failed:
                     failures[col.header] += 1
                 if isinstance(cell.value, str) and len(cell.value) > max_chars:
@@ -402,6 +426,8 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
                    for col in columns]
         for header, count in failures.items():
             notices.append({"code": "WARN_TABLE_UNINTERPRETED", "sheet": name, "column": header, "count": count})
+        if numeric_text:
+            notices.append({"code": "WARN_TABLE_NUMBERS_AS_TEXT", "sheet": name, "count": numeric_text})
         for position, col in enumerate(columns):
             if rows and all(row[position].type == "blank" for row in rows):
                 notices.append({"code": "WARN_TABLE_EMPTY_COLUMN", "sheet": name, "column": col.header, "count": len(rows)})

@@ -28,7 +28,7 @@ _ONE_SHEET_VARIANTS = frozenset({"WARN_TABLE_MERGED_ROWS", "WARN_TABLE_CONFLICTI
                                   "WARN_TABLE_UNIDENTIFIED_REJECTED", "WARN_TABLE_FOREIGN_SECTIONS"})
 # Row merges and exclusions: written into Note and stated in the answer,
 # the same codes that have a one-sheet wording.
-ANSWER_NOTICE_CODES = _ONE_SHEET_VARIANTS
+ANSWER_NOTICE_CODES = _ONE_SHEET_VARIANTS | {"WARN_TABLE_NUMBERS_AS_TEXT"}
 
 
 def _notice_message(notice: dict, *, one_sheet: bool = False) -> str:
@@ -136,6 +136,15 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
             raise TableError("unsupported_backend_mode")
         destination["backend"] = backend
         resolved_spec = _resolved_spec(source, spec)
+        if not resolved_spec.get("locale"):
+            try:
+                from i18n import current_lang
+            except ImportError:
+                # Remote execution receives the server's language in its env.
+                import os
+                resolved_spec["locale"] = os.environ.get("METNOS_LANG", "")
+            else:
+                resolved_spec["locale"] = current_lang()
         table_specs = resolved_spec.get("sheets", [resolved_spec])
         needs_month_names = (isinstance(table_specs, list) and any(
             isinstance(table_spec, dict) and isinstance(table_spec.get("column_specs"), list)

@@ -637,6 +637,15 @@ def requested_extraction_instruction(query: str, fields, requested_verb: str) ->
     return ". ".join(part.rstrip(".") for part in parts[:-1]) + (
         ". " if len(parts) > 1 else "") + parts[-1]
 
+def requested_number_convention(query: str) -> str:
+    lexicon = _lexicons.load_family("grounding") or {}
+    words = [word for sentence in _sentence_tokens(query) for word in sentence]
+    forms = lexicon.get("parser.grounding.number_convention") or {}
+    chosen = [code for code, phrases in forms.items()
+              if _occurrences(words, [tuple(_words(form)) for form in phrases])]
+    return chosen[0] if len(chosen) == 1 else ""
+
+
 def apply_to_framework(framework, query: str, catalog):
     """Give the marked arguments of a plan what the request says."""
     from naming_grammar import parse_name
@@ -645,12 +654,18 @@ def apply_to_framework(framework, query: str, catalog):
     if not steps or not query:
         return framework
     schemas = _schemas(catalog)
-    stays = named_only = said = disjunction = None
+    stays = named_only = said = disjunction = convention = None
     for position, step in enumerate(steps, 1):
         schema = schemas.get(getattr(step, "tool", None) or "")
         if schema is None:
             continue
         args = dict(step.args or {})
+        for name in _marked(schema, "number_convention"):
+            convention = requested_number_convention(query) if convention is None else convention
+            if convention:
+                args[name] = convention
+            else:
+                args.pop(name, None)
         for name in _marked(schema, "requested_extraction_instruction"):
             parsed = parse_name(step.tool)
             if parsed:
@@ -703,14 +718,15 @@ def guards(guard_type) -> tuple:
             framework, query, catalog),
         scope="per-clause",
         writes=frozenset({"args.@kept_by_age", "args.@copy_mode", "args.@set_operator",
-                          "args.@requested_output_path", "args.@requested_extraction_instruction"}),
+                          "args.@requested_output_path", "args.@requested_extraction_instruction", "args.@number_convention"}),
         reads=frozenset({"catalog", "step.tool", "args.@kept_by_age",
                          "args.@copy_mode", "args.@set_operator", "args.@requested_output_path",
-                         "args.@requested_extraction_instruction", "args.fields"}),
+                         "args.@requested_extraction_instruction", "args.@number_convention", "args.fields"}),
         rationale="an argument marked by its semantic_type takes what the "
                   "sentence says: which record of a group stays by its age; "
                   "a copy that is only named is not a request to copy; "
                   "a union requires a disjunction in the request; "
                   "a local output path requires a destination or file named in the request; "
-                  "extraction instructions use the explicit request clause",
+                  "extraction instructions use the explicit request clause; "
+                  "number conventions follow the explicit format or the instance language",
         adr="0138"),)

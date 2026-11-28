@@ -134,7 +134,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'backends/events/google_workspace.py': ('96d22f3e817496ab5fbce9a0531b3c047213fd215bbf5000112a4d40076d8cd0', (('comparison', 11), ('helper-argument', 1))),
     'backends/events/local_ics.py': ('d2bcbb93c5c96874d824aa21b55441d0603dbb8816c028df32e375efc3c34b00', (('comparison', 2), ('helper-argument', 13))),
     'backends/files/google_workspace.py': ('3557333f7a58c6def17e87ed95a003901a1e5ae61143d6d6d53dbc70e90bc1a7', (('comparison', 28),)),
-    'backends/files/local.py': ('440e7b70d8779ad692b69ad5263321bdd7bb7996797f35f9e50c03a35faba80c', (('comparison', 43), ('helper-argument', 1), ('iteration', 4), ('membership', 2), ('prefix-suffix', 2))),
+    'backends/files/local.py': ('83c8399c8d7cbd68a889a7e8362543e9315c08336b7e00393466d9653711f667', (('comparison', 43), ('helper-argument', 1), ('iteration', 4), ('membership', 2), ('prefix-suffix', 2))),
     'backends/images/google_photos.py': ('c90b2123638dc43279e39f087f6286694aea9f37b8b1a6d185f81024400acfc8', (('comparison', 8), ('helper-argument', 2))),
     'backends/images/google_vision.py': ('4fcee6e6eb572f690895f28cc8727759d464bcd90838e6af8bea90edf0c26c60', (('comparison', 6), ('helper-argument', 2))),
     'backends/images/searxng.py': ('457d65f6425d626373e526302acb0309801b4695fc553bf0b35019029c41bd5a', (('comparison', 2), ('helper-argument', 2))),
@@ -272,7 +272,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'executor_scheduler.py': ('b4d3206cbae1afe77b676b978462dd117f718e63c701c776026b157bda98d857', (('comparison', 17),)),
     'executor_standard.py': ('f331dff6a923b4ed1b5090c404e9687ddfac2a863e6aeba4cbb7051d19eab90e', (('comparison', 16), ('membership', 3))),
     'executor_typing.py': ('79e5503103c2ef66f66b341489d87289a89e81401d44da25b194bb7fcdb32c45', (('comparison', 1),)),
-    'extract_entries.py': ('7ed64176d12a029b9f32bba412b664fa00db79bf55800c32456e24742982f6b5', (('comparison', 46), ('helper-argument', 7), ('iteration', 5), ('membership', 2), ('prefix-suffix', 3))),
+    'extract_entries.py': ('4b2859185f32b821a353053227fc27268e06a0ea5575df50aee6708a12d8fc6f', (('comparison', 46), ('helper-argument', 7), ('iteration', 5), ('membership', 2), ('prefix-suffix', 3))),
     'face_embedding.py': ('3efbcb393a072d37d7d15ed880d3904a36eaecaa92f911e199ea13cf136b72f4', (('helper-argument', 2),)),
     'fast_path.py': ('533d9d334b1e17e6260b98cd0019a531a417dd93c8592a694f7bc7b29e292f9e', (('comparison', 8), ('helper-argument', 1))),
     'filter_field_resolver.py': ('fd088eaab8beb364b949127d26454b63e36ea8b54e99fa3efbcfbf010cc7097b', (('comparison', 6), ('iteration', 2), ('membership', 1), ('prefix-suffix', 1))),
@@ -586,8 +586,8 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'sites_saved_sessions.py': ('b746aa30737326e4dda18e146048730c94aeaaf8456437eeb9a858bab91576d1', (('helper-argument', 1), ('prefix-suffix', 3), ('regex', 1))),
     'spreadsheet_cells.py': ('73163ae8211f3fa9eaaa319fd260a2f347ea18fe7bab89c02e062b10d6db8b5d', (('comparison', 1), ('regex', 2))),
     'synth_proposal_store.py': ('e9dc563ee07682ead978c55831276806a42d4064efca5e4f5160a8ba08179046', (('comparison', 1), ('iteration', 1), ('regex', 2))),
-    'tabular/api.py': ('62071ed40ad3cd6898503b768c988229c8cb4ba155115971ce61d4185f2513f3', (('comparison', 16), ('membership', 3), ('prefix-suffix', 2))),
-    'tabular/compile.py': ('736702e2774ad3105a4214656ca79266ffce42f623146df14ff0473240f541a6', (('comparison', 18), ('iteration', 2), ('literal-lookup', 1), ('membership', 5), ('prefix-suffix', 2), ('regex', 5))),
+    'tabular/api.py': ('2f4a2ee020139af4c566e127f7755660abb276f6eb20f979f95ca17453eef6fc', (('comparison', 16), ('membership', 3), ('prefix-suffix', 2))),
+    'tabular/compile.py': ('b081870c9610c51302e681ab4a5bb45c95161281644aeb9ae8062bb20305ef2e', (('comparison', 16), ('helper-argument', 1), ('iteration', 2), ('membership', 6), ('prefix-suffix', 3), ('regex', 3))),
     'tabular/model.py': ('332bf07266f2b436fb1849762a4a7d79d4ab03a24117dc6c589ff7bdeec4b88d', (('comparison', 5), ('helper-argument', 3), ('membership', 1), ('prefix-suffix', 1), ('regex', 3))),
     'tabular_records.py': ('88f5ed42b9ea4f75716264bad41ffbb5983160f6d873004039bfb5c0138b1a84', (('comparison', 6), ('membership', 1), ('prefix-suffix', 1), ('regex', 1))),
     'temporal_resolution.py': ('a8b1c9efbc6ee2a44599f6e4754f4734cbe60f5b2869f52b82afe0f1b96afe28', (('comparison', 16), ('iteration', 1), ('membership', 4), ('regex', 4))),
@@ -613,7 +613,7 @@ LEGACY_LITERAL_GATE_FILE_AUTHORITIES: Mapping[str, tuple[str, tuple[tuple[str, i
     'durable_workloads/partitioned_invocation.py': ('9ee7b83de9d3b915163095d77ed5675826527b18fea695a9aa7713f8e075ff37', (('comparison', 2),)),
     'engine/partition_plans.py': ('52d2b38f75e192b1b083174578df866189152da271008ba8561c390f05f269cc', (('comparison', 19), ('helper-argument', 2), ('iteration', 1), ('prefix-suffix', 3), ('regex', 7))),
     'partitioned_runs.py': ('dccd19ea4cf5cb0d2a6c94aa17730b6e9f63ddd946684cae79e22cbe789665fe', (('comparison', 21), ('iteration', 4), ('membership', 1), ('prefix-suffix', 2), ('regex', 2))),
-    'request_grounding.py': ('951bc500e45db0c03ee69b5a1a9555666252139f0c1506bc8a8d90770da1b777', (('comparison', 7), ('helper-argument', 1), ('iteration', 2), ('regex', 2))),
+    'request_grounding.py': ('72f5447efd5b5c633ea4f0efff4276c366f882dd8e8360f138cda690c69e5737', (('comparison', 7), ('helper-argument', 1), ('iteration', 2), ('regex', 2))),
     'undo_words.py': ('10cf1d99ebf5bf74c2e0d6b69446c71d6a31304f2c8bba58563ab34b030b6b52', (('comparison', 8), ('iteration', 1), ('regex', 1))),
     'vocabulary_dossier.py': ('c9a64377dac240248692b730799585bd0e06be38dfdb806cc1a94f1e0244bf52', (('comparison', 1), ('iteration', 1), ('regex', 1))),
     'engine/partition_sheets.py': ('b2e416b9ad7e726a681129f82207071cf97afaf0d760d1a7fd5209f6a3fec059', (('comparison', 2), ('iteration', 1), ('membership', 1))),
@@ -1125,6 +1125,10 @@ VALUE_BOUND_EXECUTABLE_CONTAINER_FINGERPRINTS = frozenset({
 # relative path, lexical owner, symbol, container kind and complete payload;
 # the adjacent reason records why the value is not input-language authority.
 VALUE_BOUND_CLOSING_TECHNICAL_CONTAINERS: Mapping[str, str] = {
+    "37ea0b322fc9c201db2fd316a933879f9736c6b36fbd91ae53e58a0e9cbe1174":
+        "S-087 D2: shared decimal and grouping symbols replace locale-specific branches",
+    "d07615bbf18e1c3233d24b664a463c64a926697aa597f59ac68c52d3ac583249":
+        "S-087 D3/D5: unchanged compiler currency symbols shared with declared amount extraction",
     "4341804bf6e852e44727eb81f9497c552061f247b75abf58ad9b1c0c219ae9c0":
         "S-002: closed error codes that leave an approved mutation resumable after its time expires",
     "f2a975fa4d12db309ac8eb9f10acb00679c29439763bd5cf160c60b28baca647":

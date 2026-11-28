@@ -2466,7 +2466,14 @@ def _handle_extract_entries(args, *, verbose: bool = False,
 
 def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     """Keep collection evidence outside records and per-view merge gates."""
+    import i18n
+
     a = args or {}
+    locale = a.get("locale") or i18n.current_lang()
+    if not isinstance(locale, str):
+        return {"ok": False, "entries": [], "error_class": "invalid_args",
+                "error_code": "ERR_ARG_INVALID",
+                "error": _msg("ERR_ARG_INVALID", arg="locale", reason="must be a string")}
     try:
         inherited = merge_source_metadata(a.get("source_metadata"))
     except ValueError:
@@ -2482,14 +2489,31 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     lexicon = _reconciliation_lex.load()
     result = _handle_extract_entries(a, verbose=verbose, collection_complete=collection_complete,
                                      reconciliation_lexicon=lexicon)
-    from tabular.compile import _number
+    from tabular.compile import _number, _CURRENCY_SYMBOLS
     if lexicon is not None:
+        records = result.get("entries") or []
+        currencies = {}
+        for field in {key for row in records for key in row
+                      if lexicon.matches_gate("amount_field", _field_key(key))}:
+            codes = {code for row in records for code, symbol in _CURRENCY_SYMBOLS.items()
+                     if isinstance(row.get(field), str) and
+                     (row[field].strip().startswith((code, symbol)) or row[field].strip().endswith((code, symbol)))}
+            currencies[field] = next(iter(codes)) if len(codes) == 1 else None if codes else ""
         for record in result.get("entries") or []:
+            text_fields = []
             for field, value in record.items():
                 if lexicon.matches_gate("amount_field", _field_key(field)):
-                    number = _number(value, "", "", monetary=False)
+                    currency = currencies[field]
+                    number = (_number(value, locale, currency or "", monetary=bool(currency))
+                              if currency is not None else None)
                     record[field] = (number if number is not None else
                                      str(value) if type(value) in (int, float) else value)
+                    if number is None and value not in (None, ""):
+                        text_fields.append(field)
+            if text_fields:
+                record["_numeric_text_fields"] = text_fields
+            if any(currencies.values()):
+                record["_numeric_currency_fields"] = {field: code for field, code in currencies.items() if code}
     local = []
     scope = uuid4().hex
     for index, truncation in enumerate(result.get("truncations") or []):
@@ -2554,6 +2578,10 @@ EXTRACT_ENTRIES_TOOL = {
             "type": "object",
             "required": ["from_step"],
             "properties": {
+                "locale": {
+                    "type": "string", "semantic_type": "number_convention", "runtime_resolved": True,
+                    "description": "Convenzione dei numeri ('it': 1.234,56; 'en': 1,234.56), solo se richiesta esplicitamente; assente usa la lingua dell'istanza.",
+                },
                 "source_metadata": {
                     "type": "array", "items": {"type": "object"},
                     "runtime_resolved": True,

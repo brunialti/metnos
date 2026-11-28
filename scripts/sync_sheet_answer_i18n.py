@@ -17,6 +17,9 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
 
 TRANSLATIONS = {
+    'WARN_TABLE_NUMBERS_AS_TEXT': (
+        'Valori numerici conservati come testo: {count}. Per usare un’altra convenzione, chiedi esplicitamente il formato italiano o americano dei numeri.',
+        'Numeric values kept as text: {count}. To use another convention, explicitly request Italian or American number format.'),
     'MSG_TABLE_ALL_ROWS_SHEET': ('Tutti', 'All'),
     'MSG_TABLE_VERIFIED_ROWS_SINGLE': (
         'Nel foglio sono state scritte {rows} righe di dati.',
