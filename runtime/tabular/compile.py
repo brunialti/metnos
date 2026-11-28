@@ -172,7 +172,13 @@ _NUMBER_SEPARATORS = {"": (".", ""), "it": (",", "."), "en": (".", ",")}
 _CURRENCY_SYMBOLS = {"EUR": "€", "USD": "$", "GBP": "£", "JPY": "¥"}
 
 
-def _number(value, locale: str, currency: str, *, monetary: bool):
+def _currency_pattern(currency, names):
+    forms = [re.escape(currency), re.escape(_CURRENCY_SYMBOLS[currency])]
+    forms += [rf"\b{re.escape(form)}\b" for form in (names or {}).get(currency, ())]
+    return rf"^(?:{'|'.join(forms)})\s*|\s*(?:{'|'.join(forms)})$"
+
+
+def _number(value, locale: str, currency: str, *, monetary: bool, currency_names=None, ambiguous=None):
     if isinstance(value, bool):
         return None
     if isinstance(value, (int, float, Decimal)):
@@ -180,15 +186,8 @@ def _number(value, locale: str, currency: str, *, monetary: bool):
     elif isinstance(value, str):
         raw = value.strip()
         if monetary:
-            # Only currency symbols and the explicitly declared code are syntax.
-            if currency:
-                raw = re.sub(rf"^(?:{currency})\s*|\s*(?:{currency})$", "", raw)
-            raw = raw.strip()
-            symbol = _CURRENCY_SYMBOLS.get(currency)
-            if raw and symbol and raw[0] == symbol:
-                raw = raw[1:].strip()
-            if raw and symbol and raw[-1] == symbol:
-                raw = raw[:-1].strip()
+            if currency in _CURRENCY_SYMBOLS:
+                raw = re.sub(_currency_pattern(currency, currency_names), "", raw, flags=re.IGNORECASE).strip()
         language = locale.lower().replace("_", "-").split("-")[0]
         readings = {}
         for code, (decimal, grouping) in _NUMBER_SEPARATORS.items():
@@ -205,6 +204,8 @@ def _number(value, locale: str, currency: str, *, monetary: bool):
         raw = next(iter(readings.values()), "")
         if len({Decimal(reading) for reading in readings.values()}) > 1:
             raw = readings.get(language, "")
+            if ambiguous is not None:
+                ambiguous.append(True)
     else:
         return None
     try:
@@ -224,7 +225,7 @@ def _number(value, locale: str, currency: str, *, monetary: bool):
         return None
 
 
-def _convert(value, kind: str | None, locale: str, currency: str, month_names: dict) -> tuple[Cell, bool]:
+def _convert(value, kind: str | None, locale: str, currency: str, month_names: dict, currency_names, ambiguous) -> tuple[Cell, bool]:
     if value is None or value == "":
         return Cell("blank", None), False
     if kind is None:
@@ -233,7 +234,8 @@ def _convert(value, kind: str | None, locale: str, currency: str, month_names: d
                 if isinstance(value, (int, float, Decimal)) else "datetime"
                 if isinstance(value, datetime) else "date" if isinstance(value, date) else "text")
     if kind in {"number", "currency"}:
-        parsed = _number(value, locale, currency, monetary=kind == "currency")
+        parsed = _number(value, locale, currency, monetary=kind == "currency",
+                         currency_names=currency_names, ambiguous=ambiguous)
         if parsed is not None:
             return Cell(kind, parsed), False
     elif kind in {"date", "datetime"}:
@@ -280,7 +282,7 @@ def _positive_limit(spec: dict, key: str, maximum: int) -> int:
     return value or maximum
 
 
-def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, month_names: dict | None = None) -> CompiledTable:
+def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, month_names: dict | None = None, currency_names=None) -> CompiledTable:
     """Compile one or several tables; preserve identity and every duplicate.
 
     ``source`` is a record/matrix list or an envelope with entries/values,
@@ -363,6 +365,8 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
             text_cells = [[i for i, col in enumerate(columns)
                            if col.source in (record.get("_numeric_text_fields") or [])]
                           for record in raw]
+            ambiguous_cells = [[i for i, col in enumerate(columns)
+                                if col.source in (record.get("_numeric_ambiguous_fields") or [])] for record in raw]
         else:
             headers = [item.get("header", "") for item in explicit] if explicit else list(columns_arg)
             values = [_clean(list(row), sensitive) for row in raw]
@@ -380,6 +384,8 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
             if any(len(row) != len(columns) for row in values):
                 raise TableError("invalid_row_width")
             text_cells = [(table.get("_numeric_text_cells") or {}).get(
+                json.dumps(row, sort_keys=True, default=str), []) for row in values]
+            ambiguous_cells = [(table.get("_numeric_ambiguous_cells") or {}).get(
                 json.dumps(row, sort_keys=True, default=str), []) for row in values]
         if values and not columns:
             raise TableError("empty_rows_without_schema")
@@ -402,14 +408,20 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
         rows = []
         failures: Counter = Counter()
         numeric_text = 0
+        ambiguous_count = 0
         long_cells = 0
-        for row, forced_text in zip(values[:row_cap], text_cells):
+        for row, forced_text, ambiguous_positions in zip(values[:row_cap], text_cells, ambiguous_cells):
             cells = []
             for position, col in enumerate(columns):
+                ambiguous = []
                 if position in forced_text:
                     cell, failed = Cell("text", str(row[position])), False
                 else:
-                    cell, failed = _convert(row[position], kinds[position], locale, col.currency, month_names or {})
+                    cell, failed = _convert(row[position], kinds[position], locale, col.currency,
+                                            month_names or {}, currency_names, ambiguous)
+                if cell.type in ("number", "currency") and (position in ambiguous_positions or
+                        ambiguous and not spec.get("_locale_explicit", bool(locale))):
+                    ambiguous_count += 1
                 if position in forced_text or (failed and kinds[position] in ("number", "currency")):
                     numeric_text += 1
                 if failed:
@@ -428,6 +440,8 @@ def compile_workbook(source, spec: dict | None, capabilities: Capabilities, *, m
             notices.append({"code": "WARN_TABLE_UNINTERPRETED", "sheet": name, "column": header, "count": count})
         if numeric_text:
             notices.append({"code": "WARN_TABLE_NUMBERS_AS_TEXT", "sheet": name, "count": numeric_text})
+        if ambiguous_count:
+            notices.append({"code": "WARN_TABLE_AMBIGUOUS_NUMBERS", "sheet": name, "count": ambiguous_count})
         for position, col in enumerate(columns):
             if rows and all(row[position].type == "blank" for row in rows):
                 notices.append({"code": "WARN_TABLE_EMPTY_COLUMN", "sheet": name, "column": col.header, "count": len(rows)})

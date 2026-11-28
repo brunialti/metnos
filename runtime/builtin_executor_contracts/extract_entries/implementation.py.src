@@ -2489,7 +2489,7 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
     lexicon = _reconciliation_lex.load()
     result = _handle_extract_entries(a, verbose=verbose, collection_complete=collection_complete,
                                      reconciliation_lexicon=lexicon)
-    from tabular.compile import _number, _CURRENCY_SYMBOLS
+    from tabular.compile import _number, _CURRENCY_SYMBOLS, _currency_pattern
     if lexicon is not None:
         records = result.get("entries") or []
         currencies = {}
@@ -2497,21 +2497,28 @@ def handle_extract_entries(args, *, verbose: bool = False) -> dict:
                       if lexicon.matches_gate("amount_field", _field_key(key))}:
             codes = {code for row in records for code, symbol in _CURRENCY_SYMBOLS.items()
                      if isinstance(row.get(field), str) and
-                     (row[field].strip().startswith((code, symbol)) or row[field].strip().endswith((code, symbol)))}
+                     re.search(_currency_pattern(code, lexicon.currencies), row[field].strip(), re.IGNORECASE)}
             currencies[field] = next(iter(codes)) if len(codes) == 1 else None if codes else ""
         for record in result.get("entries") or []:
             text_fields = []
+            ambiguous_fields = []
             for field, value in record.items():
                 if lexicon.matches_gate("amount_field", _field_key(field)):
                     currency = currencies[field]
-                    number = (_number(value, locale, currency or "", monetary=bool(currency))
+                    ambiguous = []
+                    number = (_number(value, locale, currency or "", monetary=bool(currency),
+                                      currency_names=lexicon.currencies, ambiguous=ambiguous)
                               if currency is not None else None)
+                    if number is not None and ambiguous and not a.get("locale"):
+                        ambiguous_fields.append(field)
                     record[field] = (number if number is not None else
                                      str(value) if type(value) in (int, float) else value)
                     if number is None and value not in (None, ""):
                         text_fields.append(field)
             if text_fields:
                 record["_numeric_text_fields"] = text_fields
+            if ambiguous_fields:
+                record["_numeric_ambiguous_fields"] = ambiguous_fields
             if any(currencies.values()):
                 record["_numeric_currency_fields"] = {field: code for field, code in currencies.items() if code}
     local = []

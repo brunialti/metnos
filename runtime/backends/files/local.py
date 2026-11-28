@@ -2628,7 +2628,7 @@ def _clean_create_table_args(args: dict) -> dict:
                 raise TableError("sensitive_record_requested")
             sanitized[key] = cleaned
             if (rows and all(isinstance(row, dict) for row in rows)
-                    and any(row.get("_numeric_text_fields") or row.get("_numeric_currency_fields") for row in rows)):
+                    and any(row.get("_numeric_text_fields") or row.get("_numeric_currency_fields") or row.get("_numeric_ambiguous_fields") for row in rows)):
                 # Same projected data as the writer; identities survive deduplication.
                 from tabular_projection import compile_projection, _cell, _transform
                 projection = compile_projection(cleaned, args.get("columns"), declarations,
@@ -2640,16 +2640,17 @@ def _clean_create_table_args(args: dict) -> dict:
                          **(declarations[i] if declarations else {}),
                          **({"type": "currency", "currency": currencies[p.source]} if p.source in currencies else {})}
                         for i, p in enumerate(projection)]
-                text_cells = {}
-                for row, clean in zip(rows, cleaned):
-                    positions = [i for i, p in enumerate(projection)
-                                 if p.source in (row.get("_numeric_text_fields") or [])]
-                    if positions:
-                        cells = [_cell(_transform(clean.get(p.source), p.transform)) for p in projection]
-                        identity = json.dumps(cells, sort_keys=True, default=str)
-                        text_cells[identity] = sorted(set(text_cells.get(identity, [])) | set(positions))
-                if text_cells:
-                    sanitized["_numeric_text_cells"] = text_cells
+                for annotation in ("text", "ambiguous"):
+                    text_cells = {}
+                    for row, clean in zip(rows, cleaned):
+                        positions = [i for i, p in enumerate(projection)
+                                     if p.source in (row.get(f"_numeric_{annotation}_fields") or [])]
+                        if positions:
+                            cells = [_cell(_transform(clean.get(p.source), p.transform)) for p in projection]
+                            identity = json.dumps(cells, sort_keys=True, default=str)
+                            text_cells[identity] = sorted(set(text_cells.get(identity, [])) | set(positions))
+                    if text_cells:
+                        sanitized[f"_numeric_{annotation}_cells"] = text_cells
     metadata_keys = ("provenance", *SOURCE_METADATA_FIELDS)
     metadata = _clean({key: args[key] for key in metadata_keys if key in args}, sensitive)
     for key in metadata_keys:
@@ -2710,7 +2711,7 @@ def _create_table_input(args: dict, rows: list, title: str, sheet_name: str) -> 
     # Carrying those names onto positional sources could reinterpret "0" as
     # the first public column instead of the removed record key named "0".
     source = {"values": data, **{key: args[key] for key in
-              ("provenance", "source_metadata", "_numeric_text_cells", *SOURCE_METADATA_FIELDS) if key in args}}
+              ("provenance", "source_metadata", "_numeric_text_cells", "_numeric_ambiguous_cells", *SOURCE_METADATA_FIELDS) if key in args}}
     return source, spec
 
 

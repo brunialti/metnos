@@ -8,7 +8,7 @@ language never produces a hybrid schema or an apparently complete artefact.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 import re
 import unicodedata
 from typing import Mapping
@@ -21,6 +21,7 @@ TEMPORAL_CONCEPT = "reconciliation.temporal_field"
 SOURCE_CONCEPT = "reconciliation.source_field"
 AUDIT_CONCEPT = "reconciliation.audit_field"
 LABEL_CONCEPT = "reconciliation.output_label"
+CURRENCY_CONCEPT = "reconciliation.currency"
 CANCELLATION_CONCEPT = "reconciliation.cancellation_state"
 VARIANT_CONCEPT = "reconciliation.document_variant"
 RELEVANCE_GENERIC_CONCEPT = "reconciliation.relevance_generic"
@@ -48,6 +49,7 @@ CONCEPTS = (
     SOURCE_CONCEPT,
     AUDIT_CONCEPT,
     LABEL_CONCEPT,
+    CURRENCY_CONCEPT,
     CANCELLATION_CONCEPT,
     VARIANT_CONCEPT,
     RELEVANCE_GENERIC_CONCEPT,
@@ -124,6 +126,11 @@ def register_all() -> None:
     """Register the historical IT/EN bindings idempotently."""
 
     R = _dl.register
+    R(CURRENCY_CONCEPT, "mapping", match_mode="word", review_policy="manual",
+      it={"EUR": ["euro"], "USD": ["dollaro", "dollari"],
+          "GBP": ["sterlina", "sterline"], "JPY": ["yen"]},
+      en={"EUR": ["euro", "euros"], "USD": ["dollar", "dollars"],
+          "GBP": ["pound", "pounds"], "JPY": ["yen"]})
     R(FIELD_CONCEPT, "mapping", match_mode="word", review_policy="manual",
       it={
           "entity": ["entità"],
@@ -525,6 +532,7 @@ class ReconciliationLexicon:
     field_owners: dict[str, str]
     source_owners: dict[str, str]
     audit_owners: dict[str, str]
+    currencies: dict[str, list[str]] = field(default_factory=dict)
 
     def surface(self, canonical: str) -> str:
         return self.fields[canonical][0]
@@ -574,6 +582,7 @@ def family_kinds() -> dict[str, str]:
         FIELD_CONCEPT: "mapping", TEMPORAL_CONCEPT: "mapping",
         SOURCE_CONCEPT: "mapping", AUDIT_CONCEPT: "mapping",
         LABEL_CONCEPT: "mapping", CANCELLATION_CONCEPT: "phrases",
+        CURRENCY_CONCEPT: "mapping",
         VARIANT_CONCEPT: "phrases", RELEVANCE_GENERIC_CONCEPT: "phrases",
         RELEVANCE_PERSON_TYPE_CONCEPT: "phrases",
         RELEVANCE_ORGANIZATION_TYPE_CONCEPT: "phrases",
@@ -600,6 +609,8 @@ def from_resources(
     source = _mapping_from_resources(snapshot[SOURCE_CONCEPT], _SOURCE_IDS)
     audit = _mapping_from_resources(snapshot[AUDIT_CONCEPT], _AUDIT_IDS)
     labels = _mapping_from_resources(snapshot[LABEL_CONCEPT], _LABEL_IDS)
+    from tabular.compile import _CURRENCY_SYMBOLS
+    currencies = _mapping_from_resources(snapshot[CURRENCY_CONCEPT], frozenset(_CURRENCY_SYMBOLS))
     cancellation_states = _phrases_from_resources(
         snapshot[CANCELLATION_CONCEPT]
     )
@@ -617,7 +628,7 @@ def from_resources(
         gate: _patterns_from_resources(snapshot[concept])
         for gate, concept in GATE_CONCEPTS.items()
     }
-    if (not all((fields, temporal, source, audit, labels,
+    if (not all((fields, temporal, source, audit, labels, currencies,
                  cancellation_states, variant_tokens))
             or not relevance_generic
             or not relevance_person_types
@@ -635,6 +646,7 @@ def from_resources(
         source=source,
         audit=audit,
         labels=labels,
+        currencies=currencies,
         cancellation_states=cancellation_states,
         variant_tokens=frozenset(
             _surface_key(token) for token in variant_tokens
@@ -665,6 +677,16 @@ def load() -> ReconciliationLexicon | None:
         include_reviewed_baselines=True,
     )
     return from_resources(snapshot) if snapshot is not None else None
+
+
+def currency_names() -> dict[str, list[str]] | None:
+    """Read the ready currency names from the same language authority."""
+    from tabular.compile import _CURRENCY_SYMBOLS
+    _ensure_registered()
+    snapshot = _dl.native_ready_family_resources(
+        {CURRENCY_CONCEPT: "mapping"}, require_manual=True, include_reviewed_baselines=True)
+    return (_mapping_from_resources(snapshot[CURRENCY_CONCEPT], frozenset(_CURRENCY_SYMBOLS))
+            if snapshot is not None else None)
 
 
 def temporal_aliases() -> frozenset[str] | None:

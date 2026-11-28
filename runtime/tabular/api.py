@@ -28,7 +28,7 @@ _ONE_SHEET_VARIANTS = frozenset({"WARN_TABLE_MERGED_ROWS", "WARN_TABLE_CONFLICTI
                                   "WARN_TABLE_UNIDENTIFIED_REJECTED", "WARN_TABLE_FOREIGN_SECTIONS"})
 # Row merges and exclusions: written into Note and stated in the answer,
 # the same codes that have a one-sheet wording.
-ANSWER_NOTICE_CODES = _ONE_SHEET_VARIANTS | {"WARN_TABLE_NUMBERS_AS_TEXT"}
+ANSWER_NOTICE_CODES = _ONE_SHEET_VARIANTS | {"WARN_TABLE_NUMBERS_AS_TEXT", "WARN_TABLE_AMBIGUOUS_NUMBERS"}
 
 
 def _notice_message(notice: dict, *, one_sheet: bool = False) -> str:
@@ -136,6 +136,7 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
             raise TableError("unsupported_backend_mode")
         destination["backend"] = backend
         resolved_spec = _resolved_spec(source, spec)
+        resolved_spec["_locale_explicit"] = bool(resolved_spec.get("locale"))
         if not resolved_spec.get("locale"):
             try:
                 from i18n import current_lang
@@ -165,7 +166,18 @@ def write_table(source, spec: dict | None, destination: dict, mode: str = "creat
                 if lexicon:
                     months = {str(form).casefold(): int(number)
                               for number, forms in lexicon["parser.time.month"].items() for form in forms}
-        compiled = compile_workbook(source, resolved_spec, capabilities, month_names=months)
+        currencies = {}
+        if isinstance(table_specs, list) and any(
+                isinstance(item, dict) and isinstance(item.get("column_specs"), list)
+                and any(isinstance(column, dict) and column.get("currency") for column in item["column_specs"])
+                for item in table_specs):
+            try:
+                from detection_lexicon_seed_reconciliation import currency_names
+            except ImportError:
+                pass  # Device: native amounts remain usable; unknown text stays text.
+            else:
+                currencies = currency_names() or {}
+        compiled = compile_workbook(source, resolved_spec, capabilities, month_names=months, currency_names=currencies)
         notices = list(compiled.notices)
         # Localize every notice before publishing, so Note never silently lacks
         # the same warning/provenance returned to the conversation.
